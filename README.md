@@ -61,10 +61,28 @@ For v1 Codex subagents, the `spawn_agent` result's `agent_id` is the thread id.
 
 ## Codex Skill
 
-This workflow can be wrapped in a Codex skill for a main orchestrator thread.
-The skill should be treated as a local operating convention: it teaches Codex
-when to use `replace`, when to use `update`, and when to send a normal wake
-message after changing a goal.
+This repo includes a Codex plugin with an explicit-only orchestrator skill:
+
+```text
+plugins/codex-goalctl/skills/codex-goalctl/SKILL.md
+```
+
+The repo also includes a marketplace manifest:
+
+```text
+.agents/plugins/marketplace.json
+```
+
+Install it from the GitHub marketplace source with:
+
+```sh
+codex plugin marketplace add ustas-eth/codex-goalctl
+codex plugin add codex-goalctl@codex-goalctl
+```
+
+The skill is a local operating convention: it teaches Codex when to use
+`replace`, when to use `update`, and when to send a normal wake message after
+changing a goal.
 
 The skill should be narrowly scoped to orchestrator use. Installing it does not
 make goal writes wake subagents, and it does not make the workflow universal for
