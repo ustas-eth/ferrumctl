@@ -1,36 +1,34 @@
 ---
 name: codex-goalctl
-description: Use only when acting as a main Codex orchestrator that manages other Codex CLI threads or subagents with the host codex-goalctl command. This skill is an opinionated workflow for assigning, updating, inspecting, clearing, and waking subagent goals; the codex-goalctl CLI itself is a neutral goal-state tool. Do not use for ordinary worker-thread tasks.
+description: Use when acting as a main Codex orchestrator that manages other Codex CLI threads or subagents with the host codex-goalctl command. Provides workflow guidance for assigning fresh goals, editing existing goals, checking state, clearing goals, and sending a wake message after goal changes. Do not use for ordinary worker-thread tasks.
 ---
 
 # Codex Goalctl
 
 ## Purpose
 
-Use this skill when the current Codex session is the orchestrator and needs to
-manage goal state for other Codex CLI threads.
+Use this skill when the current Codex session is coordinating other Codex CLI
+threads and needs to manage their goal state.
 
-The `codex-goalctl` command is a small, neutral CLI over persisted Codex goal
-state. This skill is the opinionated layer: it defines one local orchestration
-convention for how a main thread should use that CLI with subagents.
+`codex-goalctl` is the host command that reads and writes persisted goal state
+through `codex app-server`. This skill describes a main-thread workflow on top
+of that command.
 
-Assume `codex-goalctl` is already installed on the host. It writes persisted
-goal state through `codex app-server`; it does not send chat messages and does
-not reliably wake a CLI-owned thread.
+Assume `codex-goalctl` is already installed on the host. It does not send chat
+messages and does not reliably wake a CLI-owned thread.
 
 ## Workflow
 
 1. Identify the target thread id.
    For v1 Codex subagents, the `spawn_agent` result's `agent_id` is the thread id.
 
-2. Assign a new task with fresh counters:
+2. For a new assignment, reset counters by replacing the goal:
 
 ```sh
 codex-goalctl replace THREAD_ID "objective text"
 ```
 
-3. Wake the subagent only when you want it to act immediately by sending a
-normal input message to that subagent:
+3. If the subagent should act immediately, send it a normal input message:
 
 ```text
 A goal was assigned. Call get_goal and proceed.
@@ -42,7 +40,7 @@ A goal was assigned. Call get_goal and proceed.
 codex-goalctl get THREAD_ID
 ```
 
-5. Preserve counters only for intentional in-place edits:
+5. Edit an existing goal in place when counters should be preserved:
 
 ```sh
 codex-goalctl update THREAD_ID "reworded objective"
@@ -61,10 +59,9 @@ Use `--json` when another script or tool will parse the output.
 
 ## Rules
 
-- In this workflow, use `replace` as the canonical primitive for a fresh
-  subagent assignment.
-- Use `update` only when preserving existing usage and time counters is correct.
+- Use `replace` for new assignments, because it resets usage and time counters.
+- Use `update` for status changes, budget changes, and objective edits that
+  should preserve counters.
 - Do not assume goal writes wake a subagent; send a normal follow-up message.
-- Do not present this skill as universal Codex behavior or as a property of the
-  CLI. It is an opinionated local orchestration workflow built around
-  `codex-goalctl`.
+- Keep the distinction clear: `codex-goalctl` provides goal operations; this
+  skill chooses a workflow for orchestrator sessions.
