@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codex-goalctl"
+version = "0.1.0"
+description = "Small Unix-style CLI for Codex thread goals"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+
+[project.scripts]
+codex-goalctl = "codex_goalctl.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
