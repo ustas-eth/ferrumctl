@@ -31,6 +31,9 @@ codex-goalctl clear THREAD_ID
 `get` prints the current goal. With `--json`, it prints a machine-readable
 response.
 
+Common options such as `--json`, `--timeout`, and `--codex-bin` may be passed
+before or after the subcommand.
+
 `update` changes an existing goal in place. Use it for status changes, budget
 changes, or objective edits where the existing usage and time counters should be
 preserved.
