@@ -3,11 +3,11 @@
 Small Unix-style CLI for reading and mutating Codex thread goals through
 `codex app-server`.
 
-This is an opinionated helper for a Codex orchestrator workflow. It is not an
-official Codex interface and does not try to cover every possible goal-management
-style.
+The CLI is intentionally small and policy-neutral. It exposes goal operations;
+it does not decide how a Codex orchestrator should use them.
 
-The intended model is:
+The bundled Codex skill is different: it is an opinionated workflow for one
+orchestrator style. That workflow assumes:
 
 - A main Codex thread acts as the orchestrator.
 - Subagents are treated as worker threads with persistent goal state.
@@ -35,13 +35,15 @@ codex-goalctl replace THREAD_ID "finish report" --token-budget 50000
 codex-goalctl clear THREAD_ID
 ```
 
-`update` mutates the existing goal in place and preserves counters. `replace`
-clears any existing goal before creating the new one, so usage counters start
-fresh.
+`update` sends a direct goal mutation. When a goal already exists, it preserves
+that goal's usage and time counters.
 
-For this workflow, `replace` is the canonical command for assigning a new task
-to a subagent. Use `update` when you specifically want to preserve the existing
-goal's usage and time counters.
+`replace` is a convenience command that clears any existing goal before creating
+the new one, so usage counters start fresh.
+
+The command itself does not make `replace` canonical. The bundled Codex skill
+does, because that skill defines a specific orchestrator workflow where a new
+subagent assignment should reset counters.
 
 ## Waking Agents
 
@@ -59,7 +61,7 @@ Use `--json` for machine-readable output.
 
 For v1 Codex subagents, the `spawn_agent` result's `agent_id` is the thread id.
 
-## Codex Skill
+## Opinionated Codex Skill
 
 This repo includes a Codex plugin with an explicit-only orchestrator skill:
 
@@ -80,9 +82,9 @@ codex plugin marketplace add ustas-eth/codex-goalctl
 codex plugin add codex-goalctl@codex-goalctl
 ```
 
-The skill is a local operating convention: it teaches Codex when to use
-`replace`, when to use `update`, and when to send a normal wake message after
-changing a goal.
+The skill is the opinionated part of this repo. It is a local operating
+convention that teaches Codex when to use `replace`, when to use `update`, and
+when to send a normal wake message after changing a goal.
 
 The skill should be narrowly scoped to orchestrator use. Installing it does not
 make goal writes wake subagents, and it does not make the workflow universal for

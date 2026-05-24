@@ -1,7 +1,7 @@
 {
   "name": "codex-goalctl",
   "version": "0.1.0",
-  "description": "Opinionated Codex orchestrator workflow for managing thread goals with codex-goalctl.",
+  "description": "Opinionated Codex skill for an orchestrator workflow using the neutral codex-goalctl CLI.",
   "author": {
     "name": "ustas-eth"
   },
@@ -17,7 +17,7 @@
   "interface": {
     "displayName": "Codex Goalctl",
     "shortDescription": "Manage subagent goals from a main thread.",
-    "longDescription": "Codex Goalctl teaches an opinionated main-thread orchestrator workflow for assigning, updating, inspecting, and clearing Codex thread goals through the codex-goalctl host command.",
+    "longDescription": "Codex Goalctl teaches an opinionated main-thread orchestrator workflow for assigning, updating, inspecting, and clearing Codex thread goals through the neutral codex-goalctl host command.",
     "developerName": "ustas-eth",
     "category": "Productivity",
     "capabilities": [

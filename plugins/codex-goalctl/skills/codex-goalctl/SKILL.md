@@ -1,6 +1,6 @@
 ---
 name: codex-goalctl
-description: Use only when acting as a main Codex orchestrator that manages other Codex CLI threads or subagents with the host codex-goalctl command. This is an opinionated workflow for assigning, updating, inspecting, clearing, and waking subagent goals; do not use for ordinary worker-thread tasks.
+description: Use only when acting as a main Codex orchestrator that manages other Codex CLI threads or subagents with the host codex-goalctl command. This skill is an opinionated workflow for assigning, updating, inspecting, clearing, and waking subagent goals; the codex-goalctl CLI itself is a neutral goal-state tool. Do not use for ordinary worker-thread tasks.
 ---
 
 # Codex Goalctl
@@ -8,8 +8,11 @@ description: Use only when acting as a main Codex orchestrator that manages othe
 ## Purpose
 
 Use this skill when the current Codex session is the orchestrator and needs to
-manage goal state for other Codex CLI threads. This is a local workflow
-convention, not an official Codex control API.
+manage goal state for other Codex CLI threads.
+
+The `codex-goalctl` command is a small, neutral CLI over persisted Codex goal
+state. This skill is the opinionated layer: it defines one local orchestration
+convention for how a main thread should use that CLI with subagents.
 
 Assume `codex-goalctl` is already installed on the host. It writes persisted
 goal state through `codex app-server`; it does not send chat messages and does
@@ -58,8 +61,10 @@ Use `--json` when another script or tool will parse the output.
 
 ## Rules
 
-- Use `replace` as the canonical primitive for a fresh subagent assignment.
+- In this workflow, use `replace` as the canonical primitive for a fresh
+  subagent assignment.
 - Use `update` only when preserving existing usage and time counters is correct.
 - Do not assume goal writes wake a subagent; send a normal follow-up message.
-- Do not present this as universal Codex behavior. It is an opinionated local
-  orchestration workflow built around `codex-goalctl`.
+- Do not present this skill as universal Codex behavior or as a property of the
+  CLI. It is an opinionated local orchestration workflow built around
+  `codex-goalctl`.
