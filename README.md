@@ -61,8 +61,8 @@ For v1 Codex subagents, the `spawn_agent` result's `agent_id` is the thread id.
 
 ## Codex Skill
 
-This repo includes an optional Codex plugin with an explicit-only skill for
-main-thread orchestration:
+This repo includes an optional Codex plugin with a skill for main-thread
+orchestration:
 
 ```text
 plugins/codex-goalctl/skills/codex-goalctl/SKILL.md
@@ -83,7 +83,9 @@ codex plugin add codex-goalctl@codex-goalctl
 
 The skill documents one workflow for coordinating subagents from a main Codex
 thread: use `replace` for new assignments, use `update` for in-place edits, and
-send a normal follow-up message when the subagent should act immediately.
+send a normal follow-up message when the subagent should act immediately. It can
+be invoked explicitly with `$codex-goalctl`, and it can also be selected for
+main-thread requests that mention spawning subagents or assigning their goals.
 
 The skill is optional. Installing it does not change the CLI behavior and does
 not make goal writes wake subagents.

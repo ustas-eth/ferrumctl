@@ -1,6 +1,6 @@
 ---
 name: codex-goalctl
-description: Use when acting as a main Codex orchestrator that manages other Codex CLI threads or subagents with the host codex-goalctl command. Provides workflow guidance for assigning fresh goals, editing existing goals, checking state, clearing goals, and sending a wake message after goal changes. Do not use for ordinary worker-thread tasks.
+description: Use when acting as a main Codex orchestrator that manages other Codex CLI threads or subagents with the host codex-goalctl command, including requests to spawn a subagent and assign it a goal. Provides workflow guidance for assigning fresh goals, editing existing goals, checking state, clearing goals, and sending a wake message after goal changes. Do not use for ordinary worker-thread tasks.
 ---
 
 # Codex Goalctl
@@ -19,7 +19,7 @@ messages and does not reliably wake a CLI-owned thread.
 
 ## Workflow
 
-1. Identify the target thread id.
+1. Identify or create the target thread.
    For v1 Codex subagents, the `spawn_agent` result's `agent_id` is the thread id.
 
 2. For a new assignment, reset counters by replacing the goal:
