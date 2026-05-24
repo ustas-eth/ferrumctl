@@ -89,3 +89,13 @@ main-thread requests that mention spawning subagents or assigning their goals.
 
 The skill is optional. Installing it does not change the CLI behavior and does
 not make goal writes wake subagents.
+
+## Example
+
+The screenshot below shows a main Codex thread selecting the skill, spawning a
+subagent, assigning a persisted goal with `codex-goalctl replace`, sending the
+wake message, and receiving the completed status back from the subagent.
+
+<p align="center">
+  <img src="docs/assets/codex-goalctl-smoke.png" alt="Codex goalctl smoke test" width="900">
+</p>
