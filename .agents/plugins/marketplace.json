@@ -1,0 +1,20 @@
+{
+  "name": "codex-readcov",
+  "interface": {
+    "displayName": "Codex Readcov"
+  },
+  "plugins": [
+    {
+      "name": "codex-readcov",
+      "source": {
+        "source": "local",
+        "path": "./plugins/codex-readcov"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
