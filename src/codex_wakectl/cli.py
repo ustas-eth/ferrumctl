@@ -2,16 +2,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import fcntl
 import json
 import os
 import re
+import sqlite3
 import subprocess
 import sys
-import tempfile
 import time
 import uuid
-from contextlib import AbstractContextManager
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -21,6 +19,7 @@ import websockets
 
 
 DEFAULT_TIMEOUT = 20.0
+DEFAULT_LEASE_SECONDS = 300
 CLIENT_VERSION = "0.1.0"
 STATUS_VALUES = {
     "active",
@@ -122,48 +121,9 @@ def resolve_unix_endpoint(endpoint: str) -> str:
     return str(path)
 
 
-class StateStore(AbstractContextManager["StateStore"]):
-    def __init__(self, path: Path):
-        self.path = path
-        self.lock_path = path.with_suffix(path.suffix + ".lock")
-        self.lock_file: Any = None
-        self.data: dict[str, Any] = {"version": 1, "jobs": []}
-
-    def __enter__(self) -> "StateStore":
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.lock_file = self.lock_path.open("a+")
-        fcntl.flock(self.lock_file.fileno(), fcntl.LOCK_EX)
-        if self.path.exists():
-            with self.path.open() as f:
-                self.data = json.load(f)
-        return self
-
-    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
-        if self.lock_file is not None:
-            fcntl.flock(self.lock_file.fileno(), fcntl.LOCK_UN)
-            self.lock_file.close()
-
-    def save(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp_name = tempfile.mkstemp(
-            prefix=self.path.name + ".",
-            suffix=".tmp",
-            dir=self.path.parent,
-            text=True,
-        )
-        try:
-            with os.fdopen(fd, "w") as f:
-                json.dump(self.data, f, indent=2, sort_keys=True)
-                f.write("\n")
-            os.replace(tmp_name, self.path)
-        finally:
-            if os.path.exists(tmp_name):
-                os.unlink(tmp_name)
-
-
 def default_state_path() -> Path:
     root = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state"))
-    return root / "codex-wakectl" / "jobs.json"
+    return root / "codex-wakectl" / "jobs.sqlite3"
 
 
 def now_seconds() -> int:
@@ -220,6 +180,268 @@ def format_time(ts: int | None) -> str:
     if ts is None:
         return "-"
     return datetime.fromtimestamp(ts).astimezone().isoformat(timespec="seconds")
+
+
+JOB_COLUMNS = {
+    "status": "status",
+    "condition": "condition_json",
+    "targetThreadId": "target_thread_id",
+    "message": "message",
+    "endpoint": "endpoint",
+    "createdAt": "created_at",
+    "updatedAt": "updated_at",
+    "firedAt": "fired_at",
+    "fireCount": "fire_count",
+    "lastFiredAt": "last_fired_at",
+    "lastTurnId": "last_turn_id",
+    "lastReason": "last_reason",
+    "lastError": "last_error",
+    "lastTokensUsedBucket": "last_tokens_used_bucket",
+    "lastTimeUsedBucket": "last_time_used_bucket",
+    "leaseOwner": "lease_owner",
+    "leaseStartedAt": "lease_started_at",
+    "leaseUntil": "lease_until",
+}
+
+OPTIONAL_JOB_FIELDS = [
+    "firedAt",
+    "lastFiredAt",
+    "lastTurnId",
+    "lastReason",
+    "lastError",
+    "lastTokensUsedBucket",
+    "lastTimeUsedBucket",
+    "leaseOwner",
+    "leaseStartedAt",
+    "leaseUntil",
+]
+
+
+def open_state(path: Path) -> sqlite3.Connection:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path, timeout=5.0, isolation_level=None)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout = 5000")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS jobs (
+            id TEXT PRIMARY KEY,
+            status TEXT NOT NULL,
+            condition_json TEXT NOT NULL,
+            target_thread_id TEXT NOT NULL,
+            message TEXT NOT NULL,
+            endpoint TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            fired_at INTEGER,
+            fire_count INTEGER NOT NULL DEFAULT 0,
+            last_fired_at INTEGER,
+            last_turn_id TEXT,
+            last_reason TEXT,
+            last_error TEXT,
+            last_tokens_used_bucket INTEGER,
+            last_time_used_bucket INTEGER,
+            lease_owner TEXT,
+            lease_started_at INTEGER,
+            lease_until INTEGER
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS jobs_pending_idx
+        ON jobs(status, lease_until, created_at)
+        """
+    )
+    return conn
+
+
+def decode_job(row: sqlite3.Row) -> dict[str, Any]:
+    job: dict[str, Any] = {
+        "id": row["id"],
+        "status": row["status"],
+        "condition": json.loads(row["condition_json"]),
+        "targetThreadId": row["target_thread_id"],
+        "message": row["message"],
+        "endpoint": row["endpoint"],
+        "createdAt": row["created_at"],
+        "updatedAt": row["updated_at"],
+        "fireCount": row["fire_count"],
+    }
+    for key in OPTIONAL_JOB_FIELDS:
+        value = row[JOB_COLUMNS[key]]
+        if value is not None:
+            job[key] = value
+    return job
+
+
+def encode_value(key: str, value: Any) -> Any:
+    if key == "condition":
+        return json.dumps(value, sort_keys=True, separators=(",", ":"))
+    return value
+
+
+def insert_job(state_path: Path, job: dict[str, Any]) -> None:
+    conn = open_state(state_path)
+    try:
+        conn.execute(
+            """
+            INSERT INTO jobs (
+                id, status, condition_json, target_thread_id, message, endpoint,
+                created_at, updated_at, fired_at, fire_count, last_fired_at,
+                last_turn_id, last_reason, last_error, last_tokens_used_bucket,
+                last_time_used_bucket, lease_owner, lease_started_at, lease_until
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                job["id"],
+                job["status"],
+                encode_value("condition", job["condition"]),
+                job["targetThreadId"],
+                job["message"],
+                job["endpoint"],
+                job["createdAt"],
+                job["updatedAt"],
+                job.get("firedAt"),
+                int(job.get("fireCount") or 0),
+                job.get("lastFiredAt"),
+                job.get("lastTurnId"),
+                job.get("lastReason"),
+                job.get("lastError"),
+                job.get("lastTokensUsedBucket"),
+                job.get("lastTimeUsedBucket"),
+                job.get("leaseOwner"),
+                job.get("leaseStartedAt"),
+                job.get("leaseUntil"),
+            ),
+        )
+    finally:
+        conn.close()
+
+
+def list_jobs(state_path: Path, *, include_all: bool = False) -> list[dict[str, Any]]:
+    conn = open_state(state_path)
+    try:
+        where = "" if include_all else "WHERE status = 'pending'"
+        rows = conn.execute(
+            f"""
+            SELECT * FROM jobs
+            {where}
+            ORDER BY created_at, id
+            """
+        ).fetchall()
+        return [decode_job(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def cancel_job(state_path: Path, job_id: str) -> bool:
+    conn = open_state(state_path)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        cur = conn.execute(
+            """
+            UPDATE jobs
+            SET status = 'canceled',
+                updated_at = ?,
+                lease_owner = NULL,
+                lease_started_at = NULL,
+                lease_until = NULL
+            WHERE id = ?
+            """,
+            (now_seconds(), job_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def claim_pending_jobs(
+    state_path: Path,
+    lease_seconds: int,
+) -> tuple[str, list[dict[str, Any]]]:
+    owner = uuid.uuid4().hex
+    ts = now_seconds()
+    conn = open_state(state_path)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        rows = conn.execute(
+            """
+            SELECT * FROM jobs
+            WHERE status = 'pending'
+              AND (lease_owner IS NULL OR lease_until IS NULL OR lease_until <= ?)
+            ORDER BY created_at, id
+            """,
+            (ts,),
+        ).fetchall()
+        conn.executemany(
+            """
+            UPDATE jobs
+            SET lease_owner = ?,
+                lease_started_at = ?,
+                lease_until = ?,
+                updated_at = ?
+            WHERE id = ? AND status = 'pending'
+            """,
+            [(owner, ts, ts + lease_seconds, ts, row["id"]) for row in rows],
+        )
+        conn.commit()
+        return owner, [decode_job(row) for row in rows]
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def update_claimed_job(
+    state_path: Path,
+    job_id: str,
+    owner: str,
+    updates: dict[str, Any] | None = None,
+) -> bool:
+    updates = updates or {}
+    unknown = [key for key in updates if key not in JOB_COLUMNS]
+    if unknown:
+        raise WakectlError("unknown job update field: " + ", ".join(sorted(unknown)))
+
+    ts = now_seconds()
+    assignments = [
+        "updated_at = ?",
+        "lease_owner = NULL",
+        "lease_started_at = NULL",
+        "lease_until = NULL",
+    ]
+    params: list[Any] = [ts]
+    for key, value in updates.items():
+        assignments.append(f"{JOB_COLUMNS[key]} = ?")
+        params.append(encode_value(key, value))
+    params.extend([job_id, owner])
+
+    conn = open_state(state_path)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        cur = conn.execute(
+            f"""
+            UPDATE jobs
+            SET {", ".join(assignments)}
+            WHERE id = ? AND lease_owner = ? AND status = 'pending'
+            """,
+            params,
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 async def list_loaded(app: AppServer) -> list[str]:
@@ -502,9 +724,7 @@ async def cmd_add(args: argparse.Namespace) -> int:
     condition = args.condition_builder(args)
     job = new_job(condition, args.to_thread_id, args.message, args.endpoint)
     await seed_repeating_goal_job(args, job)
-    with StateStore(args.state) as store:
-        store.data.setdefault("jobs", []).append(job)
-        store.save()
+    insert_job(args.state, job)
     if args.json:
         print(json.dumps({"job": job}, indent=2))
     else:
@@ -548,60 +768,83 @@ async def cmd_wait(args: argparse.Namespace) -> int:
 async def cmd_tick(args: argparse.Namespace) -> int:
     fired: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
-    with StateStore(args.state) as store:
-        pending = [job for job in store.data.get("jobs", []) if job.get("status") == "pending"]
-        for job in pending:
-            if args.limit is not None and len(fired) >= args.limit:
-                break
-            try:
-                endpoint = job.get("endpoint") or args.endpoint
-                if job["condition"]["type"] == "goal":
+    owner, jobs = claim_pending_jobs(args.state, args.lease_seconds)
+    for job in jobs:
+        if args.limit is not None and len(fired) >= args.limit:
+            update_claimed_job(args.state, job["id"], owner)
+            continue
+        try:
+            endpoint = job.get("endpoint") or args.endpoint
+            if job["condition"]["type"] == "goal":
+                async with AppServer(endpoint, args.timeout) as app:
+                    ready, updates, reason = await condition_ready(app, job["condition"], job)
+                    turn = (
+                        await send_turn(
+                            app,
+                            job["targetThreadId"],
+                            job["message"],
+                            allow_active=args.allow_active,
+                        )
+                        if ready
+                        else None
+                    )
+            else:
+                ready, updates, reason = await condition_ready(None, job["condition"], job)
+                if ready:
                     async with AppServer(endpoint, args.timeout) as app:
-                        ready, updates, reason = await condition_ready(app, job["condition"], job)
-                        if ready:
-                            turn = await send_turn(
-                                app,
-                                job["targetThreadId"],
-                                job["message"],
-                                allow_active=args.allow_active,
-                            )
-                        else:
-                            turn = None
+                        turn = await send_turn(
+                            app,
+                            job["targetThreadId"],
+                            job["message"],
+                            allow_active=args.allow_active,
+                        )
                 else:
-                    ready, updates, reason = await condition_ready(None, job["condition"], job)
-                    if ready:
-                        async with AppServer(endpoint, args.timeout) as app:
-                            turn = await send_turn(
-                                app,
-                                job["targetThreadId"],
-                                job["message"],
-                                allow_active=args.allow_active,
-                            )
-                    else:
-                        turn = None
+                    turn = None
 
-                if not ready:
-                    job["lastReason"] = reason
-                    job["updatedAt"] = now_seconds()
+            if not ready:
+                committed = update_claimed_job(
+                    args.state,
+                    job["id"],
+                    owner,
+                    {"lastReason": reason, "lastError": None},
+                )
+                if committed:
                     skipped.append({"id": job["id"], "reason": reason})
-                    continue
-                ts = now_seconds()
-                job.update(updates)
-                job["fireCount"] = int(job.get("fireCount") or 0) + 1
-                job["lastFiredAt"] = ts
-                job["lastTurnId"] = turn.get("id")
-                job["lastReason"] = reason
-                job["lastError"] = None
-                job["updatedAt"] = ts
-                if not condition_repeats(job["condition"]):
-                    job["status"] = "fired"
-                    job["firedAt"] = ts
+                else:
+                    skipped.append({"id": job["id"], "reason": "lease lost before update"})
+                continue
+
+            ts = now_seconds()
+            result_updates = dict(updates)
+            result_updates.update(
+                {
+                    "fireCount": int(job.get("fireCount") or 0) + 1,
+                    "lastFiredAt": ts,
+                    "lastTurnId": turn.get("id"),
+                    "lastReason": reason,
+                    "lastError": None,
+                }
+            )
+            if not condition_repeats(job["condition"]):
+                result_updates["status"] = "fired"
+                result_updates["firedAt"] = ts
+            committed = update_claimed_job(args.state, job["id"], owner, result_updates)
+            if committed:
                 fired.append({"id": job["id"], "turnId": turn.get("id"), "reason": reason})
-            except Exception as exc:
-                job["lastError"] = str(exc)
-                job["updatedAt"] = now_seconds()
-                skipped.append({"id": job["id"], "reason": str(exc)})
-        store.save()
+            else:
+                skipped.append({"id": job["id"], "reason": "lease lost after wake"})
+        except Exception as exc:
+            reason = str(exc)
+            committed = update_claimed_job(
+                args.state,
+                job["id"],
+                owner,
+                {"lastError": reason},
+            )
+            if committed:
+                skipped.append({"id": job["id"], "reason": reason})
+            else:
+                skipped.append({"id": job["id"], "reason": "lease lost after error"})
 
     if args.json:
         print(json.dumps({"fired": fired, "skipped": skipped}, indent=2))
@@ -614,12 +857,7 @@ async def cmd_tick(args: argparse.Namespace) -> int:
 
 
 def cmd_list(args: argparse.Namespace) -> int:
-    with StateStore(args.state) as store:
-        jobs = list(store.data.get("jobs", []))
-    if args.all:
-        selected = jobs
-    else:
-        selected = [job for job in jobs if job.get("status") == "pending"]
+    selected = list_jobs(args.state, include_all=args.all)
     if args.json:
         print(json.dumps({"jobs": selected}, indent=2))
     else:
@@ -640,16 +878,7 @@ def cmd_list(args: argparse.Namespace) -> int:
 
 
 def cmd_cancel(args: argparse.Namespace) -> int:
-    canceled = False
-    with StateStore(args.state) as store:
-        for job in store.data.get("jobs", []):
-            if job.get("id") == args.job_id:
-                job["status"] = "canceled"
-                job["updatedAt"] = now_seconds()
-                canceled = True
-                break
-        store.save()
-    if not canceled:
+    if not cancel_job(args.state, args.job_id):
         raise WakectlError(f"unknown job id: {args.job_id}")
     if args.json:
         print(json.dumps({"canceled": args.job_id}, indent=2))
@@ -674,7 +903,7 @@ def add_global_options(parser: argparse.ArgumentParser, *, defaults: bool) -> No
         "--state",
         type=Path,
         default=default_state_path() if defaults else argparse.SUPPRESS,
-        help="wake job state file",
+        help="wake job state database",
     )
     parser.add_argument(
         "--json",
@@ -814,6 +1043,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     tick = sub.add_parser("tick", help="evaluate pending jobs and fire ready wakes")
     tick.add_argument("--limit", type=parse_positive_int)
+    tick.add_argument(
+        "--lease-seconds",
+        type=parse_positive_int,
+        default=DEFAULT_LEASE_SECONDS,
+        help="seconds before a claimed job can be reclaimed",
+    )
     tick.add_argument("--allow-active", action="store_true")
     add_global_options(tick, defaults=False)
     tick.set_defaults(func=cmd_tick)

@@ -116,19 +116,24 @@ codex-wakectl wait goal WORKER_THREAD_ID --status complete && \
 
 ## State
 
-Jobs are stored in:
+Jobs are stored in a SQLite database:
 
 ```text
-$XDG_STATE_HOME/codex-wakectl/jobs.json
+$XDG_STATE_HOME/codex-wakectl/jobs.sqlite3
 ```
 
 or, when `XDG_STATE_HOME` is unset:
 
 ```text
-~/.local/state/codex-wakectl/jobs.json
+~/.local/state/codex-wakectl/jobs.sqlite3
 ```
 
 Override with `--state PATH`.
+
+`tick` claims pending jobs before it evaluates them, then releases or finishes
+the claim after the wake attempt. This lets overlapping cron/systemd ticks share
+the same state database without firing the same job at the same time. If a tick
+process dies, its claims expire and a later tick can retry them.
 
 ## Scope
 

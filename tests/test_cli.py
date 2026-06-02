@@ -50,10 +50,10 @@ class ParseTests(unittest.TestCase):
                 "thread",
                 "message",
                 "--state",
-                "/tmp/jobs.json",
+                "/tmp/jobs.sqlite3",
             ]
         )
-        self.assertEqual(str(args.state), "/tmp/jobs.json")
+        self.assertEqual(str(args.state), "/tmp/jobs.sqlite3")
 
 
 class ConditionTests(unittest.TestCase):
@@ -96,14 +96,54 @@ class ConditionTests(unittest.TestCase):
         self.assertTrue(ready)
         self.assertEqual(updates["lastTokensUsedBucket"], 2)
 
-    def test_state_store_round_trip(self) -> None:
+    def test_state_database_round_trip(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "jobs.json"
-            with cli.StateStore(path) as store:
-                store.data["jobs"] = [{"id": "abc", "status": "pending"}]
-                store.save()
-            with cli.StateStore(path) as store:
-                self.assertEqual(store.data["jobs"][0]["id"], "abc")
+            path = Path(tmp) / "jobs.sqlite3"
+            job = cli.new_job(
+                {"type": "time", "at": cli.now_seconds() + 60},
+                "thread",
+                "message",
+                "unix://",
+            )
+
+            cli.insert_job(path, job)
+            jobs = cli.list_jobs(path)
+
+            self.assertEqual(len(jobs), 1)
+            self.assertEqual(jobs[0]["id"], job["id"])
+            self.assertEqual(jobs[0]["condition"]["type"], "time")
+
+    def test_claimed_jobs_are_released_explicitly(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "jobs.sqlite3"
+            job = cli.new_job(
+                {"type": "time", "at": cli.now_seconds() + 60},
+                "thread",
+                "message",
+                "unix://",
+            )
+            cli.insert_job(path, job)
+
+            owner, jobs = cli.claim_pending_jobs(path, 60)
+            self.assertEqual([claimed["id"] for claimed in jobs], [job["id"]])
+
+            _, overlapping = cli.claim_pending_jobs(path, 60)
+            self.assertEqual(overlapping, [])
+
+            self.assertTrue(
+                cli.update_claimed_job(
+                    path,
+                    job["id"],
+                    owner,
+                    {"lastReason": "waiting"},
+                )
+            )
+            stored = cli.list_jobs(path)[0]
+            self.assertEqual(stored["lastReason"], "waiting")
+            self.assertNotIn("leaseOwner", stored)
+
+            _, reclaimed = cli.claim_pending_jobs(path, 60)
+            self.assertEqual([claimed["id"] for claimed in reclaimed], [job["id"]])
 
 
 if __name__ == "__main__":
