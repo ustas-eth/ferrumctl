@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "codex-wakectl"
+version = "0.1.0"
+description = "Small Unix-style CLI for waking app-server-backed Codex threads"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "websockets>=15,<16",
+]
+
+[project.scripts]
+codex-wakectl = "codex_wakectl.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/codex_wakectl"]
