@@ -83,10 +83,31 @@ codex-wakectl add cmd --to THREAD_ID "The predicate is true." -- sh -c 'test -f 
 For `cmd`, everything after `--` is the predicate command. Put
 `codex-wakectl` options before that boundary.
 
-Evaluate pending jobs from cron or a systemd timer:
+Evaluate pending jobs once:
 
 ```sh
-codex-wakectl tick
+codex-wakectl run
+```
+
+Install the canonical user timer:
+
+```sh
+codex-wakectl systemd install --interval 30s
+```
+
+This writes and starts:
+
+```text
+~/.config/systemd/user/codex-wakectl.service
+~/.config/systemd/user/codex-wakectl.timer
+```
+
+It also runs `systemctl --user enable --now codex-wakectl.timer`.
+
+Remove it with:
+
+```sh
+codex-wakectl systemd uninstall
 ```
 
 Inspect and cancel jobs:
@@ -130,10 +151,10 @@ or, when `XDG_STATE_HOME` is unset:
 
 Override with `--state PATH`.
 
-`tick` claims pending jobs before it evaluates them, then releases or finishes
-the claim after the wake attempt. This lets overlapping cron/systemd ticks share
-the same state database without firing the same job at the same time. If a tick
-process dies, its claims expire and a later tick can retry them.
+`run` claims pending jobs before it evaluates them, then releases or finishes
+the claim after the wake attempt. This lets overlapping runs share the same
+state database without firing the same job at the same time. If a process dies,
+its claims expire and a later run can retry them.
 
 ## Scope
 
@@ -141,5 +162,5 @@ process dies, its claims expire and a later tick can retry them.
 injector and does not wake ordinary embedded TUI sessions.
 
 The app-server interface is experimental. Keep the endpoint explicit, keep wake
-messages idempotent, and prefer `tick` from cron/systemd over a long-running
+messages idempotent, and prefer the user systemd timer over a long-running
 custom daemon.

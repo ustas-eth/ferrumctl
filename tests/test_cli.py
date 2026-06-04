@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import tempfile
 import unittest
 from pathlib import Path
@@ -54,6 +56,20 @@ class ParseTests(unittest.TestCase):
             ]
         )
         self.assertEqual(str(args.state), "/tmp/jobs.sqlite3")
+
+    def test_run_replaces_tick(self) -> None:
+        args = cli.build_parser().parse_args(["run", "--limit", "1"])
+        self.assertEqual(args.limit, 1)
+        self.assertIs(args.func, cli.cmd_run)
+
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                cli.build_parser().parse_args(["tick"])
+
+    def test_systemd_install_options(self) -> None:
+        args = cli.build_parser().parse_args(["systemd", "install", "--interval", "5m"])
+        self.assertEqual(args.interval, 300)
+        self.assertIs(args.func, cli.cmd_systemd_install)
 
 
 class ConditionTests(unittest.TestCase):
@@ -144,6 +160,19 @@ class ConditionTests(unittest.TestCase):
 
             _, reclaimed = cli.claim_pending_jobs(path, 60)
             self.assertEqual([claimed["id"] for claimed in reclaimed], [job["id"]])
+
+    def test_systemd_units_run_queue_once(self) -> None:
+        service, timer = cli.build_systemd_units(
+            wakectl_bin="/usr/local/bin/codex-wakectl",
+            state=Path("/tmp/wake jobs.sqlite3"),
+            interval_seconds=30,
+        )
+
+        self.assertIn(
+            'ExecStart=/usr/local/bin/codex-wakectl --state "/tmp/wake jobs.sqlite3" run',
+            service,
+        )
+        self.assertIn("OnUnitActiveSec=30s", timer)
 
 
 if __name__ == "__main__":

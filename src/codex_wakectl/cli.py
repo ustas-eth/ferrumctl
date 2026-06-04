@@ -5,6 +5,7 @@ import asyncio
 import json
 import os
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -20,7 +21,10 @@ import websockets
 
 DEFAULT_TIMEOUT = 20.0
 DEFAULT_LEASE_SECONDS = 300
+DEFAULT_SYSTEMD_INTERVAL_SECONDS = 30
 CLIENT_VERSION = "0.1.0"
+SYSTEMD_SERVICE_NAME = "codex-wakectl.service"
+SYSTEMD_TIMER_NAME = "codex-wakectl.timer"
 STATUS_VALUES = {
     "active",
     "paused",
@@ -765,7 +769,7 @@ async def cmd_wait(args: argparse.Namespace) -> int:
             await app_cm.__aexit__(None, None, None)
 
 
-async def cmd_tick(args: argparse.Namespace) -> int:
+async def cmd_run(args: argparse.Namespace) -> int:
     fired: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
     owner, jobs = claim_pending_jobs(args.state, args.lease_seconds)
@@ -887,6 +891,128 @@ def cmd_cancel(args: argparse.Namespace) -> int:
     return 0
 
 
+def systemd_user_dir() -> Path:
+    root = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+    return root / "systemd" / "user"
+
+
+def resolve_wakectl_bin() -> str:
+    path = shutil.which("codex-wakectl")
+    if path is None:
+        raise WakectlError("codex-wakectl is not on PATH; install it before installing units")
+    return path
+
+
+def quote_systemd_arg(value: str) -> str:
+    if re.match(r"^[A-Za-z0-9_@%+=:,./-]+$", value):
+        return value
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def build_systemd_units(
+    *,
+    wakectl_bin: str,
+    state: Path,
+    interval_seconds: int,
+) -> tuple[str, str]:
+    exec_start = " ".join(
+        quote_systemd_arg(part)
+        for part in [wakectl_bin, "--state", str(state), "run"]
+    )
+    service = f"""[Unit]
+Description=Process codex-wakectl wake jobs
+
+[Service]
+Type=oneshot
+ExecStart={exec_start}
+"""
+    timer = f"""[Unit]
+Description=Run codex-wakectl wake jobs every {interval_seconds}s
+
+[Timer]
+OnBootSec={interval_seconds}s
+OnUnitActiveSec={interval_seconds}s
+AccuracySec=1s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+"""
+    return service, timer
+
+
+def run_systemctl(args: list[str], *, check: bool = True) -> None:
+    proc = subprocess.run(
+        ["systemctl", "--user", *args],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if check and proc.returncode != 0:
+        output = (proc.stderr or proc.stdout).strip()
+        command = "systemctl --user " + " ".join(args)
+        raise WakectlError(f"{command} failed: {output}")
+
+
+def cmd_systemd_install(args: argparse.Namespace) -> int:
+    unit_dir = systemd_user_dir()
+    service_path = unit_dir / SYSTEMD_SERVICE_NAME
+    timer_path = unit_dir / SYSTEMD_TIMER_NAME
+    service, timer = build_systemd_units(
+        wakectl_bin=resolve_wakectl_bin(),
+        state=args.state,
+        interval_seconds=args.interval,
+    )
+
+    unit_dir.mkdir(parents=True, exist_ok=True)
+    service_path.write_text(service)
+    timer_path.write_text(timer)
+    run_systemctl(["daemon-reload"])
+    run_systemctl(["enable", "--now", SYSTEMD_TIMER_NAME])
+
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "service": str(service_path),
+                    "timer": str(timer_path),
+                    "enabled": True,
+                    "started": True,
+                },
+                indent=2,
+            )
+        )
+    else:
+        print(f"installed\t{service_path}")
+        print(f"installed\t{timer_path}")
+        print(f"started\t{SYSTEMD_TIMER_NAME}")
+    return 0
+
+
+def cmd_systemd_uninstall(args: argparse.Namespace) -> int:
+    unit_dir = systemd_user_dir()
+    service_path = unit_dir / SYSTEMD_SERVICE_NAME
+    timer_path = unit_dir / SYSTEMD_TIMER_NAME
+
+    run_systemctl(["disable", "--now", SYSTEMD_TIMER_NAME], check=False)
+    removed: list[str] = []
+    for path in [service_path, timer_path]:
+        if path.exists():
+            path.unlink()
+            removed.append(str(path))
+    run_systemctl(["daemon-reload"])
+
+    if args.json:
+        print(json.dumps({"removed": removed}, indent=2))
+    else:
+        for path in removed:
+            print(f"removed\t{path}")
+        if not removed:
+            print("removed\t-")
+    return 0
+
+
 def add_global_options(parser: argparse.ArgumentParser, *, defaults: bool) -> None:
     parser.add_argument(
         "--endpoint",
@@ -905,6 +1031,30 @@ def add_global_options(parser: argparse.ArgumentParser, *, defaults: bool) -> No
         default=default_state_path() if defaults else argparse.SUPPRESS,
         help="wake job state database",
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        default=False if defaults else argparse.SUPPRESS,
+        help="print JSON output",
+    )
+
+
+def add_state_json_options(parser: argparse.ArgumentParser, *, defaults: bool) -> None:
+    parser.add_argument(
+        "--state",
+        type=Path,
+        default=default_state_path() if defaults else argparse.SUPPRESS,
+        help="wake job state database",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        default=False if defaults else argparse.SUPPRESS,
+        help="print JSON output",
+    )
+
+
+def add_json_option(parser: argparse.ArgumentParser, *, defaults: bool) -> None:
     parser.add_argument(
         "--json",
         action="store_true",
@@ -1041,17 +1191,17 @@ def build_parser() -> argparse.ArgumentParser:
     add_wait_cmd_condition_parser(wait_sub)
     wait.set_defaults(func=cmd_wait)
 
-    tick = sub.add_parser("tick", help="evaluate pending jobs and fire ready wakes")
-    tick.add_argument("--limit", type=parse_positive_int)
-    tick.add_argument(
+    run = sub.add_parser("run", help="evaluate pending jobs once and fire ready wakes")
+    run.add_argument("--limit", type=parse_positive_int)
+    run.add_argument(
         "--lease-seconds",
         type=parse_positive_int,
         default=DEFAULT_LEASE_SECONDS,
         help="seconds before a claimed job can be reclaimed",
     )
-    tick.add_argument("--allow-active", action="store_true")
-    add_global_options(tick, defaults=False)
-    tick.set_defaults(func=cmd_tick)
+    run.add_argument("--allow-active", action="store_true")
+    add_global_options(run, defaults=False)
+    run.set_defaults(func=cmd_run)
 
     list_parser = sub.add_parser("list", help="list wake jobs")
     list_parser.add_argument("--all", action="store_true", help="include fired and canceled jobs")
@@ -1062,6 +1212,23 @@ def build_parser() -> argparse.ArgumentParser:
     cancel.add_argument("job_id")
     add_global_options(cancel, defaults=False)
     cancel.set_defaults(func=cmd_cancel)
+
+    systemd = sub.add_parser("systemd", help="install or remove user systemd units")
+    systemd_sub = systemd.add_subparsers(dest="systemd_command", required=True)
+
+    systemd_install = systemd_sub.add_parser("install", help="install and start user timer")
+    systemd_install.add_argument(
+        "--interval",
+        type=parse_duration,
+        default=DEFAULT_SYSTEMD_INTERVAL_SECONDS,
+        help="timer interval such as 30s or 5m",
+    )
+    add_state_json_options(systemd_install, defaults=False)
+    systemd_install.set_defaults(func=cmd_systemd_install)
+
+    systemd_uninstall = systemd_sub.add_parser("uninstall", help="stop and remove user timer")
+    add_json_option(systemd_uninstall, defaults=False)
+    systemd_uninstall.set_defaults(func=cmd_systemd_uninstall)
 
     return parser
 
