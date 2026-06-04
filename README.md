@@ -13,6 +13,35 @@ condition becomes true.
 uv tool install .
 ```
 
+## Codex Skill
+
+This repo includes an optional Codex plugin with a skill for wake scheduling:
+
+```text
+plugins/codex-wakectl/skills/codex-wakectl/SKILL.md
+```
+
+The repo also includes a marketplace manifest:
+
+```text
+.agents/plugins/marketplace.json
+```
+
+Install it from the GitHub marketplace source with:
+
+```sh
+codex plugin marketplace add ustas-eth/codex-wakectl
+codex plugin add codex-wakectl@codex-wakectl
+```
+
+The skill documents the orchestrator workflow around the CLI: use `send` for
+immediate wakes, use `add` for scheduled wakes, use `run` or the user systemd
+timer to process jobs, and avoid `--allow-active` unless overlapping turns are
+intentional.
+
+The skill is optional. Installing it does not change the CLI behavior and does
+not make non-app-server sessions wakeable.
+
 ## App-Server Setup
 
 Use a shared app-server and connect the Codex TUI to it:
