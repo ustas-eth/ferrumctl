@@ -930,10 +930,9 @@ ExecStart={exec_start}
 Description=Run codex-wakectl wake jobs every {interval_seconds}s
 
 [Timer]
-OnBootSec={interval_seconds}s
-OnUnitActiveSec={interval_seconds}s
+OnActiveSec={interval_seconds}s
+OnUnitInactiveSec={interval_seconds}s
 AccuracySec=1s
-Persistent=true
 
 [Install]
 WantedBy=timers.target

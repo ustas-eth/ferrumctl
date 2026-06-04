@@ -172,7 +172,8 @@ class ConditionTests(unittest.TestCase):
             'ExecStart=/usr/local/bin/codex-wakectl --state "/tmp/wake jobs.sqlite3" run',
             service,
         )
-        self.assertIn("OnUnitActiveSec=30s", timer)
+        self.assertIn("OnActiveSec=30s", timer)
+        self.assertIn("OnUnitInactiveSec=30s", timer)
 
 
 if __name__ == "__main__":
