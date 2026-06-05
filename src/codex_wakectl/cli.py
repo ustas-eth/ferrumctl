@@ -156,6 +156,16 @@ def parse_positive_int(value: str) -> int:
     return parsed
 
 
+def parse_positive_float(value: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a positive number") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be positive")
+    return parsed
+
+
 def parse_at(value: str) -> int:
     if value.endswith("Z"):
         value = value[:-1] + "+00:00"
@@ -192,6 +202,8 @@ JOB_COLUMNS = {
     "targetThreadId": "target_thread_id",
     "message": "message",
     "endpoint": "endpoint",
+    "timeout": "timeout",
+    "allowActive": "allow_active",
     "createdAt": "created_at",
     "updatedAt": "updated_at",
     "firedAt": "fired_at",
@@ -215,6 +227,7 @@ OPTIONAL_JOB_FIELDS = [
     "lastError",
     "lastTokensUsedBucket",
     "lastTimeUsedBucket",
+    "timeout",
     "leaseOwner",
     "leaseStartedAt",
     "leaseUntil",
@@ -236,6 +249,8 @@ def open_state(path: Path) -> sqlite3.Connection:
             target_thread_id TEXT NOT NULL,
             message TEXT NOT NULL,
             endpoint TEXT NOT NULL,
+            timeout REAL,
+            allow_active INTEGER NOT NULL DEFAULT 0,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL,
             fired_at INTEGER,
@@ -258,7 +273,15 @@ def open_state(path: Path) -> sqlite3.Connection:
         ON jobs(status, lease_until, created_at)
         """
     )
+    ensure_column(conn, "timeout", "REAL")
+    ensure_column(conn, "allow_active", "INTEGER NOT NULL DEFAULT 0")
     return conn
+
+
+def ensure_column(conn: sqlite3.Connection, name: str, declaration: str) -> None:
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(jobs)")}
+    if name not in columns:
+        conn.execute(f"ALTER TABLE jobs ADD COLUMN {name} {declaration}")
 
 
 def decode_job(row: sqlite3.Row) -> dict[str, Any]:
@@ -269,6 +292,7 @@ def decode_job(row: sqlite3.Row) -> dict[str, Any]:
         "targetThreadId": row["target_thread_id"],
         "message": row["message"],
         "endpoint": row["endpoint"],
+        "allowActive": bool(row["allow_active"]),
         "createdAt": row["created_at"],
         "updatedAt": row["updated_at"],
         "fireCount": row["fire_count"],
@@ -293,11 +317,12 @@ def insert_job(state_path: Path, job: dict[str, Any]) -> None:
             """
             INSERT INTO jobs (
                 id, status, condition_json, target_thread_id, message, endpoint,
+                timeout, allow_active,
                 created_at, updated_at, fired_at, fire_count, last_fired_at,
                 last_turn_id, last_reason, last_error, last_tokens_used_bucket,
                 last_time_used_bucket, lease_owner, lease_started_at, lease_until
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 job["id"],
@@ -306,6 +331,8 @@ def insert_job(state_path: Path, job: dict[str, Any]) -> None:
                 job["targetThreadId"],
                 job["message"],
                 job["endpoint"],
+                job.get("timeout"),
+                int(bool(job.get("allowActive"))),
                 job["createdAt"],
                 job["updatedAt"],
                 job.get("firedAt"),
@@ -369,21 +396,24 @@ def cancel_job(state_path: Path, job_id: str) -> bool:
 def claim_pending_jobs(
     state_path: Path,
     lease_seconds: int,
+    limit: int | None = None,
 ) -> tuple[str, list[dict[str, Any]]]:
     owner = uuid.uuid4().hex
     ts = now_seconds()
     conn = open_state(state_path)
     try:
         conn.execute("BEGIN IMMEDIATE")
-        rows = conn.execute(
-            """
+        query = """
             SELECT * FROM jobs
             WHERE status = 'pending'
               AND (lease_owner IS NULL OR lease_until IS NULL OR lease_until <= ?)
             ORDER BY created_at, id
-            """,
-            (ts,),
-        ).fetchall()
+            """
+        params: list[Any] = [ts]
+        if limit is not None:
+            query += "\nLIMIT ?"
+            params.append(limit)
+        rows = conn.execute(query, params).fetchall()
         conn.executemany(
             """
             UPDATE jobs
@@ -514,15 +544,22 @@ def time_condition_ready(condition: dict[str, Any]) -> tuple[bool, dict[str, Any
     return ready, {}, "ready" if ready else f"waiting until {format_time(condition['at'])}"
 
 
-def cmd_condition_ready(condition: dict[str, Any]) -> tuple[bool, dict[str, Any], str]:
-    proc = subprocess.run(
-        condition["argv"],
-        cwd=condition.get("cwd") or None,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
-    )
+def cmd_condition_ready(
+    condition: dict[str, Any],
+    timeout: float,
+) -> tuple[bool, dict[str, Any], str]:
+    try:
+        proc = subprocess.run(
+            condition["argv"],
+            cwd=condition.get("cwd") or None,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return False, {}, f"command timed out after {timeout:g}s"
     if proc.returncode == 0:
         return True, {}, "command exited 0"
     return False, {}, f"command exited {proc.returncode}"
@@ -581,12 +618,14 @@ async def condition_ready(
     app: AppServer | None,
     condition: dict[str, Any],
     job: dict[str, Any] | None = None,
+    *,
+    timeout: float = DEFAULT_TIMEOUT,
 ) -> tuple[bool, dict[str, Any], str]:
     kind = condition["type"]
     if kind == "time":
         return time_condition_ready(condition)
     if kind == "cmd":
-        return cmd_condition_ready(condition)
+        return cmd_condition_ready(condition, timeout)
     if kind == "goal":
         if app is None:
             raise WakectlError("goal condition requires app-server")
@@ -598,7 +637,15 @@ def condition_repeats(condition: dict[str, Any]) -> bool:
     return "tokensUsedEvery" in condition or "timeUsedEvery" in condition
 
 
-def new_job(condition: dict[str, Any], target: str, message: str, endpoint: str) -> dict[str, Any]:
+def new_job(
+    condition: dict[str, Any],
+    target: str,
+    message: str,
+    endpoint: str,
+    *,
+    allow_active: bool = False,
+    timeout: float | None = None,
+) -> dict[str, Any]:
     ts = now_seconds()
     job: dict[str, Any] = {
         "id": uuid.uuid4().hex[:12],
@@ -607,10 +654,13 @@ def new_job(condition: dict[str, Any], target: str, message: str, endpoint: str)
         "targetThreadId": target,
         "message": message,
         "endpoint": endpoint,
+        "allowActive": allow_active,
         "createdAt": ts,
         "updatedAt": ts,
         "fireCount": 0,
     }
+    if timeout is not None:
+        job["timeout"] = timeout
     if "tokensUsedEvery" in condition:
         job["lastTokensUsedBucket"] = 0
     if "timeUsedEvery" in condition:
@@ -726,7 +776,14 @@ async def seed_repeating_goal_job(args: argparse.Namespace, job: dict[str, Any])
 
 async def cmd_add(args: argparse.Namespace) -> int:
     condition = args.condition_builder(args)
-    job = new_job(condition, args.to_thread_id, args.message, args.endpoint)
+    job = new_job(
+        condition,
+        args.to_thread_id,
+        args.message,
+        args.endpoint,
+        allow_active=args.allow_active,
+        timeout=args.timeout,
+    )
     await seed_repeating_goal_job(args, job)
     insert_job(args.state, job)
     if args.json:
@@ -744,7 +801,12 @@ async def cmd_wait(args: argparse.Namespace) -> int:
     job_state: dict[str, Any] = {}
     try:
         while True:
-            ready, updates, reason = await condition_ready(app, condition, job_state)
+            ready, updates, reason = await condition_ready(
+                app,
+                condition,
+                job_state,
+                timeout=args.timeout,
+            )
             if ready:
                 if args.json:
                     print(json.dumps({"ready": True, "reason": reason, "updates": updates}, indent=2))
@@ -772,35 +834,44 @@ async def cmd_wait(args: argparse.Namespace) -> int:
 async def cmd_run(args: argparse.Namespace) -> int:
     fired: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
-    owner, jobs = claim_pending_jobs(args.state, args.lease_seconds)
+    owner, jobs = claim_pending_jobs(args.state, args.lease_seconds, args.limit)
     for job in jobs:
-        if args.limit is not None and len(fired) >= args.limit:
-            update_claimed_job(args.state, job["id"], owner)
-            continue
         try:
             endpoint = job.get("endpoint") or args.endpoint
+            timeout = job["timeout"] if job.get("timeout") is not None else args.timeout
+            allow_active = bool(job.get("allowActive"))
             if job["condition"]["type"] == "goal":
-                async with AppServer(endpoint, args.timeout) as app:
-                    ready, updates, reason = await condition_ready(app, job["condition"], job)
+                async with AppServer(endpoint, timeout) as app:
+                    ready, updates, reason = await condition_ready(
+                        app,
+                        job["condition"],
+                        job,
+                        timeout=timeout,
+                    )
                     turn = (
                         await send_turn(
                             app,
                             job["targetThreadId"],
                             job["message"],
-                            allow_active=args.allow_active,
+                            allow_active=allow_active,
                         )
                         if ready
                         else None
                     )
             else:
-                ready, updates, reason = await condition_ready(None, job["condition"], job)
+                ready, updates, reason = await condition_ready(
+                    None,
+                    job["condition"],
+                    job,
+                    timeout=timeout,
+                )
                 if ready:
-                    async with AppServer(endpoint, args.timeout) as app:
+                    async with AppServer(endpoint, timeout) as app:
                         turn = await send_turn(
                             app,
                             job["targetThreadId"],
                             job["message"],
-                            allow_active=args.allow_active,
+                            allow_active=allow_active,
                         )
                 else:
                     turn = None
@@ -1020,9 +1091,9 @@ def add_global_options(parser: argparse.ArgumentParser, *, defaults: bool) -> No
     )
     parser.add_argument(
         "--timeout",
-        type=float,
+        type=parse_positive_float,
         default=DEFAULT_TIMEOUT if defaults else argparse.SUPPRESS,
-        help="app-server request timeout in seconds",
+        help="app-server request and command predicate timeout in seconds",
     )
     parser.add_argument(
         "--state",
@@ -1064,6 +1135,11 @@ def add_json_option(parser: argparse.ArgumentParser, *, defaults: bool) -> None:
 
 def add_target_message(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--to", dest="to_thread_id", required=True, help="thread to wake")
+    parser.add_argument(
+        "--allow-active",
+        action="store_true",
+        help="allow this queued wake to start while the target thread is active",
+    )
     parser.add_argument("message", help="message to send when the wake fires")
 
 
@@ -1198,7 +1274,6 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_LEASE_SECONDS,
         help="seconds before a claimed job can be reclaimed",
     )
-    run.add_argument("--allow-active", action="store_true")
     add_global_options(run, defaults=False)
     run.set_defaults(func=cmd_run)
 

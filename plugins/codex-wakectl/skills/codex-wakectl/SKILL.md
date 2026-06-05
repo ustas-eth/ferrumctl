@@ -57,6 +57,13 @@ codex-wakectl add time --after 30m --to THREAD_ID "Wake up and check status."
 codex-wakectl add time --at 2026-06-04T18:30:00Z --to THREAD_ID "Run the check."
 ```
 
+Queued wakes also refuse to start while the target thread is active. If one
+specific queued wake should overlap, mark that job when it is created:
+
+```sh
+codex-wakectl add time --after 30m --to THREAD_ID --allow-active "Run even if active."
+```
+
 Wake an orchestrator when a worker goal stops:
 
 ```sh
@@ -78,6 +85,11 @@ Use command predicates for external conditions. Exit status `0` means ready:
 ```sh
 codex-wakectl add cmd --to THREAD_ID "The predicate is true." -- sh -c 'test -f done.txt'
 ```
+
+Command predicates run from the directory where the job was created. Make them
+self-contained; a systemd timer may not have the same shell environment.
+The job timeout also bounds the predicate command so a stuck predicate cannot
+hold a runner forever.
 
 ## Queue Processing
 
@@ -103,6 +115,10 @@ codex-wakectl systemd uninstall
 Use `run` in scripts and tests. Use the systemd timer for normal long-term
 scheduling. Do not invent a separate long-running daemon unless the user asks
 for a different supervision model.
+
+Wake jobs store their endpoint, timeout, and overlap policy when created, so a
+later systemd `run` can process them without recreating the original shell
+context.
 
 ## Orchestrator Pattern
 
@@ -143,6 +159,7 @@ codex-wakectl loaded
 codex-wakectl status THREAD_ID
 codex-wakectl send THREAD_ID MESSAGE
 codex-wakectl add time --after 10m --to THREAD_ID MESSAGE
+codex-wakectl add time --after 10m --to THREAD_ID --allow-active MESSAGE
 codex-wakectl add goal THREAD_ID --status complete --to ORCH_THREAD_ID MESSAGE
 codex-wakectl add cmd --to THREAD_ID MESSAGE -- COMMAND...
 codex-wakectl run

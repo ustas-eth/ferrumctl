@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import contextlib
 import io
+import sqlite3
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -25,6 +27,11 @@ class ParseTests(unittest.TestCase):
     def test_parse_tokens_are_plain_integers(self) -> None:
         self.assertEqual(cli.parse_positive_int("3000000"), 3000000)
         self.assertEqual(cli.parse_positive_int("3_000_000"), 3000000)
+
+    def test_parse_positive_float(self) -> None:
+        self.assertEqual(cli.parse_positive_float("1.5"), 1.5)
+        with self.assertRaises(argparse.ArgumentTypeError):
+            cli.parse_positive_float("0")
 
     def test_parse_statuses(self) -> None:
         self.assertEqual(
@@ -57,6 +64,24 @@ class ParseTests(unittest.TestCase):
         )
         self.assertEqual(str(args.state), "/tmp/jobs.sqlite3")
 
+    def test_add_stores_wake_policy_options(self) -> None:
+        args = cli.build_parser().parse_args(
+            [
+                "add",
+                "time",
+                "--after",
+                "1s",
+                "--to",
+                "thread",
+                "--allow-active",
+                "message",
+                "--timeout",
+                "45",
+            ]
+        )
+        self.assertTrue(args.allow_active)
+        self.assertEqual(args.timeout, 45)
+
     def test_run_replaces_tick(self) -> None:
         args = cli.build_parser().parse_args(["run", "--limit", "1"])
         self.assertEqual(args.limit, 1)
@@ -65,6 +90,8 @@ class ParseTests(unittest.TestCase):
         with contextlib.redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit):
                 cli.build_parser().parse_args(["tick"])
+            with self.assertRaises(SystemExit):
+                cli.build_parser().parse_args(["run", "--allow-active"])
 
     def test_systemd_install_options(self) -> None:
         args = cli.build_parser().parse_args(["systemd", "install", "--interval", "5m"])
@@ -112,6 +139,18 @@ class ConditionTests(unittest.TestCase):
         self.assertTrue(ready)
         self.assertEqual(updates["lastTokensUsedBucket"], 2)
 
+    def test_cmd_condition_timeout(self) -> None:
+        condition = {
+            "type": "cmd",
+            "argv": [sys.executable, "-c", "import time; time.sleep(1)"],
+        }
+
+        ready, updates, reason = cli.cmd_condition_ready(condition, timeout=0.01)
+
+        self.assertFalse(ready)
+        self.assertEqual(updates, {})
+        self.assertEqual(reason, "command timed out after 0.01s")
+
     def test_state_database_round_trip(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "jobs.sqlite3"
@@ -120,6 +159,8 @@ class ConditionTests(unittest.TestCase):
                 "thread",
                 "message",
                 "unix://",
+                allow_active=True,
+                timeout=45.0,
             )
 
             cli.insert_job(path, job)
@@ -128,6 +169,53 @@ class ConditionTests(unittest.TestCase):
             self.assertEqual(len(jobs), 1)
             self.assertEqual(jobs[0]["id"], job["id"])
             self.assertEqual(jobs[0]["condition"]["type"], "time")
+            self.assertTrue(jobs[0]["allowActive"])
+            self.assertEqual(jobs[0]["timeout"], 45.0)
+
+    def test_state_database_migrates_existing_queue(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "jobs.sqlite3"
+            conn = sqlite3.connect(path)
+            conn.executescript(
+                """
+                CREATE TABLE jobs (
+                    id TEXT PRIMARY KEY,
+                    status TEXT NOT NULL,
+                    condition_json TEXT NOT NULL,
+                    target_thread_id TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    endpoint TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    fired_at INTEGER,
+                    fire_count INTEGER NOT NULL DEFAULT 0,
+                    last_fired_at INTEGER,
+                    last_turn_id TEXT,
+                    last_reason TEXT,
+                    last_error TEXT,
+                    last_tokens_used_bucket INTEGER,
+                    last_time_used_bucket INTEGER,
+                    lease_owner TEXT,
+                    lease_started_at INTEGER,
+                    lease_until INTEGER
+                );
+                INSERT INTO jobs (
+                    id, status, condition_json, target_thread_id, message, endpoint,
+                    created_at, updated_at, fire_count
+                )
+                VALUES (
+                    'oldjob', 'pending', '{"type": "time", "at": 1}',
+                    'thread', 'message', 'unix://', 1, 1, 0
+                );
+                """
+            )
+            conn.close()
+
+            jobs = cli.list_jobs(path)
+
+            self.assertEqual(jobs[0]["id"], "oldjob")
+            self.assertFalse(jobs[0]["allowActive"])
+            self.assertNotIn("timeout", jobs[0])
 
     def test_claimed_jobs_are_released_explicitly(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -160,6 +248,31 @@ class ConditionTests(unittest.TestCase):
 
             _, reclaimed = cli.claim_pending_jobs(path, 60)
             self.assertEqual([claimed["id"] for claimed in reclaimed], [job["id"]])
+
+    def test_claim_limit_only_claims_limited_jobs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "jobs.sqlite3"
+            first = cli.new_job(
+                {"type": "time", "at": cli.now_seconds() + 60},
+                "first",
+                "message",
+                "unix://",
+            )
+            second = cli.new_job(
+                {"type": "time", "at": cli.now_seconds() + 60},
+                "second",
+                "message",
+                "unix://",
+            )
+            cli.insert_job(path, first)
+            cli.insert_job(path, second)
+
+            _, claimed = cli.claim_pending_jobs(path, 60, limit=1)
+            self.assertEqual(len(claimed), 1)
+
+            _, next_claimed = cli.claim_pending_jobs(path, 60, limit=1)
+            self.assertEqual(len(next_claimed), 1)
+            self.assertNotEqual(claimed[0]["id"], next_claimed[0]["id"])
 
     def test_systemd_units_run_queue_once(self) -> None:
         service, timer = cli.build_systemd_units(

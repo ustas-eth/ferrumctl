@@ -79,6 +79,13 @@ codex-wakectl add time --after 10m --to THREAD_ID "Wake up and check status."
 codex-wakectl add time --at 2026-06-02T18:30:00Z --to THREAD_ID "Run the check."
 ```
 
+Queued wakes also refuse to start while the target thread is active. If one
+specific queued wake should overlap, mark that job when it is created:
+
+```sh
+codex-wakectl add time --after 10m --to THREAD_ID --allow-active "Run even if the thread is active."
+```
+
 Wake an orchestrator when another thread's goal changes state:
 
 ```sh
@@ -111,6 +118,10 @@ codex-wakectl add cmd --to THREAD_ID "The predicate is true." -- sh -c 'test -f 
 
 For `cmd`, everything after `--` is the predicate command. Put
 `codex-wakectl` options before that boundary.
+Command predicates run from the directory where the job was created. Make them
+self-contained; a systemd timer may not have the same shell environment.
+The job timeout also bounds the predicate command so a stuck predicate cannot
+hold a runner forever.
 
 Evaluate pending jobs once:
 
@@ -184,6 +195,10 @@ Override with `--state PATH`.
 the claim after the wake attempt. This lets overlapping runs share the same
 state database without firing the same job at the same time. If a process dies,
 its claims expire and a later run can retry them.
+
+Wake jobs store their endpoint, timeout, and overlap policy when created, so a
+systemd timer can process them later without relying on the shell that created
+the job.
 
 ## Scope
 
