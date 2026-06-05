@@ -2,18 +2,43 @@
 
 # Goal Lifecycle
 
-`codex-goalctl` manages persisted Codex thread goals through `codex app-server`.
-It does not spawn agents, send chat input, or wake a sleeping thread.
+This reference describes how `codex-goalctl` changes persisted Codex thread
+goals.
+
+## Goal State
+
+A goal belongs to a Codex thread. The app-server stores the objective, status,
+optional token budget, and usage counters such as elapsed time and tokens used.
+
+`codex-goalctl` does not decide task progress. It asks the app-server to read,
+set, or clear goal fields; a running thread may later update its own goal state
+through Codex.
+
+Valid statuses are:
+
+- `active`
+- `paused`
+- `blocked`
+- `budgetLimited`
+- `usageLimited`
+- `complete`
+
+Objectives are trimmed, must be non-empty, and are limited to 4000 characters.
+Use `-` as the objective argument to read goal text from stdin.
 
 ## Primitives
 
-Read the current goal:
+Read the current goal. Text output is `STATUS<TAB>OBJECTIVE`; `--json` prints
+the full goal object.
 
 ```sh
 codex-goalctl get THREAD_ID
 ```
 
-Edit the existing goal in place:
+If no goal exists, text output prints `no goal` to stderr and exits non-zero.
+JSON output prints `"goal": null` and exits successfully.
+
+Edit the existing goal in place. Only supplied fields are changed.
 
 ```sh
 codex-goalctl update THREAD_ID "same goal, new wording"
@@ -21,12 +46,14 @@ codex-goalctl update THREAD_ID --status paused
 codex-goalctl update THREAD_ID --token-budget 50000
 ```
 
-Use `update` when existing usage and time counters should be preserved.
+Use `update` when existing usage and time counters should be preserved. It
+fails if no objective, status, or token budget is supplied.
 
-Start a fresh goal:
+Start a fresh goal.
 
 ```sh
 codex-goalctl replace THREAD_ID "new objective"
+codex-goalctl replace THREAD_ID "new objective" --token-budget 50000
 ```
 
 Use `replace` for a new assignment because it resets counters. `replace` is a
@@ -34,25 +61,11 @@ clear-then-set operation; the app-server does not expose an atomic reset
 primitive. If preserving the old goal on failure matters more than resetting
 counters, use `update`.
 
-Clear the goal:
+`replace` defaults the new status to `active` unless `--status` is supplied.
+
+Clear the goal. This removes the persisted goal state; it does not affect the
+thread transcript or running process.
 
 ```sh
 codex-goalctl clear THREAD_ID
 ```
-
-## Waking
-
-Goal writes do not reliably wake a CLI-owned thread. After assigning a goal,
-send a normal input turn when the worker should act immediately:
-
-```text
-A goal was assigned. Call get_goal and proceed.
-```
-
-Use `codex-wakectl send` for app-server-backed sessions.
-
-## Notes
-
-- For v1 Codex subagents, the `spawn_agent` result's `agent_id` is the thread id.
-- Use `--json` when another program will parse output.
-- Pass `--timeout` for slow app-server calls.

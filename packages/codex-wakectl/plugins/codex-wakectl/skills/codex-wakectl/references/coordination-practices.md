@@ -19,6 +19,21 @@ That value is only an identity. It does not mean the thread is wakeable through
 `codex-wakectl`. Wakeability also requires the thread to be loaded on the same
 app-server endpoint used by wakectl.
 
+## App-Server Endpoint
+
+Wakeability is scoped to one app-server endpoint. A thread started through one
+endpoint cannot be woken through another.
+
+```sh
+codex app-server --listen unix://
+codex --remote unix://
+codex-wakectl loaded
+```
+
+The default `unix://` endpoint resolves under `CODEX_HOME`. If you choose a
+custom socket path, use the same `--endpoint` on every `codex-wakectl` command
+and queued job that should target that server.
+
 ## Native Handles, Wait, and Queued Wakes
 
 When a supervising agent has a native subagent handle and a native wait/poll
