@@ -12,20 +12,20 @@
     "codex",
     "coverage",
     "transcripts",
-    "subagents"
+    "rollouts"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Codex Readcov",
     "shortDescription": "Measure Codex transcript read coverage.",
-    "longDescription": "Codex Readcov provides workflow guidance for orchestrator sessions that use codex-readcov to inspect transcript read coverage, compare subagent deltas, and compose path lists with Unix tools.",
+    "longDescription": "Codex Readcov provides workflow guidance for using codex-readcov to inspect transcript read coverage, compare snapshot deltas, filter paths, and compose read path lists with Unix tools.",
     "developerName": "ustas-eth",
     "category": "Productivity",
     "capabilities": [
       "Transcript read coverage",
-      "Subagent coverage deltas",
+      "Snapshot coverage deltas",
       "Unix workflow guidance"
     ],
-    "defaultPrompt": "Use $codex-readcov to inspect transcript read coverage for a Codex subagent."
+    "defaultPrompt": "Use $codex-readcov to inspect transcript read coverage for a Codex thread."
   }
 }

@@ -28,6 +28,9 @@ The watched thread and target thread may be the same.
 
 ## App Server
 
+For a thread to be wakeable, it must be started or resumed through the same
+app-server endpoint that `codex-wakectl` uses.
+
 ```sh
 codex app-server --listen unix://
 codex --remote unix://
@@ -164,5 +167,11 @@ codex-wakectl cancel JOB_ID
   persisted job contents, current-thread identity, or script parsing matter.
 - Read `references/troubleshooting.md` when a wake did not arrive, a job stays
   pending, or duplicate wakes appear.
-- Read `references/orchestrator-worker-loop.md` when combining wakes with goals
-  or read coverage.
+- Read `references/coordination-principles.md` when deciding how live wakes
+  compose with native controls, persisted goals, transcript coverage, or
+  partial skill availability.
+- Read `references/coordination-recipes.md` for command combinations involving
+  self-wakes, main/worker review, worker/reviewer chains, peer handoffs, or
+  external managers.
+- Read `references/operational-caveats.md` when duplicate wakes, overlapping
+  turns, stale jobs, or cross-surface consistency matter.

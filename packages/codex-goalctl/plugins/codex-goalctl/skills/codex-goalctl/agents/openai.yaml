@@ -1,6 +1,6 @@
 interface:
   display_name: "Codex Goalctl"
-  short_description: "Coordinate subagent goals from a main thread"
-  default_prompt: "Use $codex-goalctl to assign a fresh goal to a Codex subagent."
+  short_description: "Coordinate Codex thread goals"
+  default_prompt: "Use $codex-goalctl to assign a fresh goal to a Codex thread."
 policy:
   allow_implicit_invocation: true
