@@ -1,8 +1,8 @@
-# usctl
+# ferrumctl
 
 Small Unix-style control tools for agent workflows.
 
-`usctl` is the repository umbrella. It does not install a `usctl` wrapper
+`ferrumctl` is the repository umbrella. It does not install a `ferrumctl` wrapper
 command. The current binaries are Codex-specific and keep explicit names:
 
 - `codex-goalctl` reads and changes persisted Codex thread goals.
@@ -17,8 +17,8 @@ behavior.
 ## Install
 
 ```sh
-git clone https://github.com/ustas-eth/usctl
-cd usctl
+git clone https://github.com/ustas-eth/ferrumctl
+cd ferrumctl
 
 uv tool install ./packages/codex-goalctl
 uv tool install ./packages/codex-wakectl
@@ -28,10 +28,10 @@ cargo install --locked --path ./packages/codex-readcov
 ## Codex Plugins
 
 ```sh
-codex plugin marketplace add ustas-eth/usctl
-codex plugin add codex-goalctl@usctl
-codex plugin add codex-wakectl@usctl
-codex plugin add codex-readcov@usctl
+codex plugin marketplace add ustas-eth/ferrumctl
+codex plugin add codex-goalctl@ferrumctl
+codex plugin add codex-wakectl@ferrumctl
+codex plugin add codex-readcov@ferrumctl
 ```
 
 The marketplace manifest is [.agents/plugins/marketplace.json](.agents/plugins/marketplace.json).

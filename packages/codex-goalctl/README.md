@@ -70,11 +70,11 @@ orchestration:
 plugins/codex-goalctl/skills/codex-goalctl/SKILL.md
 ```
 
-Install it from the `usctl` root marketplace:
+Install it from the `ferrumctl` root marketplace:
 
 ```sh
-codex plugin marketplace add ustas-eth/usctl
-codex plugin add codex-goalctl@usctl
+codex plugin marketplace add ustas-eth/ferrumctl
+codex plugin add codex-goalctl@ferrumctl
 ```
 
 The skill documents one workflow for coordinating subagents from a main Codex

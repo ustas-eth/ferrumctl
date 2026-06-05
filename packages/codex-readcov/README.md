@@ -13,11 +13,11 @@ cargo install --locked --path .
 ```
 
 The Codex skill and local plugin live under `plugins/codex-readcov/`. Install it
-from the `usctl` root marketplace:
+from the `ferrumctl` root marketplace:
 
 ```sh
-codex plugin marketplace add ustas-eth/usctl
-codex plugin add codex-readcov@usctl
+codex plugin marketplace add ustas-eth/ferrumctl
+codex plugin add codex-readcov@ferrumctl
 ```
 
 ## Usage

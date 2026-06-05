@@ -1,7 +1,7 @@
 {
-  "name": "usctl",
+  "name": "ferrumctl",
   "interface": {
-    "displayName": "usctl"
+    "displayName": "ferrumctl"
   },
   "plugins": [
     {

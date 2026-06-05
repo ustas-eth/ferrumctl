@@ -8,6 +8,6 @@
 - Do not add wrapper commands, daemons, or shared abstractions until repeated
   real use proves they simplify the system.
 - Keep docs short, literal, and user-facing. Remove stale standalone-repo
-  references; `usctl` is the canonical repo.
-- Preserve explicit binary names such as `codex-goalctl`; `usctl` is the suite
+  references; `ferrumctl` is the canonical repo.
+- Preserve explicit binary names such as `codex-goalctl`; `ferrumctl` is the suite
   and documentation home, not a command name.

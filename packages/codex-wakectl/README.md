@@ -21,11 +21,11 @@ This package includes an optional Codex plugin with a skill for wake scheduling:
 plugins/codex-wakectl/skills/codex-wakectl/SKILL.md
 ```
 
-Install it from the `usctl` root marketplace:
+Install it from the `ferrumctl` root marketplace:
 
 ```sh
-codex plugin marketplace add ustas-eth/usctl
-codex plugin add codex-wakectl@usctl
+codex plugin marketplace add ustas-eth/ferrumctl
+codex plugin add codex-wakectl@ferrumctl
 ```
 
 The skill documents the orchestrator workflow around the CLI: use `send` for

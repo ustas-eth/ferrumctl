@@ -5,8 +5,8 @@
   "author": {
     "name": "ustas-eth"
   },
-  "homepage": "https://github.com/ustas-eth/usctl/tree/main/packages/codex-goalctl",
-  "repository": "https://github.com/ustas-eth/usctl",
+  "homepage": "https://github.com/ustas-eth/ferrumctl/tree/main/packages/codex-goalctl",
+  "repository": "https://github.com/ustas-eth/ferrumctl",
   "license": "MIT",
   "keywords": [
     "codex",
