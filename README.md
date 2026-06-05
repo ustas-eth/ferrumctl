@@ -39,7 +39,9 @@ changes, or objective edits where the existing usage and time counters should be
 preserved.
 
 `replace` clears any existing goal before creating the new one. Use it when a
-new assignment should start with fresh counters.
+new assignment should start with fresh counters. If the existing goal must be
+preserved on failure, use `update`; `replace` is intentionally a clear-then-set
+operation because the app-server does not expose an atomic reset primitive.
 
 `clear` removes the current goal from the thread.
 

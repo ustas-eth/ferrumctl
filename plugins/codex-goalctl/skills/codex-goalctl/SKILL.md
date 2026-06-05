@@ -60,6 +60,8 @@ Use `--json` when another script or tool will parse the output.
 ## Rules
 
 - Use `replace` for new assignments, because it resets usage and time counters.
+- Treat `replace` as clear-then-set. If preserving the current goal on failure
+  matters more than resetting counters, use `update`.
 - Use `update` for status changes, budget changes, and objective edits that
   should preserve counters.
 - Do not assume goal writes wake a subagent; send a normal follow-up message.

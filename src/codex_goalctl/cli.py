@@ -163,6 +163,16 @@ def positive_int(value: str) -> int:
     return parsed
 
 
+def positive_float(value: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a number") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be positive")
+    return parsed
+
+
 def cmd_get(args: argparse.Namespace) -> int:
     result = appserver_request(args, "thread/goal/get", {"threadId": args.thread_id})
     return print_goal(result.get("goal"), args.json)
@@ -239,7 +249,7 @@ def add_common_options(parser: argparse.ArgumentParser, *, defaults: bool) -> No
     )
     parser.add_argument(
         "--timeout",
-        type=float,
+        type=positive_float,
         default=(
             float(os.environ.get("CODEX_GOALCTL_TIMEOUT", "20"))
             if defaults
