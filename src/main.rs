@@ -297,8 +297,21 @@ fn read_snapshot_arg(path: &str) -> Result<Snapshot> {
 
 fn read_metadata(rollout: &Path) -> Result<Metadata> {
     let file = fs::File::open(rollout)?;
-    for line in std::io::BufReader::new(file).lines() {
-        let value: Value = serde_json::from_str(&line?)?;
+    let mut reader = std::io::BufReader::new(file);
+    let mut line = String::new();
+    let mut line_no = 0;
+
+    loop {
+        line.clear();
+        let bytes = reader.read_line(&mut line)?;
+        if bytes == 0 {
+            break;
+        }
+
+        line_no += 1;
+        let Some(value) = parse_rollout_json_line(&line, line_no)? else {
+            continue;
+        };
         if value.get("type").and_then(Value::as_str) != Some("session_meta") {
             continue;
         }
@@ -313,6 +326,14 @@ fn read_metadata(rollout: &Path) -> Result<Metadata> {
         return Ok(Metadata { thread_id, cwd });
     }
     Ok(Metadata::default())
+}
+
+fn parse_rollout_json_line(line: &str, line_no: usize) -> Result<Option<Value>> {
+    match serde_json::from_str(line) {
+        Ok(value) => Ok(Some(value)),
+        Err(err) if !line.ends_with('\n') && err.is_eof() => Ok(None),
+        Err(err) => Err(err).with_context(|| format!("parsing rollout JSON at line {line_no}")),
+    }
 }
 
 #[derive(Debug)]
@@ -371,7 +392,9 @@ fn count_from_exec_calls(
             continue;
         }
 
-        let value: Value = serde_json::from_str(&line)?;
+        let Some(value) = parse_rollout_json_line(&line, line_no)? else {
+            continue;
+        };
         let Some(payload) = value.get("payload") else {
             continue;
         };
@@ -632,6 +655,28 @@ mod tests {
     #[test]
     fn byte_range_rejects_reversed_bounds() {
         assert!(ScanRange::bytes(20, 10).is_err());
+    }
+
+    #[test]
+    fn rollout_json_line_allows_valid_final_line_without_newline() -> Result<()> {
+        let value = parse_rollout_json_line(r#"{"type":"session_meta"}"#, 1)?;
+        assert_eq!(
+            value.and_then(|value| value["type"].as_str().map(str::to_owned)),
+            Some("session_meta".to_string())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn rollout_json_line_skips_partial_final_line() -> Result<()> {
+        let value = parse_rollout_json_line(r#"{"type":"response_item""#, 1)?;
+        assert!(value.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn rollout_json_line_rejects_malformed_complete_line() {
+        assert!(parse_rollout_json_line("{\n", 1).is_err());
     }
 
     #[test]

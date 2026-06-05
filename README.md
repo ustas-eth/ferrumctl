@@ -91,3 +91,4 @@ comm -23 all.txt read.txt
 
 This is transcript coverage, not an operating-system audit log. It reports what
 Codex's command parser classifies as file reads from recorded shell tool calls.
+When reading a live rollout, an unterminated partial final JSONL line is ignored.
