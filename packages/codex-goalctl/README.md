@@ -63,20 +63,14 @@ For v1 Codex subagents, the `spawn_agent` result's `agent_id` is the thread id.
 
 ## Codex Skill
 
-This repo includes an optional Codex plugin with a skill for main-thread
+This package includes an optional Codex plugin with a skill for main-thread
 orchestration:
 
 ```text
 plugins/codex-goalctl/skills/codex-goalctl/SKILL.md
 ```
 
-The package also includes a marketplace manifest:
-
-```text
-.agents/plugins/marketplace.json
-```
-
-From the `usctl` monorepo, install it from the root marketplace source with:
+Install it from the `usctl` root marketplace:
 
 ```sh
 codex plugin marketplace add ustas-eth/usctl

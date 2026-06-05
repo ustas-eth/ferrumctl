@@ -12,8 +12,8 @@ runs them through Codex's own command parser, and counts parser results with
 cargo install --locked --path .
 ```
 
-The Codex skill and local plugin live under `plugins/codex-readcov/`. From the
-`usctl` monorepo, install it from the root marketplace source with:
+The Codex skill and local plugin live under `plugins/codex-readcov/`. Install it
+from the `usctl` root marketplace:
 
 ```sh
 codex plugin marketplace add ustas-eth/usctl

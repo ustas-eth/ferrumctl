@@ -15,19 +15,13 @@ uv tool install .
 
 ## Codex Skill
 
-This repo includes an optional Codex plugin with a skill for wake scheduling:
+This package includes an optional Codex plugin with a skill for wake scheduling:
 
 ```text
 plugins/codex-wakectl/skills/codex-wakectl/SKILL.md
 ```
 
-The package also includes a marketplace manifest:
-
-```text
-.agents/plugins/marketplace.json
-```
-
-From the `usctl` monorepo, install it from the root marketplace source with:
+Install it from the `usctl` root marketplace:
 
 ```sh
 codex plugin marketplace add ustas-eth/usctl

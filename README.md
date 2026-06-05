@@ -2,18 +2,78 @@
 
 Small Unix-style control tools for agent workflows.
 
-This repository is a neutral home for tools that help orchestrators supervise
-agent sessions without turning simple operations into a single large app.
-
-The current packages focus on Codex CLI:
+`usctl` is the repository umbrella. It does not install a `usctl` wrapper
+command. The current binaries are Codex-specific and keep explicit names:
 
 - `codex-goalctl` reads and changes persisted Codex thread goals.
 - `codex-wakectl` sends and schedules input turns for app-server-backed Codex
   threads.
 - `codex-readcov` counts file read coverage from Codex rollout transcripts.
 
-The binaries keep their explicit `codex-` names. `usctl` is the repository and
-documentation umbrella, not a wrapper command.
+Use the commands separately and compose them with the shell. The optional Codex
+plugins add skills that explain common workflows; they do not change CLI
+behavior.
+
+## Install
+
+```sh
+git clone https://github.com/ustas-eth/usctl
+cd usctl
+
+uv tool install ./packages/codex-goalctl
+uv tool install ./packages/codex-wakectl
+cargo install --locked --path ./packages/codex-readcov
+```
+
+## Codex Plugins
+
+```sh
+codex plugin marketplace add ustas-eth/usctl
+codex plugin add codex-goalctl@usctl
+codex plugin add codex-wakectl@usctl
+codex plugin add codex-readcov@usctl
+```
+
+The marketplace manifest is [.agents/plugins/marketplace.json](.agents/plugins/marketplace.json).
+
+## Minimum Setup
+
+Start a shared app-server in one terminal:
+
+```sh
+codex app-server --listen unix://
+```
+
+Start or resume Codex sessions through that server:
+
+```sh
+codex --remote unix://
+```
+
+List loaded thread ids:
+
+```sh
+codex-wakectl loaded
+```
+
+## Common Workflow
+
+```sh
+WORKER=thread-id
+ORCH=orchestrator-thread-id
+
+codex-readcov snapshot "$WORKER" > before.json
+codex-goalctl replace "$WORKER" "Review this code and mark the goal complete."
+codex-wakectl send "$WORKER" "A goal was assigned. Call get_goal and proceed."
+codex-wakectl add goal "$WORKER" --status complete,blocked,budgetLimited,usageLimited --to "$ORCH" "Worker goal stopped. Inspect it."
+codex-readcov delta before.json ./packages --limit 20
+```
+
+Process queued wakes with `codex-wakectl run`, or install the user timer:
+
+```sh
+codex-wakectl systemd install --interval 30s
+```
 
 ## Layout
 
@@ -24,54 +84,10 @@ packages/
   codex-readcov/
 ```
 
-Each package keeps its own README, tests, packaging metadata, and plugin files.
-
-## Install
-
-Install the tools from their package directories:
-
-```sh
-uv tool install ./packages/codex-goalctl
-uv tool install ./packages/codex-wakectl
-cargo install --locked --path ./packages/codex-readcov
-```
-
-## Codex Plugins
-
-The root marketplace manifest exposes all current Codex plugins:
-
-```text
-.agents/plugins/marketplace.json
-```
-
-After this repo is available on GitHub, install the marketplace source and then
-install whichever plugins you want:
-
-```sh
-codex plugin marketplace add ustas-eth/usctl
-codex plugin add codex-goalctl@usctl
-codex plugin add codex-wakectl@usctl
-codex plugin add codex-readcov@usctl
-```
-
-The plugins provide Codex skills for using the host commands. They do not change
-the CLI behavior.
-
-## Common Workflow
-
-Use the tools together as separate Unix primitives:
-
-```sh
-codex-readcov snapshot "$THREAD_ID" > before.json
-codex-goalctl replace "$THREAD_ID" "Review this code and mark the goal complete."
-codex-wakectl send "$THREAD_ID" "A goal was assigned. Call get_goal and proceed."
-codex-wakectl add goal "$THREAD_ID" --status complete,blocked,budgetLimited,usageLimited --to "$ORCH_ID" "Worker goal stopped. Inspect it."
-codex-readcov delta before.json ./packages --limit 20
-```
+Each package keeps its own README, tests, package metadata, and Codex plugin.
+Repository-level agent instructions are in [AGENTS.md](AGENTS.md).
 
 ## Development
-
-Run package checks from the package directories:
 
 ```sh
 (cd packages/codex-goalctl && PYTHONPATH=src python3 -m unittest discover -s tests -v)
