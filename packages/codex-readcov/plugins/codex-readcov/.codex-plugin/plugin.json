@@ -1,0 +1,31 @@
+{
+  "name": "codex-readcov",
+  "version": "0.1.0",
+  "description": "Codex skill for measuring transcript read coverage with codex-readcov.",
+  "author": {
+    "name": "ustas-eth"
+  },
+  "homepage": "https://github.com/ustas-eth/codex-readcov",
+  "repository": "https://github.com/ustas-eth/codex-readcov",
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "coverage",
+    "transcripts",
+    "subagents"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Codex Readcov",
+    "shortDescription": "Measure Codex transcript read coverage.",
+    "longDescription": "Codex Readcov provides workflow guidance for orchestrator sessions that use codex-readcov to inspect transcript read coverage, compare subagent deltas, and compose path lists with Unix tools.",
+    "developerName": "ustas-eth",
+    "category": "Productivity",
+    "capabilities": [
+      "Transcript read coverage",
+      "Subagent coverage deltas",
+      "Unix workflow guidance"
+    ],
+    "defaultPrompt": "Use $codex-readcov to inspect transcript read coverage for a Codex subagent."
+  }
+}

@@ -1,0 +1,16 @@
+[package]
+name = "codex-readcov"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[[bin]]
+name = "codex-readcov"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+codex-shell-command = { git = "https://github.com/openai/codex.git", tag = "rust-v0.136.0" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

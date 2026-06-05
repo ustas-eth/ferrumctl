@@ -1,0 +1,6 @@
+interface:
+  display_name: "Codex Readcov"
+  short_description: "Measure transcript read coverage for Codex agents"
+  default_prompt: "Use $codex-readcov to inspect transcript read coverage for a Codex subagent."
+policy:
+  allow_implicit_invocation: true
