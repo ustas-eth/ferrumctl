@@ -1,12 +1,21 @@
 # codex-wakectl
 
-`codex-wakectl` wakes Codex threads connected to a running `codex app-server`.
+`codex-wakectl` sends and schedules normal input turns for Codex threads loaded
+on a shared `codex app-server`.
 
-Use it to send a turn now, or to queue a wake for a time, goal state, thread
-stop, or shell predicate. It does not start Codex sessions or inject terminal
-input.
+Use it for self-reminders, worker completion notifications, peer handoffs, and
+long waits that should resume a thread later. It does not start Codex sessions
+or inject terminal input.
 
 ## Install
+
+From the `ferrumctl` root:
+
+```sh
+uv tool install ./packages/codex-wakectl
+```
+
+From this package directory:
 
 ```sh
 uv tool install .
@@ -14,21 +23,49 @@ uv tool install .
 
 ## Setup
 
+Run one app-server, then start or resume Codex sessions through it.
+
 ```sh
 codex app-server --listen unix://
 codex --remote unix://
 codex-wakectl loaded
 ```
 
-Only loaded app-server threads can be woken.
+For daily use, keep the Codex flags you normally use and add `--remote
+unix://` to that command or shell shortcut:
 
-## Usage
+```sh
+alias x='codex --remote unix://'
+```
+
+Only loaded app-server threads can be woken. `codex-wakectl loaded` is the
+quick check.
+
+## Examples
+
+Send a turn now:
 
 ```sh
 codex-wakectl send THREAD_ID "Check your goal and continue if useful."
-codex-wakectl add time --after 10m --to THREAD_ID "Wake up and check status."
+```
+
+Wake this thread later:
+
+```sh
+SELF=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
+codex-wakectl add time --after 10m --to "$SELF" "Wake up and check status."
+```
+
+Wake a coordinator when a worker stops:
+
+```sh
 codex-wakectl add goal WORKER --status complete,blocked,budgetLimited,usageLimited --to ORCH "Worker goal stopped."
 codex-wakectl add stop WORKER --to ORCH "Worker stopped. Inspect it."
+```
+
+Wake a thread when a host-visible condition becomes true:
+
+```sh
 codex-wakectl add cmd --to THREAD_ID "Predicate is true." -- sh -c 'test -f done.txt'
 ```
 
@@ -49,18 +86,12 @@ More detail:
 
 ## Codex Skill
 
-This package includes an optional Codex skill for wake scheduling:
-
-```text
-plugins/codex-wakectl/skills/codex-wakectl/SKILL.md
-```
-
-Install it from the `ferrumctl` root marketplace:
+Install the optional skill when Codex should know when to use this command:
 
 ```sh
 codex plugin marketplace add ustas-eth/ferrumctl
 codex plugin add codex-wakectl@ferrumctl
 ```
 
-The skill is optional. It explains app-server wake patterns; it does not change
-CLI behavior or make non-app-server sessions wakeable.
+The skill lives at `plugins/codex-wakectl/skills/codex-wakectl/SKILL.md`.
+It does not make non-app-server sessions wakeable.
