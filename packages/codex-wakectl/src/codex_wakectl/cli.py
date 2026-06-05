@@ -504,6 +504,10 @@ def status_name(status: dict[str, Any]) -> str:
     return str(status.get("type", "unknown"))
 
 
+def thread_is_active(status: dict[str, Any]) -> bool:
+    return status_name(status) not in {"idle", "unknown"}
+
+
 async def send_turn(
     app: AppServer,
     thread_id: str,
@@ -614,6 +618,39 @@ async def goal_condition_ready(
     return True, {}, "goal predicate matched"
 
 
+async def stop_condition_ready(
+    app: AppServer,
+    condition: dict[str, Any],
+) -> tuple[bool, dict[str, Any], str]:
+    status = await get_thread_status(app, condition["threadId"])
+    name = status_name(status)
+    observed_active = bool(condition.get("observedActive"))
+    updated = dict(condition)
+    updated["lastStatus"] = name
+
+    if thread_is_active(status):
+        if not observed_active:
+            updated["observedActive"] = True
+            return False, {"condition": updated}, f"status is {name}"
+        return False, {}, f"status is {name}"
+
+    if name != "idle":
+        if condition.get("lastStatus") != name:
+            return False, {"condition": updated}, f"status is {name}"
+        return False, {}, f"status is {name}"
+
+    if observed_active:
+        if condition.get("repeat"):
+            updated["observedActive"] = False
+            return True, {"condition": updated}, "thread stopped"
+        return True, {}, "thread stopped"
+
+    if condition.get("lastStatus") != name:
+        updated["observedActive"] = False
+        return False, {"condition": updated}, "waiting for active turn"
+    return False, {}, "waiting for active turn"
+
+
 async def condition_ready(
     app: AppServer | None,
     condition: dict[str, Any],
@@ -630,11 +667,30 @@ async def condition_ready(
         if app is None:
             raise WakectlError("goal condition requires app-server")
         return await goal_condition_ready(app, condition, job)
+    if kind == "stop":
+        if app is None:
+            raise WakectlError("stop condition requires app-server")
+        stored = (job or {}).get("condition")
+        effective = stored if isinstance(stored, dict) else condition
+        return await stop_condition_ready(app, effective)
     raise WakectlError(f"unknown condition type: {kind}")
 
 
 def condition_repeats(condition: dict[str, Any]) -> bool:
-    return "tokensUsedEvery" in condition or "timeUsedEvery" in condition
+    return (
+        "tokensUsedEvery" in condition
+        or "timeUsedEvery" in condition
+        or (condition.get("type") == "stop" and bool(condition.get("repeat")))
+    )
+
+
+def condition_needs_app(condition: dict[str, Any]) -> bool:
+    return condition["type"] in {"goal", "stop"}
+
+
+def max_fires_reached(condition: dict[str, Any], fire_count: int) -> bool:
+    max_fires = condition.get("maxFires")
+    return max_fires is not None and fire_count >= int(max_fires)
 
 
 def new_job(
@@ -691,13 +747,17 @@ def build_goal_condition(args: argparse.Namespace) -> dict[str, Any]:
         condition["timeUsedGte"] = args.time_used_gte
     if args.time_used_every is not None:
         condition["timeUsedEvery"] = args.time_used_every
+    if getattr(args, "max_fires", None) is not None:
+        condition["maxFires"] = args.max_fires
 
-    predicate_count = len(condition) - 2
+    predicate_count = len(condition) - 2 - int("maxFires" in condition)
     if predicate_count == 0:
         raise WakectlError("goal condition requires at least one predicate")
     every_count = int("tokensUsedEvery" in condition) + int("timeUsedEvery" in condition)
     if every_count > 1:
         raise WakectlError("use only one repeating goal predicate per wake")
+    if "maxFires" in condition and every_count == 0:
+        raise WakectlError("--max-fires requires a repeating goal predicate")
     return condition
 
 
@@ -708,6 +768,21 @@ def build_cmd_condition(args: argparse.Namespace) -> dict[str, Any]:
     if not argv:
         raise WakectlError("cmd condition requires a command after --")
     return {"type": "cmd", "argv": argv, "cwd": os.getcwd()}
+
+
+def build_stop_condition(args: argparse.Namespace) -> dict[str, Any]:
+    condition: dict[str, Any] = {
+        "type": "stop",
+        "threadId": args.thread_id,
+        "observedActive": False,
+    }
+    if getattr(args, "repeat", False):
+        condition["repeat"] = True
+    if getattr(args, "max_fires", None) is not None:
+        if not condition.get("repeat"):
+            raise WakectlError("--max-fires requires --repeat")
+        condition["maxFires"] = args.max_fires
+    return condition
 
 
 async def cmd_loaded(args: argparse.Namespace) -> int:
@@ -796,7 +871,7 @@ async def cmd_add(args: argparse.Namespace) -> int:
 async def cmd_wait(args: argparse.Namespace) -> int:
     condition = args.condition_builder(args)
     deadline = time.monotonic() + args.max_wait if args.max_wait is not None else None
-    app_cm: Any = AppServer(args.endpoint, args.timeout) if condition["type"] == "goal" else None
+    app_cm: Any = AppServer(args.endpoint, args.timeout) if condition_needs_app(condition) else None
     app = await app_cm.__aenter__() if app_cm is not None else None
     job_state: dict[str, Any] = {}
     try:
@@ -814,6 +889,8 @@ async def cmd_wait(args: argparse.Namespace) -> int:
                     print(reason)
                 return 0
             job_state.update(updates)
+            if "condition" in updates:
+                condition = updates["condition"]
             if deadline is not None and time.monotonic() >= deadline:
                 if args.json:
                     print(json.dumps({"ready": False, "reason": reason}, indent=2))
@@ -840,7 +917,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
             endpoint = job.get("endpoint") or args.endpoint
             timeout = job["timeout"] if job.get("timeout") is not None else args.timeout
             allow_active = bool(job.get("allowActive"))
-            if job["condition"]["type"] == "goal":
+            if condition_needs_app(job["condition"]):
                 async with AppServer(endpoint, timeout) as app:
                     ready, updates, reason = await condition_ready(
                         app,
@@ -890,17 +967,22 @@ async def cmd_run(args: argparse.Namespace) -> int:
                 continue
 
             ts = now_seconds()
+            next_fire_count = int(job.get("fireCount") or 0) + 1
             result_updates = dict(updates)
             result_updates.update(
                 {
-                    "fireCount": int(job.get("fireCount") or 0) + 1,
+                    "fireCount": next_fire_count,
                     "lastFiredAt": ts,
                     "lastTurnId": turn.get("id"),
                     "lastReason": reason,
                     "lastError": None,
                 }
             )
-            if not condition_repeats(job["condition"]):
+            effective_condition = result_updates.get("condition", job["condition"])
+            if not condition_repeats(effective_condition) or max_fires_reached(
+                effective_condition,
+                next_fire_count,
+            ):
                 result_updates["status"] = "fired"
                 result_updates["firedAt"] = ts
             committed = update_claimed_job(args.state, job["id"], owner, result_updates)
@@ -1153,7 +1235,11 @@ def add_time_condition_parser(sub: argparse._SubParsersAction[argparse.ArgumentP
     add_global_options(parser, defaults=False)
 
 
-def add_goal_condition_options(parser: argparse.ArgumentParser) -> None:
+def add_goal_condition_options(
+    parser: argparse.ArgumentParser,
+    *,
+    allow_max_fires: bool,
+) -> None:
     parser.add_argument("thread_id", help="goal thread to watch")
     parser.add_argument("--status", type=parse_statuses, help="comma-separated goal statuses")
     parser.add_argument("--tokens-left-lte", type=parse_positive_int)
@@ -1161,12 +1247,18 @@ def add_goal_condition_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--tokens-used-every", type=parse_positive_int)
     parser.add_argument("--time-used-gte", type=parse_duration)
     parser.add_argument("--time-used-every", type=parse_duration)
+    if allow_max_fires:
+        parser.add_argument(
+            "--max-fires",
+            type=parse_positive_int,
+            help="maximum fires for a repeating goal predicate",
+        )
     parser.set_defaults(condition_builder=build_goal_condition)
 
 
 def add_goal_condition_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = sub.add_parser("goal", help="goal-state condition")
-    add_goal_condition_options(parser)
+    add_goal_condition_options(parser, allow_max_fires=True)
     add_target_message(parser)
     add_global_options(parser, defaults=False)
 
@@ -1176,6 +1268,24 @@ def add_cmd_condition_parser(sub: argparse._SubParsersAction[argparse.ArgumentPa
     add_target_message(parser)
     parser.add_argument("argv", nargs=argparse.REMAINDER, help="command after --")
     parser.set_defaults(condition_builder=build_cmd_condition)
+    add_global_options(parser, defaults=False)
+
+
+def add_stop_condition_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    parser = sub.add_parser("stop", help="thread stop edge condition")
+    parser.add_argument("thread_id", help="thread to watch")
+    parser.add_argument(
+        "--repeat",
+        action="store_true",
+        help="re-arm after each stop and fire again after the next active-to-idle edge",
+    )
+    parser.add_argument(
+        "--max-fires",
+        type=parse_positive_int,
+        help="maximum fires for --repeat",
+    )
+    parser.set_defaults(condition_builder=build_stop_condition)
+    add_target_message(parser)
     add_global_options(parser, defaults=False)
 
 
@@ -1210,7 +1320,7 @@ def add_wait_goal_condition_parser(
     sub: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
     parser = sub.add_parser("goal", help="wait for goal")
-    add_goal_condition_options(parser)
+    add_goal_condition_options(parser, allow_max_fires=False)
     add_wait_options(parser, defaults=False)
     add_global_options(parser, defaults=False)
 
@@ -1221,6 +1331,16 @@ def add_wait_cmd_condition_parser(
     parser = sub.add_parser("cmd", help="wait for command predicate")
     parser.add_argument("argv", nargs=argparse.REMAINDER, help="command after --")
     parser.set_defaults(condition_builder=build_cmd_condition)
+    add_wait_options(parser, defaults=False)
+    add_global_options(parser, defaults=False)
+
+
+def add_wait_stop_condition_parser(
+    sub: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    parser = sub.add_parser("stop", help="wait for thread stop edge")
+    parser.add_argument("thread_id", help="thread to watch")
+    parser.set_defaults(condition_builder=build_stop_condition)
     add_wait_options(parser, defaults=False)
     add_global_options(parser, defaults=False)
 
@@ -1255,6 +1375,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_time_condition_parser(add_sub)
     add_goal_condition_parser(add_sub)
     add_cmd_condition_parser(add_sub)
+    add_stop_condition_parser(add_sub)
     add.set_defaults(func=cmd_add)
 
     wait = sub.add_parser("wait", help="block until a condition is ready")
@@ -1264,6 +1385,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_wait_time_condition_parser(wait_sub)
     add_wait_goal_condition_parser(wait_sub)
     add_wait_cmd_condition_parser(wait_sub)
+    add_wait_stop_condition_parser(wait_sub)
     wait.set_defaults(func=cmd_wait)
 
     run = sub.add_parser("run", help="evaluate pending jobs once and fire ready wakes")

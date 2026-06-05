@@ -7,63 +7,54 @@ description: Use when acting as a main Codex orchestrator that manages other Cod
 
 ## Purpose
 
-Use this skill when the current Codex session is coordinating other Codex CLI
-threads and needs to manage their goal state.
+Use this skill when the current Codex session coordinates other Codex CLI
+threads and needs to manage their persisted goal state.
 
-`codex-goalctl` is the host command that reads and writes persisted goal state
-through `codex app-server`. This skill describes a main-thread workflow on top
-of that command.
-
-Assume `codex-goalctl` is already installed on the host. It does not send chat
-messages and does not reliably wake a CLI-owned thread.
+Assume `codex-goalctl` is installed on the host. It reads and writes goal state
+through `codex app-server`; it does not send chat messages or reliably wake a
+CLI-owned thread.
 
 ## Workflow
 
-1. Identify or create the target thread.
-   For v1 Codex subagents, the `spawn_agent` result's `agent_id` is the thread id.
+1. Identify or create the target thread. For v1 Codex subagents, the
+   `spawn_agent` result's `agent_id` is the thread id.
 
-2. For a new assignment, reset counters by replacing the goal:
+2. For a new assignment, replace the goal so counters start fresh:
 
 ```sh
 codex-goalctl replace THREAD_ID "objective text"
 ```
 
-3. If the subagent should act immediately, send it a normal input message:
+3. If the worker should act immediately, send a normal input message:
 
 ```text
 A goal was assigned. Call get_goal and proceed.
 ```
 
-4. Inspect goal state when needed:
+Use `codex-wakectl send` when the worker is app-server-backed.
+
+4. Inspect or edit state when needed:
 
 ```sh
 codex-goalctl get THREAD_ID
-```
-
-5. Edit an existing goal in place when counters should be preserved:
-
-```sh
 codex-goalctl update THREAD_ID "reworded objective"
 codex-goalctl update THREAD_ID --status active
-codex-goalctl update THREAD_ID --status paused
-codex-goalctl update THREAD_ID --status blocked
-```
-
-6. Clear a goal when the thread should have no persisted objective:
-
-```sh
 codex-goalctl clear THREAD_ID
 ```
 
-Use `--json` when another script or tool will parse the output.
+Use `--json` when another script or tool will parse output.
+
+## References
+
+- Read `references/goal-lifecycle.md` when reset semantics, status changes,
+  token budgets, or wake behavior matter.
+- Read `references/orchestrator-worker-loop.md` when combining goal assignment
+  with wakes or read coverage.
 
 ## Rules
 
-- Use `replace` for new assignments, because it resets usage and time counters.
-- Treat `replace` as clear-then-set. If preserving the current goal on failure
-  matters more than resetting counters, use `update`.
-- Use `update` for status changes, budget changes, and objective edits that
-  should preserve counters.
-- Do not assume goal writes wake a subagent; send a normal follow-up message.
-- Keep the distinction clear: `codex-goalctl` provides goal operations; this
-  skill chooses a workflow for orchestrator sessions.
+- Use `replace` for new assignments.
+- Use `update` for edits that should preserve counters.
+- Do not assume goal writes wake a subagent; send a follow-up message.
+- Keep the distinction clear: `codex-goalctl` provides primitives; this skill
+  chooses an orchestrator workflow.

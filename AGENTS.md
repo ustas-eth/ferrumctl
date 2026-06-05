@@ -9,5 +9,7 @@
   real use proves they simplify the system.
 - Keep docs short, literal, and user-facing. Remove stale standalone-repo
   references; `ferrumctl` is the canonical repo.
+- Edit canonical docs under `docs/` or `packages/*/docs/`; update generated
+  skill references with `python3 scripts/sync-skill-references.py`.
 - Preserve explicit binary names such as `codex-goalctl`; `ferrumctl` is the suite
   and documentation home, not a command name.

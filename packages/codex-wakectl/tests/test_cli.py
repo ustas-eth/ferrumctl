@@ -82,6 +82,25 @@ class ParseTests(unittest.TestCase):
         self.assertTrue(args.allow_active)
         self.assertEqual(args.timeout, 45)
 
+    def test_add_stop_repeat_options(self) -> None:
+        args = cli.build_parser().parse_args(
+            [
+                "add",
+                "stop",
+                "worker",
+                "--repeat",
+                "--max-fires",
+                "3",
+                "--to",
+                "orchestrator",
+                "worker stopped",
+            ]
+        )
+        condition = cli.build_stop_condition(args)
+        self.assertEqual(condition["type"], "stop")
+        self.assertTrue(condition["repeat"])
+        self.assertEqual(condition["maxFires"], 3)
+
     def test_run_replaces_tick(self) -> None:
         args = cli.build_parser().parse_args(["run", "--limit", "1"])
         self.assertEqual(args.limit, 1)
@@ -126,6 +145,20 @@ class ConditionTests(unittest.TestCase):
         with self.assertRaises(cli.WakectlError):
             cli.build_goal_condition(args)
 
+    def test_goal_max_fires_requires_repeating_predicate(self) -> None:
+        args = argparse.Namespace(
+            thread_id="thread",
+            status="complete",
+            tokens_left_lte=None,
+            tokens_used_gte=None,
+            tokens_used_every=None,
+            time_used_gte=None,
+            time_used_every=None,
+            max_fires=2,
+        )
+        with self.assertRaises(cli.WakectlError):
+            cli.build_goal_condition(args)
+
     def test_goal_repeating_bucket(self) -> None:
         condition = {"type": "goal", "threadId": "t", "tokensUsedEvery": 3000000}
         job = {"lastTokensUsedBucket": 1}
@@ -138,6 +171,83 @@ class ConditionTests(unittest.TestCase):
         ready, updates, _ = cli.asyncio.run(cli.goal_condition_ready(App(), condition, job))
         self.assertTrue(ready)
         self.assertEqual(updates["lastTokensUsedBucket"], 2)
+
+    def test_stop_condition_waits_for_active_to_idle_edge(self) -> None:
+        class App:
+            def __init__(self, status: str):
+                self.status = status
+
+            async def request(self, method, params):
+                return {"thread": {"status": {"type": self.status}}}
+
+        condition = {"type": "stop", "threadId": "t", "observedActive": False}
+
+        ready, updates, reason = cli.asyncio.run(
+            cli.stop_condition_ready(App("idle"), condition)
+        )
+        self.assertFalse(ready)
+        self.assertEqual(reason, "waiting for active turn")
+
+        condition = updates["condition"]
+        ready, updates, reason = cli.asyncio.run(
+            cli.stop_condition_ready(App("running"), condition)
+        )
+        self.assertFalse(ready)
+        self.assertEqual(reason, "status is running")
+        self.assertTrue(updates["condition"]["observedActive"])
+
+        ready, updates, reason = cli.asyncio.run(
+            cli.stop_condition_ready(App("idle"), updates["condition"])
+        )
+        self.assertTrue(ready)
+        self.assertEqual(updates, {})
+        self.assertEqual(reason, "thread stopped")
+
+    def test_stop_condition_repeat_rearms_after_fire(self) -> None:
+        class App:
+            async def request(self, method, params):
+                return {"thread": {"status": {"type": "idle"}}}
+
+        condition = {
+            "type": "stop",
+            "threadId": "t",
+            "repeat": True,
+            "observedActive": True,
+        }
+
+        ready, updates, _ = cli.asyncio.run(cli.stop_condition_ready(App(), condition))
+
+        self.assertTrue(ready)
+        self.assertFalse(updates["condition"]["observedActive"])
+        self.assertTrue(cli.condition_repeats(updates["condition"]))
+
+    def test_stop_condition_unknown_status_does_not_fire(self) -> None:
+        class App:
+            async def request(self, method, params):
+                return {"thread": {"status": {"type": "unknown"}}}
+
+        condition = {"type": "stop", "threadId": "t", "observedActive": True}
+
+        ready, updates, reason = cli.asyncio.run(cli.stop_condition_ready(App(), condition))
+
+        self.assertFalse(ready)
+        self.assertEqual(reason, "status is unknown")
+        self.assertEqual(updates["condition"]["lastStatus"], "unknown")
+
+    def test_stop_max_fires_requires_repeat(self) -> None:
+        args = argparse.Namespace(thread_id="thread", repeat=False, max_fires=2)
+        with self.assertRaises(cli.WakectlError):
+            cli.build_stop_condition(args)
+
+    def test_max_fires_reached(self) -> None:
+        condition = {
+            "type": "stop",
+            "threadId": "t",
+            "repeat": True,
+            "maxFires": 2,
+        }
+        self.assertFalse(cli.max_fires_reached(condition, 1))
+        self.assertTrue(cli.max_fires_reached(condition, 2))
 
     def test_cmd_condition_timeout(self) -> None:
         condition = {

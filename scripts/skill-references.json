@@ -1,0 +1,30 @@
+{
+  "references": [
+    {
+      "source": "docs/workflows/orchestrator-worker-loop.md",
+      "targets": [
+        "packages/codex-goalctl/plugins/codex-goalctl/skills/codex-goalctl/references/orchestrator-worker-loop.md",
+        "packages/codex-wakectl/plugins/codex-wakectl/skills/codex-wakectl/references/orchestrator-worker-loop.md",
+        "packages/codex-readcov/plugins/codex-readcov/skills/codex-readcov/references/orchestrator-worker-loop.md"
+      ]
+    },
+    {
+      "source": "packages/codex-goalctl/docs/goal-lifecycle.md",
+      "targets": [
+        "packages/codex-goalctl/plugins/codex-goalctl/skills/codex-goalctl/references/goal-lifecycle.md"
+      ]
+    },
+    {
+      "source": "packages/codex-wakectl/docs/wake-scheduling.md",
+      "targets": [
+        "packages/codex-wakectl/plugins/codex-wakectl/skills/codex-wakectl/references/wake-scheduling.md"
+      ]
+    },
+    {
+      "source": "packages/codex-readcov/docs/read-coverage.md",
+      "targets": [
+        "packages/codex-readcov/plugins/codex-readcov/skills/codex-readcov/references/read-coverage.md"
+      ]
+    }
+  ]
+}
