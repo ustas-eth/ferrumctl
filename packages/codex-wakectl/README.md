@@ -21,17 +21,17 @@ This repo includes an optional Codex plugin with a skill for wake scheduling:
 plugins/codex-wakectl/skills/codex-wakectl/SKILL.md
 ```
 
-The repo also includes a marketplace manifest:
+The package also includes a marketplace manifest:
 
 ```text
 .agents/plugins/marketplace.json
 ```
 
-Install it from the GitHub marketplace source with:
+From the `usctl` monorepo, install it from the root marketplace source with:
 
 ```sh
-codex plugin marketplace add ustas-eth/codex-wakectl
-codex plugin add codex-wakectl@codex-wakectl
+codex plugin marketplace add ustas-eth/usctl
+codex plugin add codex-wakectl@usctl
 ```
 
 The skill documents the orchestrator workflow around the CLI: use `send` for

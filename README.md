@@ -36,6 +36,27 @@ uv tool install ./packages/codex-wakectl
 cargo install --locked --path ./packages/codex-readcov
 ```
 
+## Codex Plugins
+
+The root marketplace manifest exposes all current Codex plugins:
+
+```text
+.agents/plugins/marketplace.json
+```
+
+After this repo is available on GitHub, install the marketplace source and then
+install whichever plugins you want:
+
+```sh
+codex plugin marketplace add ustas-eth/usctl
+codex plugin add codex-goalctl@usctl
+codex plugin add codex-wakectl@usctl
+codex plugin add codex-readcov@usctl
+```
+
+The plugins provide Codex skills for using the host commands. They do not change
+the CLI behavior.
+
 ## Common Workflow
 
 Use the tools together as separate Unix primitives:
@@ -57,4 +78,3 @@ Run package checks from the package directories:
 (cd packages/codex-wakectl && PYTHONPATH=src python3 -m unittest discover -s tests -v)
 (cd packages/codex-readcov && cargo test)
 ```
-

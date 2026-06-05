@@ -70,17 +70,17 @@ orchestration:
 plugins/codex-goalctl/skills/codex-goalctl/SKILL.md
 ```
 
-The repo also includes a marketplace manifest:
+The package also includes a marketplace manifest:
 
 ```text
 .agents/plugins/marketplace.json
 ```
 
-Install it from the GitHub marketplace source with:
+From the `usctl` monorepo, install it from the root marketplace source with:
 
 ```sh
-codex plugin marketplace add ustas-eth/codex-goalctl
-codex plugin add codex-goalctl@codex-goalctl
+codex plugin marketplace add ustas-eth/usctl
+codex plugin add codex-goalctl@usctl
 ```
 
 The skill documents one workflow for coordinating subagents from a main Codex
