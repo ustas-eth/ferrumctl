@@ -1,0 +1,29 @@
+{
+  "name": "codex-goalctl",
+  "version": "0.1.0",
+  "description": "Codex skill for coordinating subagent goals with codex-goalctl.",
+  "author": {
+    "name": "ustas-eth"
+  },
+  "homepage": "https://github.com/ustas-eth/codex-goalctl",
+  "repository": "https://github.com/ustas-eth/codex-goalctl",
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "goals",
+    "orchestration"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Codex Goalctl",
+    "shortDescription": "Coordinate subagent goals from a main thread.",
+    "longDescription": "Codex Goalctl provides workflow guidance for main Codex sessions that assign, inspect, update, and clear subagent goals through the codex-goalctl host command.",
+    "developerName": "ustas-eth",
+    "category": "Productivity",
+    "capabilities": [
+      "Goal orchestration",
+      "Subagent workflow guidance"
+    ],
+    "defaultPrompt": "Use $codex-goalctl to assign a fresh goal to a Codex subagent."
+  }
+}
