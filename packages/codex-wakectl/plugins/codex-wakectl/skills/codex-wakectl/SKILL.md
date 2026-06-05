@@ -1,77 +1,168 @@
 ---
 name: codex-wakectl
-description: Use when acting as a Codex orchestrator or coding agent that needs to wake app-server-backed Codex CLI threads with the host codex-wakectl command. Covers immediate wakes, scheduled time/goal/stop/command wakes, running the wake queue, installing the user systemd timer, repeating milestones, and avoiding accidental overlapping turns. Do not use for ordinary terminal input injection or sessions that are not connected to a Codex app-server.
+description: Use when you need the host codex-wakectl command to send or schedule a normal input turn for the current Codex thread or another loaded app-server-backed Codex CLI thread. Covers immediate sends, time/goal/stop/command conditions, self-wakes, supervisor wakes, peer handoffs, queue runners, repeating milestones, and avoiding duplicate or overlapping turns. Do not use for terminal input injection, goal editing, transcript coverage, agent spawning, or sessions not connected to the same Codex app-server.
 ---
 
 # Codex Wakectl
 
 ## Purpose
 
-Use this skill when the current Codex session needs to send or schedule normal
-input turns for Codex CLI threads connected to `codex app-server`.
+Use this skill when a Codex thread needs to wake itself or another Codex thread
+through `codex app-server`.
 
-Assume `codex-wakectl` is installed on the host. It is not a terminal input
-injector, goal manager, transcript parser, or agent spawner.
+Assume `codex-wakectl` is installed on the host. It sends normal app-server
+input turns. It is not a terminal input injector, goal manager, transcript
+parser, or agent spawner.
 
-## App-Server Requirement
+## Model
 
-Use a shared app-server and connect target sessions to it:
+A queued wake has:
+
+- a **condition**: when the wake should fire
+- a **target thread**: the thread that receives the message
+- sometimes a **watched thread**: the thread whose goal or activity is observed
+- a **runner**: `codex-wakectl run`, systemd, or another scheduler that checks
+  queued jobs
+
+The watched thread and target thread may be the same.
+
+## App Server
 
 ```sh
 codex app-server --listen unix://
 codex --remote unix://
 ```
 
-Check loaded threads before debugging a missed wake:
+Only loaded threads on the selected app-server can be woken. Check that first:
 
 ```sh
 codex-wakectl loaded
 codex-wakectl status THREAD_ID
 ```
 
-## Workflow
-
-Send one immediate wake:
+Use `--endpoint` when the shared app-server is not the default `unix://`:
 
 ```sh
-codex-wakectl send THREAD_ID "A goal was assigned. Call get_goal and proceed."
+codex-wakectl --endpoint unix://PATH status THREAD_ID
 ```
 
-Queue wakes:
+To target the current thread:
 
 ```sh
-codex-wakectl add time --after 30m --to THREAD_ID "Wake up and check status."
-codex-wakectl add goal WORKER --status complete,blocked,budgetLimited,usageLimited --to ORCH "Worker goal stopped. Inspect it."
-codex-wakectl add stop WORKER --to ORCH "Worker stopped. Inspect it."
-codex-wakectl add cmd --to THREAD_ID "Predicate is true." -- sh -c 'test -f done.txt'
+SELF=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
+codex-wakectl status "$SELF"
 ```
 
-Process queued jobs once:
+`CODEX_THREAD_ID` identifies the current Codex thread. It does not prove the
+thread is wakeable. If `status` fails or says `not-loaded`, do not queue
+self-wakes until the correct `--endpoint` is known or the session is connected
+to the shared app-server.
+
+## Patterns
+
+Use actual Codex thread ids for placeholders such as `SELF`, `TARGET`,
+`WORKER`, `COORDINATOR`, and `PEER`.
+
+Immediate wake to a loaded target:
+
+```sh
+codex-wakectl send TARGET "Check status and continue if useful."
+```
+
+Self wake for a later check:
+
+```sh
+codex-wakectl add time --after 30m --to SELF "Time check: review progress and decide next step."
+```
+
+Self wake near a goal budget limit:
+
+```sh
+codex-wakectl add goal SELF --tokens-left-lte 300000 --to SELF "Token budget is low. Summarize or stop."
+```
+
+Supervisor wake: watch one thread and wake another:
+
+```sh
+codex-wakectl add goal WORKER --status complete,blocked,budgetLimited,usageLimited --to COORDINATOR "Worker goal stopped. Inspect it."
+```
+
+Stop wake when no goal is assigned:
+
+```sh
+codex-wakectl add stop WORKER --to COORDINATOR "Worker stopped. Inspect it."
+```
+
+Peer handoff:
+
+```sh
+codex-wakectl add cmd --to PEER "Input is ready. Inspect done.txt and continue." -- sh -c 'test -f done.txt'
+```
+
+Milestone wake:
+
+```sh
+codex-wakectl add goal WATCHED --time-used-every 30m --to TARGET "Goal time milestone. Reassess."
+codex-wakectl add goal WATCHED --tokens-used-every 3000000 --to TARGET "Token milestone. Reassess."
+```
+
+Repeating stop wake with a cap:
+
+```sh
+codex-wakectl add stop WORKER --repeat --max-fires 5 --to TARGET "Worker completed another turn. Inspect it."
+```
+
+Wait without sending a wake:
+
+```sh
+codex-wakectl wait goal WORKER --status complete,blocked --max-wait 30m
+```
+
+Use native subagent wait/poll when a native handle is available. Use
+`codex-wakectl wait` when only a thread id and app-server condition are
+available and synchronous blocking is acceptable. Use queued wakes when this
+thread should end the current turn and be resumed later.
+
+Process queued jobs once, or install the recurring runner:
 
 ```sh
 codex-wakectl run
-```
-
-Install the canonical recurring runner:
-
-```sh
 codex-wakectl systemd install --interval 30s
 ```
 
+Inspect and cancel queued jobs:
+
+```sh
+codex-wakectl list
+codex-wakectl cancel JOB_ID
+```
+
+## Conventions
+
+- Prefer `send` for immediate messages and `add` plus `run`/systemd for queued
+  wakes.
+- Arm watches before the event they should observe can happen. In particular,
+  create `stop` watches before starting the turn they should observe.
+- Make every wake message idempotent and explicit: why it fired, what to check,
+  and what action is expected.
+- Treat queued delivery as at-least-once. A wake may arrive late, duplicate
+  after a runner crash, or become redundant after manual handling.
+- Avoid `--allow-active` unless overlapping turns are intentional.
+- Keep command predicates cheap and safe to repeat.
+- Cancel stale jobs when the supervision loop is over.
+- In peer handoffs or delegated supervision, make ownership clear in the
+  message: who should inspect, who should report upward, and who should cancel
+  remaining jobs.
+
 ## References
 
-- Read `references/wake-scheduling.md` when stop edges, repeating wakes,
-  command predicates, state, or overlapping-turn behavior matter.
+- Read `references/runtime-semantics.md` when condition semantics, repeating
+  wakes, delivery guarantees, active-turn refusal, or SQLite state behavior
+  matter.
+- Read `references/coordination-practices.md` when choosing between native
+  wait/poll, `codex-wakectl wait`, and queued wakes, or when message hygiene,
+  persisted job contents, current-thread identity, or script parsing matter.
+- Read `references/troubleshooting.md` when a wake did not arrive, a job stays
+  pending, or duplicate wakes appear.
 - Read `references/orchestrator-worker-loop.md` when combining wakes with goals
   or read coverage.
-
-## Rules
-
-- Prefer `send` for immediate wakes and `add` plus `run`/systemd for scheduled
-  wakes.
-- Treat queued wakes as polling-backed notifications, not exact events.
-- Keep wake messages idempotent; they may arrive late or after manual handling.
-- Do not assume non-loaded or non-app-server sessions can be woken.
-- Create `stop` watches before starting the turn they should observe.
-- Avoid `--allow-active` unless overlapping turns are intentional.
-- Cancel stale jobs when the supervision loop is over.

@@ -15,9 +15,21 @@
       ]
     },
     {
-      "source": "packages/codex-wakectl/docs/wake-scheduling.md",
+      "source": "packages/codex-wakectl/docs/runtime-semantics.md",
       "targets": [
-        "packages/codex-wakectl/plugins/codex-wakectl/skills/codex-wakectl/references/wake-scheduling.md"
+        "packages/codex-wakectl/plugins/codex-wakectl/skills/codex-wakectl/references/runtime-semantics.md"
+      ]
+    },
+    {
+      "source": "packages/codex-wakectl/docs/coordination-practices.md",
+      "targets": [
+        "packages/codex-wakectl/plugins/codex-wakectl/skills/codex-wakectl/references/coordination-practices.md"
+      ]
+    },
+    {
+      "source": "packages/codex-wakectl/docs/troubleshooting.md",
+      "targets": [
+        "packages/codex-wakectl/plugins/codex-wakectl/skills/codex-wakectl/references/troubleshooting.md"
       ]
     },
     {

@@ -1,7 +1,7 @@
 {
   "name": "codex-wakectl",
   "version": "0.1.0",
-  "description": "Codex skill for scheduling wakes with codex-wakectl.",
+  "description": "Codex skill for scheduling app-server wakes with codex-wakectl.",
   "author": {
     "name": "ustas-eth"
   },
@@ -11,19 +11,19 @@
   "keywords": [
     "codex",
     "wakes",
-    "orchestration",
+    "coordination",
     "systemd"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Codex Wakectl",
     "shortDescription": "Schedule wakes for app-server-backed Codex threads.",
-    "longDescription": "Codex Wakectl provides workflow guidance for Codex sessions that use codex-wakectl to send immediate wakes, schedule time, goal, or command-based wakes, and install a user systemd timer to process wake jobs.",
+    "longDescription": "Codex Wakectl provides workflow guidance for Codex sessions that use codex-wakectl to send immediate wakes, schedule time, goal, stop, or command-based wakes, and install a user systemd timer to process wake jobs.",
     "developerName": "ustas-eth",
     "category": "Productivity",
     "capabilities": [
       "Codex thread wakes",
-      "Scheduled orchestration",
+      "Scheduled coordination",
       "Systemd timer guidance"
     ],
     "defaultPrompt": "Use $codex-wakectl to schedule a wake for an app-server-backed Codex thread."

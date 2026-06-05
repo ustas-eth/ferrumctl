@@ -41,7 +41,11 @@ codex-wakectl systemd install --interval 30s
 By default, wakes refuse to start a turn while the target thread is active. Use
 `--allow-active` only when overlapping turns are intentional.
 
-More detail: [docs/wake-scheduling.md](docs/wake-scheduling.md).
+More detail:
+
+- [docs/runtime-semantics.md](docs/runtime-semantics.md)
+- [docs/coordination-practices.md](docs/coordination-practices.md)
+- [docs/troubleshooting.md](docs/troubleshooting.md)
 
 ## Codex Skill
 
@@ -58,5 +62,5 @@ codex plugin marketplace add ustas-eth/ferrumctl
 codex plugin add codex-wakectl@ferrumctl
 ```
 
-The skill is optional. It explains orchestrator-safe wake patterns; it does not
-change CLI behavior or make non-app-server sessions wakeable.
+The skill is optional. It explains app-server wake patterns; it does not change
+CLI behavior or make non-app-server sessions wakeable.
