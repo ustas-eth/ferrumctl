@@ -1,6 +1,6 @@
 ---
 name: codex-goalctl
-description: Use when you need the host codex-goalctl command to inspect or change another Codex CLI thread/subagent's persisted goal: assign, update objective/status/token budget, clear, verify state, or spawn a subagent and set its goal. Do not use for your own task goal, ordinary worker-thread tasks, or built-in goal tools unless the user explicitly asks for codex-goalctl.
+description: "Use when you need the host codex-goalctl command to inspect or change another Codex CLI thread/subagent's persisted goal: assign, update objective/status/token budget, clear, verify state, or spawn a subagent and set its goal. Do not use for your own task goal, ordinary worker-thread tasks, or built-in goal tools unless the user explicitly asks for codex-goalctl."
 ---
 
 # Codex Goalctl

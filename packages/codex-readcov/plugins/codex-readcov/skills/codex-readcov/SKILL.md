@@ -1,6 +1,6 @@
 ---
 name: codex-readcov
-description: Use when you need the host codex-readcov command to inspect transcript read coverage for a Codex CLI thread or rollout JSONL file: which files were read, read counts, snapshot/delta windows, path filtering, paths-only output, or Unix composition of read path lists. Do not use for test coverage, file search, summarizing file contents, operating-system audit logs, or proving every file a process opened.
+description: "Use when you need the host codex-readcov command to inspect transcript read coverage for a Codex CLI thread or rollout JSONL file: which files were read, read counts, snapshot/delta windows, path filtering, paths-only output, or Unix composition of read path lists. Do not use for test coverage, file search, summarizing file contents, operating-system audit logs, or proving every file a process opened."
 ---
 
 # Codex Readcov
