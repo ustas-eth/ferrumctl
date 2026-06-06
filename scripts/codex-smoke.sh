@@ -97,11 +97,16 @@ export XDG_STATE_HOME="$SMOKE_ROOT/state"
 mkdir -p "$CODEX_HOME" "$XDG_STATE_HOME"
 
 log "Codex version"
-"$CODEX_BIN" --version
+codex_version=$("$CODEX_BIN" --version)
+printf '%s\n' "$codex_version"
+codex_semver=$(printf '%s\n' "$codex_version" | sed -n 's/^codex-cli \([0-9][0-9.]*\)$/\1/p')
 
 parser_tag=$(sed -n 's/.*tag = "\(rust-v[^"]*\)".*/\1/p' "$ROOT/packages/codex-readcov/Cargo.toml")
 if [[ -n "$parser_tag" ]]; then
   printf 'codex-readcov parser dependency: codex-shell-command %s\n' "$parser_tag"
+fi
+if [[ -n "$codex_semver" && -n "$parser_tag" && "$parser_tag" != "rust-v$codex_semver" ]]; then
+  fail "codex-readcov parser tag $parser_tag does not match codex-cli $codex_semver"
 fi
 
 log "goalctl stdio app-server compatibility"

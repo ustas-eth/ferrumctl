@@ -11,6 +11,6 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
-codex-shell-command = { git = "https://github.com/openai/codex.git", tag = "rust-v0.136.0" }
+codex-shell-command = { git = "https://github.com/openai/codex.git", tag = "rust-v0.137.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
