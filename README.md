@@ -130,8 +130,11 @@ python3 scripts/sync-skill-references.py --check
 ## Development
 
 ```sh
-(cd packages/codex-goalctl && PYTHONPATH=src python3 -m unittest discover -s tests -v)
-(cd packages/codex-wakectl && PYTHONPATH=src python3 -m unittest discover -s tests -v)
-(cd packages/codex-readcov && cargo test)
-python3 scripts/sync-skill-references.py --check
+scripts/check.sh
+scripts/codex-smoke.sh
 ```
+
+`scripts/check.sh` is the normal pre-commit check. `scripts/codex-smoke.sh` is
+the local compatibility probe to run after Codex upgrades; it uses a temporary
+`CODEX_HOME` and `XDG_STATE_HOME`, starts only its own app-server, and cleans up
+after itself.

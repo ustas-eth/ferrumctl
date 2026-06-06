@@ -8,7 +8,9 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+from codex_wakectl import appserver
 from codex_wakectl import cli
 
 
@@ -282,6 +284,43 @@ class ConditionTests(unittest.TestCase):
             self.assertTrue(jobs[0]["allowActive"])
             self.assertEqual(jobs[0]["timeout"], 45.0)
 
+    def test_cmd_add_time_job_persists_cli_policy_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "jobs.sqlite3"
+            args = cli.build_parser().parse_args(
+                [
+                    "--endpoint",
+                    "unix://custom.sock",
+                    "add",
+                    "time",
+                    "--after",
+                    "1s",
+                    "--to",
+                    "target-thread",
+                    "--allow-active",
+                    "wake message",
+                    "--timeout",
+                    "45",
+                    "--state",
+                    str(path),
+                ]
+            )
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                rc = cli.asyncio.run(args.func(args))
+
+            self.assertEqual(rc, 0)
+            self.assertRegex(stdout.getvalue().strip(), r"^[0-9a-f]{12}$")
+            jobs = cli.list_jobs(path)
+            self.assertEqual(len(jobs), 1)
+            self.assertEqual(jobs[0]["condition"]["type"], "time")
+            self.assertEqual(jobs[0]["targetThreadId"], "target-thread")
+            self.assertEqual(jobs[0]["message"], "wake message")
+            self.assertEqual(jobs[0]["endpoint"], "unix://custom.sock")
+            self.assertTrue(jobs[0]["allowActive"])
+            self.assertEqual(jobs[0]["timeout"], 45.0)
+
     def test_state_database_migrates_existing_queue(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "jobs.sqlite3"
@@ -397,6 +436,34 @@ class ConditionTests(unittest.TestCase):
         )
         self.assertIn("OnActiveSec=30s", timer)
         self.assertIn("OnUnitInactiveSec=30s", timer)
+
+
+class AppServerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_appserver_closes_socket_when_initialize_fails(self) -> None:
+        class FakeWebSocket:
+            def __init__(self) -> None:
+                self.closed = False
+
+            async def send(self, message: str) -> None:
+                pass
+
+            async def recv(self) -> str:
+                return '{"id":1,"error":{"message":"boom"}}'
+
+            async def close(self) -> None:
+                self.closed = True
+
+        ws = FakeWebSocket()
+
+        async def fake_connect(endpoint: str) -> FakeWebSocket:
+            return ws
+
+        with mock.patch.object(appserver, "connect_websocket", fake_connect):
+            with self.assertRaises(cli.WakectlError):
+                async with cli.AppServer("unix://", 1):
+                    pass
+
+        self.assertTrue(ws.closed)
 
 
 if __name__ == "__main__":
