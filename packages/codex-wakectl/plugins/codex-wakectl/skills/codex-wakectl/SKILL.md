@@ -1,6 +1,6 @@
 ---
 name: codex-wakectl
-description: "Use when you need the host codex-wakectl command to send or schedule a normal input turn for the current Codex thread or another loaded app-server-backed Codex CLI thread. Covers immediate sends, time/goal/stop/command conditions, self-wakes, supervisor wakes, peer handoffs, queue runners, repeating milestones, and avoiding duplicate or overlapping turns. Do not use for terminal input injection, goal editing, transcript coverage, agent spawning, or sessions not connected to the same Codex app-server."
+description: "Use when you need the host codex-wakectl command to send or schedule a normal input turn for the current Codex thread or another loaded app-server-backed Codex CLI thread. Covers immediate sends, time/goal/stop/command conditions, self-wakes, supervisor wakes, active-goal steering/checkpoints, peer handoffs, queue runners, repeating milestones, and avoiding duplicate or overlapping turns. Do not use for terminal input injection, goal editing, transcript coverage, agent spawning, or sessions not connected to the same Codex app-server."
 ---
 
 # Codex Wakectl
@@ -90,6 +90,12 @@ Supervisor wake: watch one thread and wake another:
 codex-wakectl add goal WORKER --status complete,blocked,budgetLimited,usageLimited --to COORDINATOR "Worker goal stopped. Inspect it."
 ```
 
+Supervisor milestone: watch worker goal usage and wake the coordinator:
+
+```sh
+codex-wakectl add goal WORKER --tokens-used-every 2000000 --max-fires 4 --to COORDINATOR "Worker token milestone. Inspect goal state, outputs, and read coverage if available; decide whether to continue, steer, checkpoint, promote, or stop."
+```
+
 Stop wake when no goal is assigned:
 
 ```sh
@@ -144,6 +150,11 @@ codex-wakectl cancel JOB_ID
 
 - Prefer `send` for immediate messages and `add` plus `run`/systemd for queued
   wakes.
+- A `send` to a worker is not a reply channel to the sender. The worker receives
+  a normal turn in its own transcript. Use it for non-blocking steering when the
+  worker may keep going; if the answer must gate continuation, pause or
+  otherwise stop the worker, ask the checkpoint question, inspect the answer
+  after that turn stops, then resume.
 - Arm watches before the event they should observe can happen. In particular,
   create `stop` watches before starting the turn they should observe.
 - Make every wake message idempotent and explicit: why it fired, what to check,
@@ -163,15 +174,16 @@ codex-wakectl cancel JOB_ID
   wakes, delivery guarantees, active-turn refusal, or SQLite state behavior
   matter.
 - Read `references/coordination-practices.md` when choosing between native
-  wait/poll, `codex-wakectl wait`, and queued wakes, or when message hygiene,
-  persisted job contents, current-thread identity, or script parsing matter.
+  wait/poll, `codex-wakectl wait`, queued wakes, steering, and blocking
+  checkpoints, or when message hygiene, persisted job contents, current-thread
+  identity, or script parsing matter.
 - Read `references/troubleshooting.md` when a wake did not arrive, a job stays
   pending, or duplicate wakes appear.
 - Read `references/coordination-principles.md` when deciding how live wakes
   compose with native controls, persisted goals, transcript coverage, or
   partial skill availability.
 - Read `references/coordination-recipes.md` for command combinations involving
-  self-wakes, main/worker review, worker/reviewer chains, peer handoffs, or
-  external managers.
+  self-wakes, main/worker review, active-goal supervision,
+  worker/reviewer chains, peer handoffs, or external managers.
 - Read `references/operational-caveats.md` when duplicate wakes, overlapping
   turns, stale jobs, or cross-surface consistency matter.

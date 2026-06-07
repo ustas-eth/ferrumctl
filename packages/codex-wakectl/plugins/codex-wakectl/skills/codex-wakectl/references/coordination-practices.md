@@ -50,6 +50,23 @@ Queued wakes are for durable later attention. A queued job lets the current
 process or Codex turn end while another runner keeps checking the condition and
 sends a future input turn.
 
+## Steering And Checkpoints
+
+`codex-wakectl send` starts a normal turn in the target thread. It is not a
+reply channel to the sender. If the target has an active goal, it may answer in
+its own transcript and continue working.
+
+Use a direct send for non-blocking steering: a small correction, reminder, or
+new constraint that the target can apply without stopping.
+
+Use a checkpoint when the answer must be inspected before work continues. Pause
+or otherwise stop the target first, ask the checkpoint question, inspect the
+result, then resume. For goal-backed workers, that usually means a goal status
+update plus a wake message to continue from `get_goal`.
+
+If the coordinator will not wait synchronously, arm a `stop` wake before sending
+the checkpoint question so the coordinator is woken when the answer turn ends.
+
 ## Scripting
 
 `wait` is a Unix condition primitive. It is useful in shell scripts, CI jobs, or

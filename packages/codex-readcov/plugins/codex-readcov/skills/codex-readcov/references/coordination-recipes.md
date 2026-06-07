@@ -73,6 +73,49 @@ codex-readcov delta worker.before.json packages --limit 20
 If main has a native subagent handle and should stay active, native wait or poll
 can replace the `wakectl add goal` watch.
 
+## Active Worker Supervision
+
+Use this when a long-running worker has an active goal and the coordinator
+should periodically decide whether to leave it alone, steer it, stop it, or
+promote a result.
+
+```sh
+MAIN=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
+WORKER=worker-thread-id
+
+codex-wakectl add goal "$WORKER" \
+  --tokens-used-every 2000000 \
+  --max-fires 4 \
+  --to "$MAIN" \
+  "Worker token milestone. Inspect goal state, outputs, and read coverage if available; decide whether to continue, steer, checkpoint, promote, or stop."
+```
+
+Use non-blocking steering when the worker may keep going:
+
+```sh
+codex-wakectl send "$WORKER" \
+  "Apply this ranking check to the next cycle and keep going."
+```
+
+Use a checkpoint when the answer must gate continuation:
+
+```sh
+codex-wakectl add stop "$WORKER" --to "$MAIN" \
+  "Worker paused for checkpoint. Send the checkpoint question."
+codex-goalctl update "$WORKER" --status paused
+
+# when main is woken after the worker stops
+codex-wakectl add stop "$WORKER" --to "$MAIN" \
+  "Worker answered checkpoint. Inspect it before resuming."
+codex-wakectl send "$WORKER" \
+  "Answer this checkpoint question briefly, update the relevant files if needed, and do not continue until resumed."
+
+# after inspection
+codex-goalctl update "$WORKER" --status active
+codex-wakectl send "$WORKER" \
+  "Resume the goal. Call get_goal and continue."
+```
+
 ## Three Threads: Main, Worker, Reviewer
 
 Main initializes. Worker does the task. Reviewer inspects the worker result and
