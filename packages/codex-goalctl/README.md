@@ -40,8 +40,10 @@ codex-goalctl update THREAD_ID --status paused
 codex-goalctl clear THREAD_ID
 ```
 
-Goal writes do not reliably wake a CLI-owned thread. Send a normal follow-up
-message, or use `codex-wakectl send` when the worker is app-server-backed:
+Goal writes do not reliably wake a CLI-owned thread. Send a short follow-up
+message through the native subagent handle when you have one. If wakectl is
+installed, `codex-wakectl send` can deliver the follow-up to an
+app-server-backed worker when only the thread id is available:
 
 ```text
 A goal was assigned. Call get_goal and proceed.

@@ -28,6 +28,10 @@ with `--allow-active`. Usually this is the right behavior. Use `--allow-active`
 for non-blocking reminders or corrections; wait for idle when the message is a
 checkpoint.
 
+If the target is idle but still has an active goal, it is wakeable and likely
+needs a small message to observe or continue that goal. Inspect goal state
+before changing direction.
+
 For command predicates, verify the command exits `0` from the directory where
 the job was created.
 

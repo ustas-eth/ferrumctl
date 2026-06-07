@@ -15,6 +15,11 @@ Use `--endpoint` on any command when the shared app-server is not the default
 `unix://`. If the app-server is down, the endpoint changed, or the target thread
 is not loaded, queued jobs stay pending and can be retried by a later runner.
 
+App-server status is separate from goal status. `idle` means the thread has no
+running turn at that moment. A thread with an `active` goal can still be
+`idle`, especially when the goal was written externally and the thread has not
+yet been prompted to observe it.
+
 ## Conditions
 
 Immediate sends are not queued. They check that the target is loaded and idle,

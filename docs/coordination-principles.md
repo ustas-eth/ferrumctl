@@ -31,12 +31,27 @@ It does not prove that the thread is loaded on a shared app-server.
 
 ## Native And Host Control
 
-Use native subagent spawn, input, wait, or poll when the current session has the
-native handle and should stay active.
+Native subagent input is the best immediate channel when the current session has
+the live subagent handle and needs to send a message now.
+
+Native wait or poll is useful when the current turn should stay active and
+blocking for the worker is acceptable. For long-running goal work, it is often
+better to let the coordinator stop and use a later wake.
 
 Use ferrumctl when the useful handle is a thread id, when the current turn
 should stop and be resumed later, when another host process is coordinating, or
 when durable goal/read state must be inspected outside the target thread.
+
+## Goal And Turn State
+
+App-server status and goal status answer different questions. App-server
+`idle` means no turn is running right now. It does not mean the thread is free
+for unrelated work, and it does not prove the thread has observed a recently
+written goal.
+
+A thread with an `active` goal and app-server `idle` status has durable work
+assigned, but no turn is currently acting on it. A short input message that
+tells the worker to call `get_goal` is often what starts or resumes that work.
 
 ## Commands And Skills
 

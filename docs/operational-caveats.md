@@ -16,6 +16,11 @@ the command.
 Goal writes are persisted state changes, not input turns. Do not assume that
 changing a goal wakes a CLI-owned thread.
 
+Goal status is durable assignment state, not app-server activity. A thread can
+have an `active` goal while app-server status is `idle`, especially after an
+external goal write that the thread has not yet observed. Do not treat
+app-server `idle` as availability for unrelated work.
+
 `codex-goalctl replace` is clear-then-set, not an atomic app-server primitive.
 If another process reads or writes the same goal during that window, it may
 observe the cleared state or overwrite the new state.
@@ -38,6 +43,11 @@ should be idempotent.
 By default, wakes send only to idle target threads. Use `--allow-active` only
 for messages that are safe while the target keeps running. For checkpoints,
 wait until the target stops so the answer can be inspected before continuation.
+
+Sending to an idle goal-backed worker is appropriate when the message is meant
+to make it observe or continue the current goal, such as asking it to call
+`get_goal`. For new assignments, checkpoints, or changed ownership, update the
+goal state deliberately instead of relying on turn idleness.
 
 Create `stop` watches before the turn they should observe can stop. A stop that
 already happened is not a durable event to replay later.
@@ -74,5 +84,6 @@ Prefer workflows that tolerate retries:
 - cancel queued wakes once their purpose is complete
 - use `--json` for machine parsing
 
-When a native subagent handle is available and the coordinating turn should
-stay active, native wait or poll is usually simpler than queued wakes.
+When a native subagent handle is available, native input is usually the cleanest
+immediate message channel. Native wait or poll is useful only when blocking the
+coordinator is acceptable; queued wakes are better for durable later attention.

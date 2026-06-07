@@ -41,9 +41,10 @@ codex-readcov delta self.before.json packages --limit 20
 ## Two Threads: Main Plus Worker
 
 Main initializes work, worker runs, main reviews when the worker stops. The
-full version uses the `goalctl`, `wakectl`, and `readcov` skills; omit commands
-for unavailable skills or replace wake/watch commands with native subagent input
-and wait.
+full version uses the `goalctl`, `wakectl`, and `readcov` skills. If main has a
+native subagent handle, native input can replace the `wakectl send`; native
+wait or poll can replace the wake watch only when main should stay active and
+blocking is acceptable.
 
 ```sh
 MAIN=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
@@ -70,8 +71,7 @@ codex-goalctl get "$WORKER"
 codex-readcov delta worker.before.json packages --limit 20
 ```
 
-If main has a native subagent handle and should stay active, native wait or poll
-can replace the `wakectl add goal` watch.
+If main should end its turn and return later, keep the `wakectl add goal` watch.
 
 ## Active Worker Supervision
 
@@ -96,6 +96,10 @@ Use non-blocking steering when the worker may keep going:
 codex-wakectl send --allow-active "$WORKER" \
   "Apply this ranking check to the next cycle and keep going."
 ```
+
+If the coordinator has a native subagent input handle, use that handle for the
+same immediate steering message. Keep `wakectl` for milestone watches and later
+resumption.
 
 Use a checkpoint when the answer must gate continuation:
 

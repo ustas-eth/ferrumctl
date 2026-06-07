@@ -51,5 +51,7 @@ immediately:
 A goal was assigned. Call get_goal and proceed.
 ```
 
-Use `codex-wakectl send` when the worker is loaded on a shared app-server. Use
-native subagent input when a native subagent handle is available.
+Use native subagent input when a native subagent handle is available. Use
+`codex-wakectl send` only when wakectl is installed and appropriate for the
+caller: the worker is loaded on a shared app-server, and the caller has only
+the thread id or needs host-level delivery.

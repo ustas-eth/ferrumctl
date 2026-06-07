@@ -34,10 +34,12 @@ and queued job that should target that server.
 
 ## Native Handles, Wait, and Queued Wakes
 
-When a supervising agent has a native subagent handle and a native wait/poll
-operation, that native channel is the best way to wait for the subagent. It has
-more context than wakectl: the agent object, completion state, and response
-channel.
+When a supervising agent has a native subagent input handle, that handle is the
+best immediate way to send a direct message to the subagent.
+
+Native wait or poll is useful when the supervisor should stay active and
+blocking for the worker is acceptable. It is less useful for long-running goal
+work where the supervisor should end its turn and be resumed later.
 
 `codex-wakectl wait` is useful when the coordinator has only a thread id plus
 app-server access. It blocks the invoking process until a Codex condition is
@@ -48,6 +50,17 @@ Queued wakes are for durable later attention. A queued job lets the current
 process or Codex turn end while another runner keeps checking the condition and
 sends a future input turn.
 
+## Goal State And Idleness
+
+App-server `idle` only means no turn is running. It does not mean the target has
+no active assignment, and it does not mean the target has observed a recently
+written goal.
+
+A goal-backed worker with app-server `idle` and goal status `active` has
+durable work assigned, but no turn is currently acting on it. A small wake that
+tells it to call `get_goal` often starts or resumes that work. Use app-server
+status only to decide whether delivery needs `--allow-active`.
+
 ## Steering And Checkpoints
 
 `codex-wakectl send` starts a normal turn in the target thread. It is not a
@@ -56,6 +69,10 @@ its own transcript and continue working.
 
 Use `send --allow-active` for non-blocking steering: a small correction,
 reminder, or new constraint that the target can apply without stopping.
+
+Sending to an idle goal-backed worker is fine when the message is meant to make
+it observe or continue the current goal. Do not treat idle as permission to
+assign unrelated work.
 
 Use a checkpoint when the answer must be inspected before work continues. Pause
 or otherwise stop the target first, ask the checkpoint question, inspect the

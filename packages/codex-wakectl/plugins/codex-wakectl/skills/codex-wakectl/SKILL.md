@@ -26,6 +26,19 @@ A queued wake has:
 
 The watched thread and target thread may be the same.
 
+## Choosing The Channel
+
+Use native subagent input for an immediate message when this session has the
+live subagent handle.
+
+Use native wait or poll only when this turn should stay active and blocking for
+the worker is acceptable. For long-running goal work, prefer a queued wake so
+the coordinator can stop and be resumed later.
+
+Use `codex-wakectl` when the useful handle is a thread id, when the sender needs
+self/peer/external coordination, or when a condition should wake a thread in the
+future.
+
 ## App Server
 
 For a thread to be wakeable, it must be started or resumed through the same
@@ -61,12 +74,16 @@ thread is wakeable. If `status` fails or says `not-loaded`, do not queue
 self-wakes until the correct `--endpoint` is known or the session is connected
 to the shared app-server.
 
+App-server `idle` means no turn is running. It does not mean the target has no
+active goal, has observed a recently written goal, or is available for unrelated
+work.
+
 ## Patterns
 
 Use actual Codex thread ids for placeholders such as `SELF`, `TARGET`,
 `WORKER`, `COORDINATOR`, and `PEER`.
 
-Immediate wake to a loaded target:
+Immediate wake to a loaded target when `codex-wakectl` is the chosen channel:
 
 ```sh
 codex-wakectl send TARGET "Check status and continue if useful."
@@ -127,10 +144,10 @@ Wait without sending a wake:
 codex-wakectl wait goal WORKER --status complete,blocked --max-wait 30m
 ```
 
-Use native subagent wait/poll when a native handle is available. Use
-`codex-wakectl wait` when only a thread id and app-server condition are
-available and synchronous blocking is acceptable. Use queued wakes when this
-thread should end the current turn and be resumed later.
+Use native wait or poll when this turn should stay active and blocking is
+acceptable. Use `codex-wakectl wait` when only a thread id and app-server
+condition are available and synchronous blocking is acceptable. Use queued
+wakes when this thread should end the current turn and be resumed later.
 
 Process queued jobs once, or install the recurring runner:
 
@@ -149,12 +166,15 @@ codex-wakectl cancel JOB_ID
 ## Conventions
 
 - Prefer `send` for immediate messages and `add` plus `run`/systemd for queued
-  wakes.
+  wakes after `codex-wakectl` is the chosen surface.
 - A `send` to a worker is not a reply channel to the sender. The worker receives
   input in its own transcript.
 - Send to idle targets for ordinary follow-up work. Use `send --allow-active`
   only for a reminder or correction that the target can apply while its current
   turn keeps running.
+- For goal-backed workers, an active goal is durable assignment. App-server
+  `idle` means no turn is currently acting on it; a short follow-up that tells
+  the worker to call `get_goal` is often what starts or resumes the work.
 - For checkpoints, stop or pause the worker first, send the question, inspect
   the answer after that turn stops, then resume deliberately.
 - Arm watches before the event they should observe can happen. In particular,
@@ -177,9 +197,9 @@ codex-wakectl cancel JOB_ID
   wakes, delivery guarantees, active-turn refusal, or SQLite state behavior
   matter.
 - Read `references/coordination-practices.md` when choosing between native
-  wait/poll, `codex-wakectl wait`, queued wakes, steering, and blocking
-  checkpoints, or when message hygiene, persisted job contents, current-thread
-  identity, or script parsing matter.
+  input, native wait/poll, `codex-wakectl wait`, queued wakes, steering, and
+  blocking checkpoints, or when message hygiene, persisted job contents,
+  current-thread identity, or script parsing matter.
 - Read `references/troubleshooting.md` when a wake did not arrive, a job stays
   pending, or duplicate wakes appear.
 - Read `references/coordination-principles.md` when deciding how live wakes

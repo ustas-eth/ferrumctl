@@ -1,6 +1,6 @@
 ---
 name: codex-goalctl
-description: "Use when you need the host codex-goalctl command to inspect or change another Codex CLI thread/subagent's persisted goal: assign, update objective/status/token budget, clear, verify state, or spawn a subagent and set its goal. Do not use for your own task goal, ordinary worker-thread tasks, or built-in goal tools unless the user explicitly asks for codex-goalctl."
+description: "Use when you need the host codex-goalctl command to inspect or change another Codex CLI thread/subagent's persisted goal: assign, update objective/status/token budget, clear, verify state, or set a spawned subagent's goal by thread id. Do not use for your own task goal, ordinary worker-thread tasks, or built-in goal tools unless the user explicitly asks for codex-goalctl."
 ---
 
 # Codex Goalctl
@@ -45,7 +45,10 @@ goal write:
 A goal was assigned. Call get_goal and proceed.
 ```
 
-Use `codex-wakectl send` when the worker is app-server-backed.
+Use native subagent input when a native subagent handle is available. Use
+`codex-wakectl send` only if the `codex-wakectl` skill is available, and either
+the worker is app-server-backed with only a thread id or host-level delivery is
+explicitly intended.
 
 Inspect state:
 
@@ -88,8 +91,9 @@ Use `--json` when another script or tool will parse output.
 - Use `update` for edits that should preserve counters.
 - Do not assume goal writes wake a worker; send a follow-up message when it
   should act now.
-- Prefer a short, direct wake message that tells the worker to call `get_goal`.
-- Keep goal text as the durable assignment; keep wake text as a small prompt to
-  look at that assignment.
+- Prefer a short, direct follow-up message that tells the worker to call
+  `get_goal`.
+- Keep goal text as the durable assignment; keep follow-up text as a small
+  prompt to look at that assignment.
 - Keep the distinction clear: `codex-goalctl` provides primitives; this skill
   chooses an orchestrator workflow.
