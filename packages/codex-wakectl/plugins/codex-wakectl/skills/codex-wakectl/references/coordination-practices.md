@@ -56,8 +56,8 @@ sends a future input turn.
 reply channel to the sender. If the target has an active goal, it may answer in
 its own transcript and continue working.
 
-Use a direct send for non-blocking steering: a small correction, reminder, or
-new constraint that the target can apply without stopping.
+Use `send --allow-active` for non-blocking steering: a small correction,
+reminder, or new constraint that the target can apply without stopping.
 
 Use a checkpoint when the answer must be inspected before work continues. Pause
 or otherwise stop the target first, ask the checkpoint question, inspect the

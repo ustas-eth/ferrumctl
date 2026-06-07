@@ -439,6 +439,22 @@ class ConditionTests(unittest.TestCase):
 
 
 class AppServerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_send_turn_refuses_active_thread_without_guard_bypass(self) -> None:
+        class FakeApp:
+            async def request(self, method: str, params=None):
+                if method == "thread/loaded/list":
+                    return {"data": ["thread"], "nextCursor": None}
+                if method == "thread/read":
+                    return {"thread": {"status": {"type": "active", "activeFlags": []}}}
+                raise AssertionError(f"unexpected method: {method}")
+
+        with self.assertRaises(cli.WakectlError) as caught:
+            await cli.send_turn(FakeApp(), "thread", "message")
+
+        message = str(caught.exception)
+        self.assertIn("refusing to send without --allow-active", message)
+        self.assertNotIn("overlap", message)
+
     async def test_appserver_closes_socket_when_initialize_fails(self) -> None:
         class FakeWebSocket:
             def __init__(self) -> None:

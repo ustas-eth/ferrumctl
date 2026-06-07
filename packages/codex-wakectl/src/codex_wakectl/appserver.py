@@ -152,7 +152,7 @@ async def send_turn(
     status = await get_thread_status(app, thread_id)
     name = status_name(status)
     if name != "idle" and not allow_active:
-        raise WakectlError(f"thread is {name}; refusing to start overlapping turn")
+        raise WakectlError(f"thread is {name}; refusing to send without --allow-active")
     result = await app.request(
         "turn/start",
         {

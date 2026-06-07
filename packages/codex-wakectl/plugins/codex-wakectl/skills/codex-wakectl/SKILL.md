@@ -1,6 +1,6 @@
 ---
 name: codex-wakectl
-description: "Use when you need the host codex-wakectl command to send or schedule a normal input turn for the current Codex thread or another loaded app-server-backed Codex CLI thread. Covers immediate sends, time/goal/stop/command conditions, self-wakes, supervisor wakes, active-goal steering/checkpoints, peer handoffs, queue runners, repeating milestones, and avoiding duplicate or overlapping turns. Do not use for terminal input injection, goal editing, transcript coverage, agent spawning, or sessions not connected to the same Codex app-server."
+description: "Use when you need the host codex-wakectl command to send or schedule a normal input turn for the current Codex thread or another loaded app-server-backed Codex CLI thread. Covers immediate sends, time/goal/stop/command conditions, self-wakes, supervisor wakes, reminders to running threads, checkpoints, peer handoffs, queue runners, repeating milestones, and duplicate wake avoidance. Do not use for terminal input injection, goal editing, transcript coverage, agent spawning, or sessions not connected to the same Codex app-server."
 ---
 
 # Codex Wakectl
@@ -151,17 +151,20 @@ codex-wakectl cancel JOB_ID
 - Prefer `send` for immediate messages and `add` plus `run`/systemd for queued
   wakes.
 - A `send` to a worker is not a reply channel to the sender. The worker receives
-  a normal turn in its own transcript. Use it for non-blocking steering when the
-  worker may keep going; if the answer must gate continuation, pause or
-  otherwise stop the worker, ask the checkpoint question, inspect the answer
-  after that turn stops, then resume.
+  input in its own transcript.
+- Send to idle targets for ordinary follow-up work. Use `send --allow-active`
+  only for a reminder or correction that the target can apply while its current
+  turn keeps running.
+- For checkpoints, stop or pause the worker first, send the question, inspect
+  the answer after that turn stops, then resume deliberately.
 - Arm watches before the event they should observe can happen. In particular,
   create `stop` watches before starting the turn they should observe.
 - Make every wake message idempotent and explicit: why it fired, what to check,
   and what action is expected.
 - Treat queued delivery as at-least-once. A wake may arrive late, duplicate
   after a runner crash, or become redundant after manual handling.
-- Avoid `--allow-active` unless overlapping turns are intentional.
+- Do not use `--allow-active` for questions or commands whose answer must decide
+  whether the target continues.
 - Keep command predicates cheap and safe to repeat.
 - Cancel stale jobs when the supervision loop is over.
 - In peer handoffs or delegated supervision, make ownership clear in the
@@ -185,5 +188,5 @@ codex-wakectl cancel JOB_ID
 - Read `references/coordination-recipes.md` for command combinations involving
   self-wakes, main/worker review, active-goal supervision,
   worker/reviewer chains, peer handoffs, or external managers.
-- Read `references/operational-caveats.md` when duplicate wakes, overlapping
-  turns, stale jobs, or cross-surface consistency matter.
+- Read `references/operational-caveats.md` when duplicate wakes, active target
+  sends, stale jobs, or cross-surface consistency matter.

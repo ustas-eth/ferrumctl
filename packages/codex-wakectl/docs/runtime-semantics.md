@@ -16,8 +16,13 @@ is not loaded, queued jobs stay pending and can be retried by a later runner.
 ## Conditions
 
 Immediate sends are not queued. They check that the target is loaded and idle,
-then start a turn. If the target is active, the send fails unless
-`--allow-active` is set.
+then submit a wake.
+
+If the target is active, the send fails unless `--allow-active` is set. With
+`--allow-active`, wakectl skips its idle-target guard and asks Codex to accept
+the input anyway. In current Codex app-server behavior, input sent to an active
+regular turn is added to that turn's pending input queue. Review and compaction
+turns are not steerable this way.
 
 Queued conditions are evaluated by a runner. Time conditions are not exact
 timers; they fire when a runner observes that the scheduled time has passed.
@@ -54,8 +59,10 @@ result.
 Delivery is at-least-once: if a runner sends a wake and then crashes before it
 records the result, a later runner can send the same job again.
 
-By default, queued wakes refuse to start a turn while the target thread is
-active. Use `--allow-active` only when overlapping turns are intentional.
+By default, queued wakes send only to idle target threads. Use `--allow-active`
+only for messages that are safe to deliver while the target keeps running. For
+checkpoints, let the target stop first so the answer can be inspected before
+work continues.
 
 ## State
 

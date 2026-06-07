@@ -81,7 +81,7 @@ def add_target_message(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--allow-active",
         action="store_true",
-        help="allow this queued wake to start while the target thread is active",
+        help="send even if the target is active when the wake fires",
     )
     parser.add_argument("message", help="message to send when the wake fires")
 
@@ -223,10 +223,10 @@ def build_parser() -> argparse.ArgumentParser:
     add_global_options(status, defaults=False)
     status.set_defaults(func=cmd_status)
 
-    send = sub.add_parser("send", help="send an immediate wake turn")
+    send = sub.add_parser("send", help="send an immediate wake")
     send.add_argument("thread_id")
     send.add_argument("message")
-    send.add_argument("--allow-active", action="store_true")
+    send.add_argument("--allow-active", action="store_true", help="send even if the target is active")
     add_global_options(send, defaults=False)
     send.set_defaults(func=cmd_send)
 

@@ -93,7 +93,7 @@ codex-wakectl add goal "$WORKER" \
 Use non-blocking steering when the worker may keep going:
 
 ```sh
-codex-wakectl send "$WORKER" \
+codex-wakectl send --allow-active "$WORKER" \
   "Apply this ranking check to the next cycle and keep going."
 ```
 

@@ -75,8 +75,9 @@ Process queued jobs with `codex-wakectl run`, or install the user timer:
 codex-wakectl systemd install --interval 30s
 ```
 
-By default, wakes refuse to start a turn while the target thread is active. Use
-`--allow-active` only when overlapping turns are intentional.
+By default, wakectl sends only to idle target threads. Use `--allow-active`
+only for a reminder or correction that can be handled while the current turn
+keeps running. For checkpoint questions, wait for the target to stop first.
 
 More detail:
 

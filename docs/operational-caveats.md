@@ -35,8 +35,9 @@ Delivery is best treated as at-least-once. A wake may arrive late, duplicate
 after a runner crash, or become redundant after manual handling. Wake messages
 should be idempotent.
 
-By default, wakes avoid active target threads. Use `--allow-active` only when
-overlapping turns are intentional.
+By default, wakes send only to idle target threads. Use `--allow-active` only
+for messages that are safe while the target keeps running. For checkpoints,
+wait until the target stops so the answer can be inspected before continuation.
 
 Create `stop` watches before the turn they should observe can stop. A stop that
 already happened is not a durable event to replay later.

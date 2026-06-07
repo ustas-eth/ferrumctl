@@ -21,9 +21,10 @@ codex-wakectl run
 codex-wakectl list
 ```
 
-If the target is active, wakectl refuses to start an overlapping turn unless the
-job was created with `--allow-active`. Usually this is the right behavior; wait
-for the target to become idle instead of forcing overlap.
+If the target is active, wakectl refuses the wake unless the job was created
+with `--allow-active`. Usually this is the right behavior. Use `--allow-active`
+for non-blocking reminders or corrections; wait for idle when the message is a
+checkpoint.
 
 For command predicates, verify the command exits `0` from the directory where
 the job was created.
