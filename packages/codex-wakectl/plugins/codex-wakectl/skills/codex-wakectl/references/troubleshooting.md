@@ -54,4 +54,6 @@ Common causes:
 - the user or another agent already handled the condition manually
 - a repeating job was left active after the supervision loop ended
 
-Use `codex-wakectl list` and `codex-wakectl cancel JOB_ID` to remove stale jobs.
+Use `codex-wakectl list --json` to inspect candidates, but cancel only jobs
+whose id, target thread, condition, and message match your workflow or an
+explicit user instruction.

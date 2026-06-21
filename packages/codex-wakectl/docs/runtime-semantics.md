@@ -80,6 +80,10 @@ $XDG_STATE_HOME/codex-wakectl/jobs.sqlite3
 or `~/.local/state/codex-wakectl/jobs.sqlite3` when `XDG_STATE_HOME` is unset.
 Override with `--state PATH`.
 
+The default state file is shared by all workflows using the same host user and
+state path. Jobs from unrelated agents, projects, and target threads may appear
+in the same list. Use `--state PATH` for an isolated queue.
+
 `codex-wakectl run` claims pending jobs before evaluating them. Claims expire so
 another runner can retry after a crashed process.
 

@@ -88,4 +88,4 @@ The surfaces can diverge temporarily:
 
 Treat cross-surface workflows as retryable. Put durable intent in goals, make
 wake messages small and idempotent, snapshot before the interval being measured,
-and cancel stale queued wakes.
+and cancel only stale queued wakes that belong to the current workflow.

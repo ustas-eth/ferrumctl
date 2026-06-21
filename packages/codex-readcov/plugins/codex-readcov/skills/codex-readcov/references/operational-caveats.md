@@ -55,7 +55,8 @@ Create `stop` watches before the turn they should observe can stop. A stop that
 already happened is not a durable event to replay later.
 
 Repeating conditions should have an owner and, when appropriate, a cap. Cancel
-stale jobs when the coordination loop is over.
+stale jobs owned by that coordination loop when it is over. The default
+wakectl queue is shared; unrelated jobs may be pending in the same database.
 
 ## Read Coverage
 
@@ -83,7 +84,7 @@ Prefer workflows that tolerate retries:
 - write durable intent to the goal
 - send small wake messages that tell the target what to inspect
 - snapshot before the interval being measured
-- cancel queued wakes once their purpose is complete
+- cancel queued wakes owned by the workflow once their purpose is complete
 - use `--json` for machine parsing
 
 When a native subagent handle is available, native input is usually the cleanest

@@ -95,6 +95,9 @@ Process queued wakes with `codex-wakectl run`, or install the user timer:
 codex-wakectl systemd install --interval 30s
 ```
 
+The default wake queue is shared for the host user. Keep job ids for wakes you
+create, and do not cancel jobs owned by other workflows.
+
 More combinations are in [docs/coordination-recipes.md](docs/coordination-recipes.md).
 
 ## Layout

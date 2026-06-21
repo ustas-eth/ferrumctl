@@ -96,6 +96,10 @@ Queued jobs persist message text, predicates, endpoints, and thread ids in the
 SQLite state database. Avoid storing secrets, large private context, or fragile
 one-time instructions in wake messages or command predicates.
 
+If a workflow may need cleanup, record the job ids it creates in its own notes
+or artifacts. Do not infer ownership from proximity in `codex-wakectl list`
+output.
+
 ## Wake Messages
 
 Wake messages should be idempotent because queued delivery is at-least-once.

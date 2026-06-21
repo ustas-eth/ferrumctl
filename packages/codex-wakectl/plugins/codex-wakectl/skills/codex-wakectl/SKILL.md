@@ -1,6 +1,6 @@
 ---
 name: codex-wakectl
-description: "Use when you need the host codex-wakectl command to send or schedule a normal input turn for the current Codex thread or another loaded app-server-backed Codex CLI thread. Covers immediate sends, time/goal/stop/command conditions, self-wakes, supervisor wakes, reminders to running threads, checkpoints, peer handoffs, queue runners, repeating milestones, and duplicate wake avoidance. Do not use for terminal input injection, goal editing, transcript coverage, agent spawning, or sessions not connected to the same Codex app-server."
+description: "Use when you need the host codex-wakectl command to send or schedule a normal input turn for the current Codex thread or another loaded app-server-backed Codex CLI thread. Covers immediate sends, time/goal/stop/command conditions, self-wakes, supervisor wakes, reminders to running threads, checkpoints, peer handoffs, queue runners, repeating milestones, and duplicate wake avoidance for jobs you own. Do not use for terminal input injection, goal editing, transcript coverage, agent spawning, sessions not connected to the same Codex app-server, or canceling jobs you did not create or were not explicitly asked to manage."
 ---
 
 # Codex Wakectl
@@ -25,6 +25,10 @@ A queued wake has:
   queued jobs
 
 The watched thread and target thread may be the same.
+
+The default wake database is shared by all workflows using the same host user
+and state path. `codex-wakectl list` is a shared queue view, not this thread's
+private job list.
 
 ## Choosing The Channel
 
@@ -156,7 +160,7 @@ codex-wakectl run
 codex-wakectl systemd install --interval 30s
 ```
 
-Inspect and cancel queued jobs:
+Inspect the shared queue and cancel only a job this workflow owns:
 
 ```sh
 codex-wakectl list
@@ -186,7 +190,9 @@ codex-wakectl cancel JOB_ID
 - Do not use `--allow-active` for questions or commands whose answer must decide
   whether the target continues.
 - Keep command predicates cheap and safe to repeat.
-- Cancel stale jobs when the supervision loop is over.
+- Cancel only stale jobs created by this workflow, or jobs the user explicitly
+  delegated to you. Before canceling, verify the job id, target thread,
+  condition, and message.
 - In peer handoffs or delegated supervision, make ownership clear in the
   message: who should inspect, who should report upward, and who should cancel
   remaining jobs.
