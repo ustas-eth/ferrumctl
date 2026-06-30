@@ -36,7 +36,8 @@ timers; they fire when a runner observes that the scheduled time has passed.
 
 Goal predicates are combined with AND semantics. A job fires only when every
 specified status, token, and time predicate matches. `--tokens-left-lte`
-requires the watched goal to have a token budget.
+requires the watched goal to have a token budget. Token predicates read the
+goal's persisted `tokensUsed` counter, not context-window usage.
 
 Stop conditions are active-to-idle edges. If the watched thread is already idle
 when the job is created, the job waits until the thread is observed active and

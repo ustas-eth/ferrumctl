@@ -7,6 +7,8 @@ goals.
 
 A goal belongs to a Codex thread. The app-server stores the objective, status,
 optional token budget, and usage counters such as elapsed time and tokens used.
+Goal token counters are separate from context-window usage. Codex counts
+non-cached input plus output toward a goal token budget.
 
 `codex-goalctl` does not decide task progress. It asks the app-server to read,
 set, or clear goal fields; a running thread may later update its own goal state
