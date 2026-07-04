@@ -3,7 +3,7 @@
 `codex-wakectl` sends and schedules normal input turns for Codex threads loaded
 on a shared `codex app-server`.
 
-Use it for self-reminders, worker completion notifications, peer handoffs, and
+Use it for self-reminders, worker completion wakes, peer handoffs, and
 long waits that should resume a thread later. It does not start Codex sessions
 or inject terminal input.
 
@@ -53,7 +53,7 @@ Wake this thread later:
 
 ```sh
 SELF=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
-codex-wakectl add time --after 10m --to "$SELF" "Wake up and check status."
+codex-wakectl add time --after 10m --to "$SELF" "Time check."
 ```
 
 Wake a coordinator when a worker stops:

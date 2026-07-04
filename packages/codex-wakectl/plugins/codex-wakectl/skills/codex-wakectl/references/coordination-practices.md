@@ -104,10 +104,14 @@ output.
 
 ## Wake Messages
 
-Wake messages should be idempotent because queued delivery is at-least-once.
-Good messages state why the wake fired, what to inspect, and what next action is
-expected.
+Wake messages become ordinary user messages in the target transcript. They
+continue the existing session, consume context, and may survive into compaction
+summaries.
 
-For peer handoffs or delegated supervision, the message should make ownership
-clear: what the receiving thread owns, whether it should report upward, and
-whether any remaining jobs should be canceled.
+Wake text is best treated as a resumption signal. It should identify the event
+that fired and the next decision, not carry the task plan itself. Avoid storing
+approval history, command runbooks, full plans, or project state in wake text.
+
+For peer handoffs or delegated supervision, a short ownership marker can help.
+If the receiving thread needs instructions it does not already have, establish
+that authority deliberately before scheduling the wake.

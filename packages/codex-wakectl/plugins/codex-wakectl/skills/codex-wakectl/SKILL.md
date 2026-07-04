@@ -14,6 +14,10 @@ Assume `codex-wakectl` is installed on the host. It sends normal app-server
 input turns. It is not a terminal input injector, goal manager, transcript
 parser, or agent spawner.
 
+A wake is normal user input, not a hidden notification. Its main value is
+resuming the target thread. It continues the existing thread and remains in the
+transcript, so do not use wake text as a durable instruction store.
+
 ## Model
 
 A queued wake has:
@@ -114,7 +118,7 @@ codex-wakectl add goal WORKER --status complete,blocked,budgetLimited,usageLimit
 Supervisor milestone: watch worker goal usage and wake the coordinator:
 
 ```sh
-codex-wakectl add goal WORKER --tokens-used-every 2000000 --max-fires 4 --to COORDINATOR "Worker token milestone. Inspect goal state, outputs, and read coverage if available; decide whether to continue, steer, checkpoint, promote, or stop."
+codex-wakectl add goal WORKER --tokens-used-every 2000000 --max-fires 4 --to COORDINATOR "Worker token milestone. Reassess."
 ```
 
 Stop wake when no goal is assigned:
@@ -126,7 +130,7 @@ codex-wakectl add stop WORKER --to COORDINATOR "Worker stopped. Inspect it."
 Peer handoff:
 
 ```sh
-codex-wakectl add cmd --to PEER "Input is ready. Inspect done.txt and continue." -- sh -c 'test -f done.txt'
+codex-wakectl add cmd --to PEER "Input is ready." -- sh -c 'test -f done.txt'
 ```
 
 Milestone wake:
@@ -183,8 +187,11 @@ codex-wakectl cancel JOB_ID
   the answer after that turn stops, then resume deliberately.
 - Arm watches before the event they should observe can happen. In particular,
   create `stop` watches before starting the turn they should observe.
-- Make every wake message idempotent and explicit: why it fired, what to check,
-  and what action is expected.
+- When you create a wake, treat the message as a small resumption signal, not a
+  task plan. Name the trigger and next decision.
+- Do not put approval history, command runbooks, full plans, or project state in
+  wake text. The target continues with its existing context, goals, files, and
+  user instructions.
 - Treat queued delivery as at-least-once. A wake may arrive late, duplicate
   after a runner crash, or become redundant after manual handling.
 - Do not use `--allow-active` for questions or commands whose answer must decide
@@ -193,9 +200,9 @@ codex-wakectl cancel JOB_ID
 - Cancel only stale jobs created by this workflow, or jobs the user explicitly
   delegated to you. Before canceling, verify the job id, target thread,
   condition, and message.
-- In peer handoffs or delegated supervision, make ownership clear in the
-  message: who should inspect, who should report upward, and who should cancel
-  remaining jobs.
+- In peer handoffs or delegated supervision, use short ownership markers. If
+  the receiver needs instructions it does not already have, establish them
+  deliberately outside the wake before scheduling it.
 
 ## References
 

@@ -87,7 +87,7 @@ codex-wakectl add goal "$WORKER" \
   --tokens-used-every 2000000 \
   --max-fires 4 \
   --to "$MAIN" \
-  "Worker token milestone. Inspect goal state, outputs, and read coverage if available; decide whether to continue, steer, checkpoint, promote, or stop."
+  "Worker token milestone. Reassess."
 ```
 
 Use non-blocking steering when the worker may keep going:
@@ -105,12 +105,12 @@ Use a checkpoint when the answer must gate continuation:
 
 ```sh
 codex-wakectl add stop "$WORKER" --to "$MAIN" \
-  "Worker paused for checkpoint. Send the checkpoint question."
+  "Worker stopped for checkpoint."
 codex-goalctl update "$WORKER" --status paused
 
 # when main is woken after the worker stops
 codex-wakectl add stop "$WORKER" --to "$MAIN" \
-  "Worker answered checkpoint. Inspect it before resuming."
+  "Worker answered checkpoint."
 codex-wakectl send "$WORKER" \
   "Answer this checkpoint question briefly, update the relevant files if needed, and do not continue until resumed."
 
@@ -143,7 +143,7 @@ codex-goalctl replace "$REVIEWER" \
 codex-wakectl add goal "$WORKER" \
   --status complete,blocked,budgetLimited,usageLimited \
   --to "$REVIEWER" \
-  "Worker stopped. Review WORKER=$WORKER and worker.before.json, then update your goal."
+  "Worker stopped. Review from your goal."
 
 codex-wakectl add goal "$REVIEWER" \
   --status complete,blocked,budgetLimited,usageLimited \
@@ -190,14 +190,14 @@ thread id.
 ## Peer Handoff
 
 One loaded session wakes another when a host-visible condition becomes true.
-This requires the `wakectl` skill. Add `goalctl` only when the next session
-needs durable instructions beyond the wake message.
+This requires the `wakectl` skill. Add `goalctl` when the next session needs a
+durable assignment.
 
 ```sh
 NEXT=next-thread-id
 
 codex-wakectl add cmd --to "$NEXT" \
-  "Input is ready. Inspect done.txt and continue." \
+  "Input is ready." \
   -- sh -c 'test -f done.txt'
 ```
 

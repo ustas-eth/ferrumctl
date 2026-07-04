@@ -53,12 +53,12 @@ wakectl sends one wake and records the newest bucket; it does not send catch-up
 wakes for every skipped bucket. The current bucket is seeded at job creation, so
 old milestones do not fire immediately.
 
-Stop notifications repeat only with `--repeat`. Use `--max-fires N` when a
+Stop wakes repeat only with `--repeat`. Use `--max-fires N` when a
 repeating job should stop by itself.
 
 ## Delivery
 
-Queued wakes are polling-backed notifications. They may run late, retry after a
+Queued wakes are polling-backed input turns. They may run late, retry after a
 failed send, or become redundant if the target or supervisor already handled the
 result.
 
