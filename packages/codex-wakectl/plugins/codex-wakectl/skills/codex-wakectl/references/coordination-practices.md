@@ -108,10 +108,16 @@ Wake messages become ordinary user messages in the target transcript. They
 continue the existing session, consume context, and may survive into compaction
 summaries.
 
-Wake text is best treated as a resumption signal. It should identify the event
-that fired and the next decision, not carry the task plan itself. Avoid storing
-approval history, command runbooks, full plans, or project state in wake text.
+Immediate `send` input can be the instruction you intend to deliver. Queued
+wake input is different because it may fire late, retry after a failure, or be
+read after surrounding state changed.
 
-For peer handoffs or delegated supervision, a short ownership marker can help.
-If the receiving thread needs instructions it does not already have, establish
-that authority deliberately before scheduling the wake.
+For queued wakes, prefer short messages that identify the event and next
+decision. Use longer queued input only when it is deliberately the instruction
+and remains safe if delivered late or more than once. Avoid storing evolving
+approval history, command runbooks, full plans, or project state in queued wake
+text.
+
+For peer handoffs or delegated supervision, a short ownership marker can help
+when the receiver already has context. If it does not, send or assign the
+needed instructions deliberately.

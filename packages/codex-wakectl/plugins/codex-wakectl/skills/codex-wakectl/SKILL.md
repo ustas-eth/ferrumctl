@@ -14,9 +14,10 @@ Assume `codex-wakectl` is installed on the host. It sends normal app-server
 input turns. It is not a terminal input injector, goal manager, transcript
 parser, or agent spawner.
 
-A wake is normal user input, not a hidden notification. Its main value is
-resuming the target thread. It continues the existing thread and remains in the
-transcript, so do not use wake text as a durable instruction store.
+Wakectl sends normal user input, not hidden notifications. The target continues
+the existing thread and the input remains in the transcript. `send` can carry
+the instruction you intend to deliver now. Queued wakes may fire later or more
+than once, so their messages usually work best as small event markers.
 
 ## Model
 
@@ -175,6 +176,7 @@ codex-wakectl cancel JOB_ID
 
 - Prefer `send` for immediate messages and `add` plus `run`/systemd for queued
   wakes after `codex-wakectl` is the chosen surface.
+- With `send`, write the normal input you intend the target to receive.
 - A `send` to a worker is not a reply channel to the sender. The worker receives
   input in its own transcript.
 - Send to idle targets for ordinary follow-up work. Use `send --allow-active`
@@ -187,11 +189,12 @@ codex-wakectl cancel JOB_ID
   the answer after that turn stops, then resume deliberately.
 - Arm watches before the event they should observe can happen. In particular,
   create `stop` watches before starting the turn they should observe.
-- When you create a wake, treat the message as a small resumption signal, not a
-  task plan. Name the trigger and next decision.
-- Do not put approval history, command runbooks, full plans, or project state in
-  wake text. The target continues with its existing context, goals, files, and
-  user instructions.
+- When you schedule with `add`, prefer a small message that names the event and
+  next decision. Use longer queued input only when it is deliberately the
+  instruction and is safe to receive late or more than once.
+- Avoid storing evolving approval history, command runbooks, full plans, or
+  project state in queued wake text. The target also has its existing context,
+  goals, files, and user instructions.
 - Treat queued delivery as at-least-once. A wake may arrive late, duplicate
   after a runner crash, or become redundant after manual handling.
 - Do not use `--allow-active` for questions or commands whose answer must decide
@@ -200,9 +203,9 @@ codex-wakectl cancel JOB_ID
 - Cancel only stale jobs created by this workflow, or jobs the user explicitly
   delegated to you. Before canceling, verify the job id, target thread,
   condition, and message.
-- In peer handoffs or delegated supervision, use short ownership markers. If
-  the receiver needs instructions it does not already have, establish them
-  deliberately outside the wake before scheduling it.
+- In peer handoffs or delegated supervision, use short ownership markers when
+  the receiver already has context. If the receiver does not, send or assign the
+  needed instructions deliberately.
 
 ## References
 

@@ -19,8 +19,8 @@ native goal tools are usually better when available.
 loaded on a selected Codex app-server. It is the tool for self-wakes,
 supervisor wakes, peer handoffs, and long waits that should resume later.
 Those wakes are normal user input in the target transcript, not a separate
-notification channel. Their main value is resuming attention, not carrying
-durable instructions.
+notification channel. Immediate sends can carry instructions; queued wakes need
+extra care because they may arrive later than the state that created them.
 
 `codex-readcov` reads rollout transcripts and reports file-read evidence. It is
 useful for worker audits, self-audits, negative coverage, and comparing what
@@ -91,7 +91,7 @@ The surfaces can diverge temporarily:
 - a wake can arrive after the condition was handled manually
 - a live rollout can grow while `readcov` scans it
 
-Treat cross-surface workflows as retryable. Put durable intent in goals, keep
-wake messages as small resumption signals, snapshot before the interval being
+Treat cross-surface workflows as retryable. Put durable intent in goals, prefer
+small idempotent queued wake messages, snapshot before the interval being
 measured, and cancel only stale queued wakes that belong to the current
 workflow.

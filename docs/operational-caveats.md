@@ -36,10 +36,10 @@ thread id is not enough.
 Queued wakes require a runner. A queued job will not fire unless
 `codex-wakectl run`, systemd, or another scheduler checks the queue.
 
-Delivery is best treated as at-least-once. A wake may arrive late, duplicate
-after a runner crash, or become redundant after manual handling. Wake messages
-should be short and idempotent because they are normal transcript input, not a
-separate instruction channel.
+Delivery is best treated as at-least-once. A queued wake may arrive late,
+duplicate after a runner crash, or become redundant after manual handling.
+Queued wake messages should be short and idempotent unless the delayed input is
+deliberately meant to be the instruction.
 
 By default, wakes send only to idle target threads. Use `--allow-active` only
 for messages that are safe while the target keeps running. For checkpoints,
@@ -81,7 +81,7 @@ different surfaces. They can be temporarily inconsistent.
 Prefer workflows that tolerate retries:
 
 - write durable intent to the goal
-- send small wake messages that mark the event
+- prefer small queued wake messages that mark the event
 - snapshot before the interval being measured
 - cancel queued wakes owned by the workflow once their purpose is complete
 - use `--json` for machine parsing
