@@ -44,10 +44,15 @@ Edit the existing goal in place. Only supplied fields are changed.
 codex-goalctl update THREAD_ID "same goal, new wording"
 codex-goalctl update THREAD_ID --status paused
 codex-goalctl update THREAD_ID --token-budget 50000
+codex-goalctl update THREAD_ID --clear-token-budget
 ```
 
 Use `update` when existing usage and time counters should be preserved. It
 fails if no objective, status, or token budget is supplied.
+
+Changing status to `paused` prevents the goal from remaining active, but it is
+not a turn-interrupt request. A turn already in progress may need separate live
+control before a blocking checkpoint.
 
 Start a fresh goal.
 

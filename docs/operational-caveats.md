@@ -36,6 +36,10 @@ thread id is not enough.
 Queued wakes require a runner. A queued job will not fire unless
 `codex-wakectl run`, systemd, or another scheduler checks the queue.
 
+Command predicates run with the runner's environment and must remain true until
+a runner observes them. The built-in systemd units process one selected state
+database; installing them again for another `--state` replaces that selection.
+
 Delivery is best treated as at-least-once. A queued wake may arrive late,
 duplicate after a runner crash, or become redundant after manual handling.
 Queued wake messages should be short and idempotent unless the delayed input is
@@ -50,17 +54,31 @@ to make it observe or continue the current goal, such as asking it to call
 `get_goal`. For new assignments, checkpoints, or changed ownership, update the
 goal state deliberately instead of relying on turn idleness.
 
-Create `stop` watches before the turn they should observe can stop. A stop that
-already happened is not a durable event to replay later.
+Create `stop` watches before the turn they should observe. The job records the
+newest turn as its cursor, then detects later terminal turns from persisted turn
+history. Several completions between runner passes are coalesced into one wake.
+
+A wake sent by a running thread can arrive before that thread's final response
+is committed. A terminal goal status can also be observed before the current
+turn ends. Use thread status or a stop watch when the receiver depends on a
+confirmed turn boundary rather than a readiness signal.
+
+A wake carries input to its target; it does not carry another thread's response
+back. Retrieve a native subagent result through the native handle. For standalone
+threads, put results in a shared artifact or inspect the thread deliberately.
 
 Repeating conditions should have an owner and, when appropriate, a cap. Cancel
 stale jobs owned by that coordination loop when it is over. The default
 wakectl queue is shared; unrelated jobs may be pending in the same database.
+Treat a repeating goal wake as belonging to one goal. Replace the wake job when
+the goal is replaced when the old wake should not continue supervising the new
+assignment. Wakectl rebases its milestone cursor when it observes the new goal.
 
 ## Read Coverage
 
-`codex-readcov` is transcript-derived evidence, not OS-level audit data. It
-does not prove every file descriptor opened by a process.
+`codex-readcov` reports transcript-recorded read actions, not OS-level audit
+data. It does not verify command success or prove every file descriptor opened
+by a process.
 
 Path operands filter reported reads; they do not define the universe of files
 that should have been read. Negative coverage is a separate set operation over

@@ -12,11 +12,34 @@ thread, but it does not prove that the current thread is wakeable.
 Use `--endpoint` on any command when the shared app-server is not the default
 `unix://`. If the app-server is down, the endpoint changed, or the target thread
 is not loaded, queued jobs stay pending and can be retried by a later runner.
+When a job is created, a Unix endpoint is resolved to an absolute socket path so
+the runner does not reinterpret it under a different cwd or `CODEX_HOME`.
 
 App-server status is separate from goal status. `idle` means the thread has no
 running turn at that moment. A thread with an `active` goal can still be
 `idle`, especially when the goal was written externally and the thread has not
 yet been prompted to observe it.
+
+`inspect` can read persisted turns even when a thread is not loaded. Sending or
+interrupting still requires the target to be loaded on the selected endpoint.
+
+## Inspection And Interruption
+
+`inspect` reads thread metadata, goal state, and the two newest turns through
+the app-server. The newest turn includes structured activity such as agent
+messages, command status, file changes, searches, and tool calls. Command output,
+patch content, and tool results are omitted from the report.
+
+The report is assembled from several app-server requests rather than one atomic
+snapshot. A running thread can advance while it is being inspected.
+
+Inspection and durable stop watches use the experimental
+`thread/turns/list` method available in Codex 0.144 and compatible releases.
+
+`interrupt` discovers the active turn id and sends `turn/interrupt` with that id
+as a precondition. If the active turn changes before the request is accepted,
+Codex rejects the request instead of interrupting a different turn. The command
+returns after Codex reports the interruption.
 
 ## Conditions
 
@@ -37,13 +60,18 @@ specified status, token, and time predicate matches. `--tokens-left-lte`
 requires the watched goal to have a token budget. Token predicates read the
 goal's persisted `tokensUsed` counter, not context-window usage.
 
-Stop conditions are active-to-idle edges. If the watched thread is already idle
-when the job is created, the job waits until the thread is observed active and
-then idle again. `unknown` status is not treated as active or stopped.
+Stop conditions use persisted turn history. At creation, the job records the
+newest turn id and status. It fires when that turn becomes terminal or a newer
+turn reaches `completed`, `interrupted`, or `failed`. A turn can therefore start
+and finish between runner passes without being missed.
 
 Command conditions run from the directory where the job was created. The wakectl
 timeout also bounds the predicate command. Queued command predicates may run
 more than once before they become ready, so keep them cheap and safe to repeat.
+They inherit the runner's environment, not the environment of the process that
+created the job. This matters when the runner is a systemd service. A transient
+success between runner passes is not observed; keep the predicate true until it
+is handled.
 
 ## Repeats
 
@@ -53,8 +81,13 @@ wakectl sends one wake and records the newest bucket; it does not send catch-up
 wakes for every skipped bucket. The current bucket is seeded at job creation, so
 old milestones do not fire immediately.
 
-Stop wakes repeat only with `--repeat`. Use `--max-fires N` when a
-repeating job should stop by itself.
+Repeating goal jobs remember the watched goal's creation time. When a later
+goal is observed, the stored bucket rebases without firing. Counter decreases
+also rebase older jobs that do not yet have that marker.
+
+Stop wakes repeat only with `--repeat`. If several turns finish between runner
+passes, one wake is sent and the cursor advances to the newest observed turn.
+Use `--max-fires N` when a repeating job should stop by itself.
 
 ## Delivery
 
@@ -70,6 +103,11 @@ only for messages that are safe to deliver while the target keeps running. For
 checkpoints, let the target stop first so the answer can be inspected before
 work continues.
 
+An active or not-loaded target defers delivery and leaves the job pending.
+`systemError`, connection, predicate, database, and other operational errors
+also leave the job pending, but make that `run` invocation exit nonzero and
+record `lastError`.
+
 ## State
 
 Wake jobs are stored in SQLite under:
@@ -83,10 +121,16 @@ Override with `--state PATH`.
 
 The default state file is shared by all workflows using the same host user and
 state path. Jobs from unrelated agents, projects, and target threads may appear
-in the same list. Use `--state PATH` for an isolated queue.
+in the same list. `--state PATH` selects a different queue.
 
 `codex-wakectl run` claims pending jobs before evaluating them. Claims expire so
 another runner can retry after a crashed process.
 
+`cancel` changes pending jobs only. Fired and canceled rows remain historical
+records visible through `list --all`.
+
 The systemd timer is the canonical recurring runner on hosts with user systemd.
-On other hosts, run `codex-wakectl run` from the scheduler you already use.
+Its fixed user-unit names process one state database at a time; installing it
+again with another `--state` replaces that configuration. Run additional state
+databases from schedulers you manage. On hosts without user systemd, run
+`codex-wakectl run` from the scheduler already in use.

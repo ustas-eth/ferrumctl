@@ -1,7 +1,7 @@
 {
   "name": "codex-readcov",
   "version": "0.1.0",
-  "description": "Codex skill for measuring transcript read coverage with codex-readcov.",
+  "description": "Codex skill for inspecting transcript-recorded file-read actions.",
   "author": {
     "name": "ustas-eth"
   },
@@ -17,15 +17,15 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Codex Readcov",
-    "shortDescription": "Measure Codex transcript read coverage.",
-    "longDescription": "Codex Readcov provides workflow guidance for using codex-readcov to inspect transcript read coverage, compare snapshot deltas, filter paths, and compose read path lists with Unix tools.",
+    "shortDescription": "Inspect Codex transcript read actions.",
+    "longDescription": "Codex Readcov provides workflow guidance for using codex-readcov to inspect transcript-recorded file-read actions, compare snapshot deltas, filter paths, and compose path lists with Unix tools.",
     "developerName": "ustas-eth",
     "category": "Productivity",
     "capabilities": [
-      "Transcript read coverage",
+      "Transcript read actions",
       "Snapshot coverage deltas",
       "Unix workflow guidance"
     ],
-    "defaultPrompt": "Use $codex-readcov to inspect transcript read coverage for a Codex thread."
+    "defaultPrompt": "Use $codex-readcov to inspect transcript-recorded file-read actions for a Codex thread."
   }
 }

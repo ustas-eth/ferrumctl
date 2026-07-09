@@ -6,9 +6,9 @@ Small Unix-style control tools for Codex agent workflows.
 Use the tools separately and compose them with the shell:
 
 - `codex-goalctl` reads and changes persisted Codex thread goals.
-- `codex-wakectl` sends and schedules input turns for app-server-backed Codex
-  threads.
-- `codex-readcov` counts file read coverage from Codex rollout transcripts.
+- `codex-wakectl` inspects, controls, wakes, and schedules app-server-backed
+  Codex threads.
+- `codex-readcov` counts file-read actions from Codex rollout transcripts.
 
 The optional Codex plugins add skills that explain when agents should use each
 command. They do not change CLI behavior.
@@ -41,7 +41,7 @@ The marketplace manifest is [.agents/plugins/marketplace.json](.agents/plugins/m
 
 ## What You Can Do
 
-Assign durable work, wake the worker, then inspect what it read:
+Assign durable work, wake the worker, then inspect its recorded read actions:
 
 ```sh
 WORKER=thread-id
@@ -50,16 +50,17 @@ MAIN=main-thread-id
 codex-readcov snapshot "$WORKER" > worker.before.json
 codex-goalctl replace "$WORKER" "Review this package and mark the goal complete."
 codex-wakectl send "$WORKER" "A goal was assigned. Call get_goal and proceed."
+codex-wakectl inspect "$WORKER"
 codex-readcov delta worker.before.json packages --limit 20
 ```
 
-Resume a main thread when a worker stops:
+Resume a main thread when a worker goal reaches a terminal status:
 
 ```sh
 codex-wakectl add goal "$WORKER" \
   --status complete,blocked,budgetLimited,usageLimited \
   --to "$MAIN" \
-  "Worker goal stopped. Inspect it."
+  "Worker goal reached a terminal status. Inspect it."
 ```
 
 Schedule a self-reminder from a loaded Codex session:

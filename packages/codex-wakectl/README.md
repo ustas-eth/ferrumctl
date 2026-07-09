@@ -1,11 +1,11 @@
 # codex-wakectl
 
-`codex-wakectl` sends and schedules normal input turns for Codex threads loaded
-on a shared `codex app-server`.
+`codex-wakectl` inspects, interrupts, wakes, and schedules input for Codex
+threads through a shared `codex app-server`.
 
-Use it for self-reminders, worker completion wakes, peer handoffs, and
-long waits that should resume a thread later. It does not start Codex sessions
-or inject terminal input.
+Use it to see what another thread is doing, deliver immediate input, wait for
+turn completion, or resume a thread when a later condition is met. It does not
+start Codex sessions or inject terminal input.
 
 ## Install
 
@@ -43,6 +43,12 @@ quick check.
 
 ## Examples
 
+Inspect recent activity without modifying the thread:
+
+```sh
+codex-wakectl inspect THREAD_ID
+```
+
 Send a turn now:
 
 ```sh
@@ -56,11 +62,17 @@ SELF=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
 codex-wakectl add time --after 10m --to "$SELF" "Time check."
 ```
 
-Wake a coordinator when a worker stops:
+Wake a coordinator when a goal or turn ends:
 
 ```sh
-codex-wakectl add goal WORKER --status complete,blocked,budgetLimited,usageLimited --to ORCH "Worker goal stopped."
-codex-wakectl add stop WORKER --to ORCH "Worker stopped. Inspect it."
+codex-wakectl add goal WORKER --status complete,blocked,budgetLimited,usageLimited --to ORCH "Worker goal reached a terminal status."
+codex-wakectl add stop WORKER --to ORCH "Worker turn ended. Inspect it."
+```
+
+Interrupt the current turn:
+
+```sh
+codex-wakectl interrupt THREAD_ID
 ```
 
 Wake a thread when a host-visible condition becomes true:
@@ -77,7 +89,7 @@ codex-wakectl systemd install --interval 30s
 
 By default, wakectl sends only to idle target threads. Use `--allow-active`
 only for a reminder or correction that can be handled while the current turn
-keeps running. For checkpoint questions, wait for the target to stop first.
+keeps running. Inspect an unfamiliar thread before steering or interrupting it.
 
 More detail:
 

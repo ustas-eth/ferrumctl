@@ -1,14 +1,14 @@
 ---
 name: codex-readcov
-description: "Use when you need the host codex-readcov command to inspect transcript read coverage for a Codex CLI thread or rollout JSONL file: which files were read, read counts, snapshot/delta windows, path filtering, paths-only output, or Unix composition of read path lists. Do not use for test coverage, file search, summarizing file contents, operating-system audit logs, or proving every file a process opened."
+description: "Use when you need the host codex-readcov command to inspect transcript-recorded file-read actions for a Codex CLI thread or rollout JSONL file: read counts, snapshot/delta windows, path filtering, paths-only output, or Unix composition of read path lists. Do not use for test coverage, file search, summarizing file contents, operating-system audit logs, or proving that commands succeeded or every file access was observed."
 ---
 
 # Codex Readcov
 
 ## Purpose
 
-Use this skill when you need to answer which files a Codex thread read according
-to its rollout transcript.
+Use this skill when you need to inspect file-read actions reconstructed from a
+Codex thread's rollout transcript.
 
 Assume `codex-readcov` is installed on the host. It reads transcripts; it does
 not inspect live process file descriptors, scrape shell output, measure test
@@ -21,6 +21,8 @@ coverage, or summarize file contents.
 - `snapshot` records the current transcript cursor.
 - `delta` counts reads appended after a snapshot, or between two snapshots.
 - Path operands filter reported reads; they do not define a coverage universe.
+- Counts classify recorded commands; they do not verify command success or file
+  contents returned to the model.
 
 For the current thread, use `CODEX_THREAD_ID` when it is available:
 
@@ -95,4 +97,5 @@ codex-readcov delta before.json PATH --paths-only --limit 0 | sort > read.txt
 - Use `--paths-only --limit 0` before `sort`, `comm`, or `uniq`.
 - Keep negative coverage, union, and intersection outside `codex-readcov`.
 - Use `--json` when another program will parse output.
-- Do not present results as OS-level audit data or proof of every file access.
+- Do not present results as verified command success, model context exposure,
+  OS-level audit data, or proof of every file access.

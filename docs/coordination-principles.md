@@ -13,16 +13,15 @@ scripts, or another agent's workflow.
 one session manages another session's durable intent. For the current thread,
 native goal tools are usually better when available.
 
-`codex-wakectl` sends input turns and schedules wake conditions for threads
-loaded on a selected Codex app-server. It is the tool for self-wakes,
-supervisor wakes, peer handoffs, and long waits that should resume later.
-Those wakes are normal user input in the target transcript, not a separate
-notification channel. Immediate sends can carry instructions; queued wakes need
-extra care because they may arrive later than the state that created them.
+`codex-wakectl` inspects recent thread activity, controls active turns, sends
+input turns, and schedules wake conditions through a selected Codex app-server.
+It is the tool for self-wakes, supervisor wakes, peer handoffs, and long waits
+that should resume later. Wakes are normal user input in the target transcript,
+not a separate notification channel.
 
-`codex-readcov` reads rollout transcripts and reports file-read evidence. It is
-useful for worker audits, self-audits, negative coverage, and comparing what
-several workers actually inspected.
+`codex-readcov` reads rollout transcripts and reports recorded file-read
+actions. It is useful for worker audits, self-audits, negative coverage, and
+comparing the read commands several workers issued.
 
 ## Thread Identity
 
@@ -44,6 +43,9 @@ better to let the coordinator stop and use a later wake.
 Use ferrumctl when the useful handle is a thread id, when the current turn
 should stop and be resumed later, when another host process is coordinating, or
 when durable goal/read state must be inspected outside the target thread.
+
+Before steering or interrupting an unfamiliar thread, inspect its current turn.
+Thread activity, goal state, and returned results are separate concerns.
 
 ## Goal And Turn State
 
@@ -68,11 +70,12 @@ skill.
 
 Useful command/skill subsets:
 
-- `wakectl`: self-reminders, peer handoffs, stop watches, command predicates.
+- `wakectl`: thread inspection, active-turn control, self-reminders, peer
+  handoffs, stop watches, and command predicates.
 - `goalctl`: external goal assignment and status checks, but no wake.
 - `readcov`: transcript read audit, gaps, overlap, and self-meta inspection.
 - `goalctl + wakectl`: durable assignment plus live delivery.
-- `wakectl + readcov`: wake/resume sessions and inspect what they read.
+- `wakectl + readcov`: wake/resume sessions and inspect recorded read actions.
 - `goalctl + readcov`: durable assignment and later audit, with wake supplied
   by native or manual input.
 
@@ -93,3 +96,7 @@ Treat cross-surface workflows as retryable. Put durable intent in goals, prefer
 small idempotent queued wake messages, snapshot before the interval being
 measured, and cancel only stale queued wakes that belong to the current
 workflow.
+
+A wake is an attention channel, not a result channel. Native subagent handles
+can return the completed response. Standalone sessions need a shared artifact
+or deliberate thread inspection when the result itself matters.

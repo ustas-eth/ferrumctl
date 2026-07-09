@@ -13,6 +13,9 @@ codex-wakectl loaded
 codex-wakectl status THREAD_ID
 ```
 
+Use `codex-wakectl inspect THREAD_ID` when status alone does not explain whether
+the thread is progressing, waiting, failed, or already finished.
+
 If the app-server is not the default `unix://`, pass the same `--endpoint` used
 when the sessions were started.
 
@@ -22,6 +25,10 @@ Check that a runner is processing the queue:
 codex-wakectl run
 codex-wakectl list
 ```
+
+`run` exits nonzero for operational failures and records the newest error on the
+pending job. Text `list` shows that error; use `list --json` for full history and
+condition state.
 
 If the target is active, wakectl refuses the wake unless the job was created
 with `--allow-active`. Usually this is the right behavior. Use `--allow-active`
@@ -33,14 +40,17 @@ needs a small message to observe or continue that goal. Inspect goal state
 before changing direction.
 
 For command predicates, verify the command exits `0` from the directory where
-the job was created.
+the job was created and under the runner's environment. A predicate that works
+in an interactive shell may have a different `PATH` under systemd.
 
 For goal predicates, verify the watched goal exists and that every predicate can
 match. `--tokens-left-lte` cannot match a goal without a token budget.
+Repeating time/token buckets rebase without firing when a runner observes
+a different goal creation time or lower counters.
 
-For stop predicates, create the job before the turn you want to observe. A stop
-job created after the thread already became idle waits for a future
-active-to-idle edge.
+For stop predicates, create the job before the turn you want to observe. The job
+records the newest persisted turn as its cursor, so a turn completed before job
+creation is not replayed. Use `list --json` to inspect the stored cursor.
 
 ## Duplicate Wake Checklist
 

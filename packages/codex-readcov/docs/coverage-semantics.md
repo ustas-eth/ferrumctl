@@ -21,15 +21,18 @@ it reconstructs the shell invocation from the recorded `cmd`, `workdir`,
 
 Only parser results classified as file reads are counted. Counts are read
 actions, not unique files; repeated reads of the same path increment the count.
+The transcript records the command request, so classification does not prove
+that the command succeeded or returned file contents.
 
 ## What Does Not Count
 
 `codex-readcov` does not inspect the filesystem, watch processes, scrape command
-output, or prove that a process opened a file descriptor. It also does not count
-file exposure from non-shell transcript events.
+output, validate command exit status, or prove that a process opened a file
+descriptor. It also does not count file exposure from non-shell transcript
+events.
 
-Coverage is therefore best read as transcript-derived evidence that a file was
-read, not as proof that every read was observed.
+Coverage is therefore a count of transcript-recorded read actions, not proof
+that file contents entered model context or that every read was observed.
 
 ## Live Rollouts
 

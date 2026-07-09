@@ -1,11 +1,11 @@
 # codex-readcov
 
-`codex-readcov` reports which files a Codex thread read according to its
+`codex-readcov` reports file-read actions reconstructed from a Codex thread's
 transcript.
 
-Use it to inspect worker read coverage, compare reads between snapshots, find
-missed files, or compose path lists with normal Unix tools. It is not an
-operating-system audit log.
+Use it to inspect worker read actions, compare reads between snapshots, find
+missed files, or compose path lists with normal Unix tools. It does not verify
+command success and is not an operating-system audit log.
 
 ## Install
 
@@ -29,7 +29,7 @@ Show the top read files for a thread:
 codex-readcov top THREAD_ID
 ```
 
-Snapshot before work, then inspect what was read afterward:
+Snapshot before work, then inspect recorded read actions afterward:
 
 ```sh
 codex-readcov snapshot THREAD_ID > before.json

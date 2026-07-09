@@ -32,8 +32,9 @@ consistency than Codex actually provides.
 queued jobs, thread status, and app-server transport. Treat changes there as
 coordination changes, not simple CLI plumbing.
 
-`codex-readcov` is transcript coverage, not an operating-system audit log.
-`codex-goalctl replace` is clear-then-set, not an atomic app-server primitive.
+`codex-readcov` reports transcript-recorded read actions, not verified file
+access or an operating-system audit log. `codex-goalctl replace` is
+clear-then-set, not an atomic app-server primitive.
 
 ## Working Rules
 
@@ -54,3 +55,5 @@ coordination changes, not simple CLI plumbing.
   repository and suite name, not a command.
 - When depending on Codex app-server methods, transcript schema, or parser
   output, keep the dependency narrow and name it in docs or tests.
+- Test stateful workflows through persisted command transitions, not only the
+  helper functions that calculate each step.

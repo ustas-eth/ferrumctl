@@ -37,6 +37,7 @@ Check or edit the current goal:
 codex-goalctl get THREAD_ID
 codex-goalctl update THREAD_ID "same goal, new wording"
 codex-goalctl update THREAD_ID --status paused
+codex-goalctl update THREAD_ID --clear-token-budget
 codex-goalctl clear THREAD_ID
 ```
 
