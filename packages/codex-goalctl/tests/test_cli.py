@@ -20,6 +20,24 @@ class ParseTests(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 cli.build_parser().parse_args(["--timeout", "-1", "get", "thread"])
 
+    def test_token_budget_update_options_are_mutually_exclusive(self) -> None:
+        args = cli.build_parser().parse_args(
+            ["update", "thread", "--clear-token-budget"]
+        )
+        self.assertTrue(args.clear_token_budget)
+
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                cli.build_parser().parse_args(
+                    [
+                        "update",
+                        "thread",
+                        "--token-budget",
+                        "1000",
+                        "--clear-token-budget",
+                    ]
+                )
+
 
 class FakeApp:
     def __init__(self) -> None:
@@ -52,6 +70,7 @@ class GoalCommandTests(unittest.TestCase):
             objective="new objective",
             status=None,
             token_budget=1000,
+            clear_token_budget=False,
             json=False,
         )
 
@@ -89,6 +108,7 @@ class GoalCommandTests(unittest.TestCase):
             objective=None,
             status="paused",
             token_budget=None,
+            clear_token_budget=False,
             json=False,
         )
 
@@ -118,6 +138,7 @@ class GoalCommandTests(unittest.TestCase):
             objective=None,
             status=None,
             token_budget=None,
+            clear_token_budget=False,
         )
 
         with mock.patch.object(cli, "connect_appserver") as connect:
@@ -125,6 +146,35 @@ class GoalCommandTests(unittest.TestCase):
                 cli.cmd_update(args)
 
         connect.assert_not_called()
+
+    def test_update_can_clear_token_budget(self) -> None:
+        app = FakeApp()
+        args = argparse.Namespace(
+            thread_id="00000000-0000-4000-8000-000000000001",
+            objective=None,
+            status=None,
+            token_budget=None,
+            clear_token_budget=True,
+            json=False,
+        )
+
+        with mock.patch.object(cli, "connect_appserver", return_value=app):
+            with contextlib.redirect_stdout(io.StringIO()):
+                rc = cli.cmd_update(args)
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(
+            app.calls,
+            [
+                (
+                    "thread/goal/set",
+                    {
+                        "threadId": "00000000-0000-4000-8000-000000000001",
+                        "tokenBudget": None,
+                    },
+                )
+            ],
+        )
 
     def test_clear_prints_json_result(self) -> None:
         args = argparse.Namespace(

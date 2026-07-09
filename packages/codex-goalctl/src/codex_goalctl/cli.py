@@ -74,13 +74,15 @@ def set_goal(
     objective: str | None = None,
     status: str | None = None,
     token_budget: int | None = None,
+    *,
+    set_token_budget: bool = False,
 ) -> dict[str, Any]:
     params: dict[str, Any] = {"threadId": thread_id}
     if objective is not None:
         params["objective"] = objective
     if status is not None:
         params["status"] = status
-    if token_budget is not None:
+    if set_token_budget:
         params["tokenBudget"] = token_budget
     result = app.request("thread/goal/set", params)
     return result.get("goal")
@@ -88,7 +90,12 @@ def set_goal(
 
 def cmd_update(args: argparse.Namespace) -> int:
     objective = read_objective(args.objective) if args.objective is not None else None
-    if objective is None and args.status is None and args.token_budget is None:
+    if (
+        objective is None
+        and args.status is None
+        and args.token_budget is None
+        and not args.clear_token_budget
+    ):
         raise GoalctlError("nothing to update")
     app = connect_appserver(args)
     try:
@@ -97,7 +104,8 @@ def cmd_update(args: argparse.Namespace) -> int:
             args.thread_id,
             objective=objective,
             status=args.status,
-            token_budget=args.token_budget,
+            token_budget=None if args.clear_token_budget else args.token_budget,
+            set_token_budget=args.token_budget is not None or args.clear_token_budget,
         )
         return print_goal(goal, args.json)
     finally:
@@ -115,6 +123,7 @@ def cmd_replace(args: argparse.Namespace) -> int:
             objective=objective,
             status=args.status or "active",
             token_budget=args.token_budget,
+            set_token_budget=args.token_budget is not None,
         )
         return print_goal(goal, args.json)
     finally:
@@ -172,7 +181,13 @@ def build_parser() -> argparse.ArgumentParser:
     update.add_argument("thread_id")
     update.add_argument("objective", nargs="?", help='new goal text, or "-" to read stdin')
     update.add_argument("--status", choices=sorted(STATUSES))
-    update.add_argument("--token-budget", type=positive_int)
+    budget = update.add_mutually_exclusive_group()
+    budget.add_argument("--token-budget", type=positive_int)
+    budget.add_argument(
+        "--clear-token-budget",
+        action="store_true",
+        help="remove the current token budget",
+    )
     add_common_options(update, defaults=False)
     update.set_defaults(func=cmd_update)
 
