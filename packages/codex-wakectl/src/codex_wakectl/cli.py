@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import sqlite3
 import sys
 
 import websockets
@@ -11,7 +12,11 @@ from .appserver import (
     connect_websocket,
     get_goal,
     get_thread_status,
+    interrupt_turn,
+    latest_turn,
+    list_thread_turns,
     list_loaded,
+    read_thread,
     resolve_unix_endpoint,
     send_turn,
     status_name,
@@ -21,14 +26,12 @@ from .commands import (
     cmd_add,
     cmd_cancel,
     cmd_list,
-    cmd_loaded,
     cmd_run,
-    cmd_send,
-    cmd_status,
     cmd_systemd_install,
     cmd_systemd_uninstall,
     cmd_wait,
     seed_repeating_goal_job,
+    seed_stop_job,
 )
 from .conditions import (
     build_cmd_condition,
@@ -42,6 +45,7 @@ from .conditions import (
     goal_condition_ready,
     max_fires_reached,
     new_job,
+    seed_stop_condition,
     stop_condition_ready,
     time_condition_ready,
 )
@@ -55,6 +59,7 @@ from .constants import (
     SYSTEMD_TIMER_NAME,
 )
 from .errors import WakectlError
+from .live_commands import cmd_inspect, cmd_interrupt, cmd_loaded, cmd_send, cmd_status
 from .parser import (
     add_cmd_condition_parser,
     add_global_options,
@@ -77,6 +82,7 @@ from .parsing import (
     now_seconds,
     parse_at,
     parse_duration,
+    parse_nonnegative_int,
     parse_positive_float,
     parse_positive_int,
     parse_statuses,
@@ -117,7 +123,7 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(dispatch(args))
     except BrokenPipeError:
         return 1
-    except (OSError, WakectlError, websockets.WebSocketException) as exc:
+    except (OSError, sqlite3.Error, WakectlError, websockets.WebSocketException) as exc:
         print(f"codex-wakectl: {exc}", file=sys.stderr)
         return 1
 

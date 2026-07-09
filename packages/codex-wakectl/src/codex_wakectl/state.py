@@ -200,7 +200,7 @@ def cancel_job(state_path: Path, job_id: str) -> bool:
                 lease_owner = NULL,
                 lease_started_at = NULL,
                 lease_until = NULL
-            WHERE id = ?
+            WHERE id = ? AND status = 'pending'
             """,
             (now_seconds(), job_id),
         )

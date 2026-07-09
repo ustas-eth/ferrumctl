@@ -7,62 +7,25 @@ import sys
 import time
 from typing import Any
 
-from .appserver import AppServer, get_goal, get_thread_status, list_loaded, send_turn, status_name
+from .appserver import (
+    AppServer,
+    get_goal,
+    normalize_endpoint,
+    send_turn,
+)
 from .conditions import (
     condition_needs_app,
     condition_ready,
     condition_repeats,
     max_fires_reached,
     new_job,
+    seed_stop_condition,
 )
 from .constants import SYSTEMD_SERVICE_NAME, SYSTEMD_TIMER_NAME
-from .errors import WakectlError
+from .errors import WakeDeferred, WakectlError
 from .parsing import now_seconds
 from .state import cancel_job, claim_pending_jobs, insert_job, list_jobs, update_claimed_job
 from .systemd import build_systemd_units, resolve_wakectl_bin, run_systemctl, systemd_user_dir
-
-
-async def cmd_loaded(args: argparse.Namespace) -> int:
-    async with AppServer(args.endpoint, args.timeout) as app:
-        ids = await list_loaded(app)
-    if args.json:
-        print(json.dumps({"threads": ids}, indent=2))
-    else:
-        for thread_id in ids:
-            print(thread_id)
-    return 0
-
-
-async def cmd_status(args: argparse.Namespace) -> int:
-    async with AppServer(args.endpoint, args.timeout) as app:
-        loaded = await list_loaded(app)
-        status = await get_thread_status(app, args.thread_id)
-    result = {
-        "threadId": args.thread_id,
-        "loaded": args.thread_id in loaded,
-        "status": status,
-    }
-    if args.json:
-        print(json.dumps(result, indent=2))
-    else:
-        loaded_label = "loaded" if result["loaded"] else "not-loaded"
-        print(f"{loaded_label}\t{status_name(status)}\t{args.thread_id}")
-    return 0
-
-
-async def cmd_send(args: argparse.Namespace) -> int:
-    async with AppServer(args.endpoint, args.timeout) as app:
-        turn = await send_turn(
-            app,
-            args.thread_id,
-            args.message,
-            allow_active=args.allow_active,
-        )
-    if args.json:
-        print(json.dumps({"turn": turn}, indent=2))
-    else:
-        print(turn.get("id", "sent"))
-    return 0
 
 
 async def seed_repeating_goal_job(args: argparse.Namespace, job: dict[str, Any]) -> None:
@@ -70,7 +33,7 @@ async def seed_repeating_goal_job(args: argparse.Namespace, job: dict[str, Any])
     if condition.get("type") != "goal" or not condition_repeats(condition):
         return
     try:
-        async with AppServer(args.endpoint, args.timeout) as app:
+        async with AppServer(job["endpoint"], args.timeout) as app:
             goal = await get_goal(app, condition["threadId"])
     except Exception as exc:
         job["lastError"] = f"could not seed interval bucket: {exc}"
@@ -78,6 +41,9 @@ async def seed_repeating_goal_job(args: argparse.Namespace, job: dict[str, Any])
     if goal is None:
         job["lastReason"] = "no goal while seeding interval bucket"
         return
+    created_at = goal.get("createdAt")
+    if created_at is not None:
+        condition["goalCreatedAt"] = created_at
     if "tokensUsedEvery" in condition:
         tokens_used = int(goal.get("tokensUsed") or 0)
         job["lastTokensUsedBucket"] = tokens_used // condition["tokensUsedEvery"]
@@ -86,17 +52,26 @@ async def seed_repeating_goal_job(args: argparse.Namespace, job: dict[str, Any])
         job["lastTimeUsedBucket"] = time_used // condition["timeUsedEvery"]
 
 
+async def seed_stop_job(args: argparse.Namespace, job: dict[str, Any]) -> None:
+    if job["condition"].get("type") != "stop":
+        return
+    async with AppServer(job["endpoint"], args.timeout) as app:
+        job["condition"] = await seed_stop_condition(app, job["condition"])
+
+
 async def cmd_add(args: argparse.Namespace) -> int:
     condition = args.condition_builder(args)
+    endpoint = normalize_endpoint(args.endpoint)
     job = new_job(
         condition,
         args.to_thread_id,
         args.message,
-        args.endpoint,
+        endpoint,
         allow_active=args.allow_active,
         timeout=args.timeout,
     )
     await seed_repeating_goal_job(args, job)
+    await seed_stop_job(args, job)
     insert_job(args.state, job)
     if args.json:
         print(json.dumps({"job": job}, indent=2))
@@ -112,6 +87,8 @@ async def cmd_wait(args: argparse.Namespace) -> int:
     app = await app_cm.__aenter__() if app_cm is not None else None
     job_state: dict[str, Any] = {}
     try:
+        if condition["type"] == "stop":
+            condition = await seed_stop_condition(app, condition)
         while True:
             ready, updates, reason = await condition_ready(
                 app,
@@ -153,6 +130,7 @@ async def cmd_wait(args: argparse.Namespace) -> int:
 async def cmd_run(args: argparse.Namespace) -> int:
     fired: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
+    had_error = False
     owner, jobs = claim_pending_jobs(args.state, args.lease_seconds, args.limit)
     for job in jobs:
         try:
@@ -196,15 +174,18 @@ async def cmd_run(args: argparse.Namespace) -> int:
                     turn = None
 
             if not ready:
+                pending_updates = dict(updates)
+                pending_updates.update({"lastReason": reason, "lastError": None})
                 committed = update_claimed_job(
                     args.state,
                     job["id"],
                     owner,
-                    {"lastReason": reason, "lastError": None},
+                    pending_updates,
                 )
                 if committed:
                     skipped.append({"id": job["id"], "reason": reason})
                 else:
+                    had_error = True
                     skipped.append({"id": job["id"], "reason": "lease lost before update"})
                 continue
 
@@ -231,8 +212,23 @@ async def cmd_run(args: argparse.Namespace) -> int:
             if committed:
                 fired.append({"id": job["id"], "turnId": turn.get("id"), "reason": reason})
             else:
+                had_error = True
                 skipped.append({"id": job["id"], "reason": "lease lost after wake"})
+        except WakeDeferred as exc:
+            reason = str(exc)
+            committed = update_claimed_job(
+                args.state,
+                job["id"],
+                owner,
+                {"lastReason": reason, "lastError": None},
+            )
+            if committed:
+                skipped.append({"id": job["id"], "reason": reason})
+            else:
+                had_error = True
+                skipped.append({"id": job["id"], "reason": "lease lost after deferral"})
         except Exception as exc:
+            had_error = True
             reason = str(exc)
             committed = update_claimed_job(
                 args.state,
@@ -252,7 +248,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
             print(f"fired\t{item['id']}\t{item.get('turnId') or '-'}")
         for item in skipped:
             print(f"pending\t{item['id']}\t{item['reason']}", file=sys.stderr)
-    return 0
+    return 1 if had_error else 0
 
 
 def cmd_list(args: argparse.Namespace) -> int:
@@ -269,7 +265,7 @@ def cmd_list(args: argparse.Namespace) -> int:
                         job["condition"]["type"],
                         job.get("targetThreadId", "-"),
                         str(job.get("fireCount", 0)),
-                        job.get("lastReason") or job.get("lastError") or "-",
+                        job.get("lastError") or job.get("lastReason") or "-",
                     ]
                 )
             )
@@ -278,7 +274,7 @@ def cmd_list(args: argparse.Namespace) -> int:
 
 def cmd_cancel(args: argparse.Namespace) -> int:
     if not cancel_job(args.state, args.job_id):
-        raise WakectlError(f"unknown job id: {args.job_id}")
+        raise WakectlError(f"unknown or non-pending job id: {args.job_id}")
     if args.json:
         print(json.dumps({"canceled": args.job_id}, indent=2))
     else:
@@ -290,9 +286,10 @@ def cmd_systemd_install(args: argparse.Namespace) -> int:
     unit_dir = systemd_user_dir()
     service_path = unit_dir / SYSTEMD_SERVICE_NAME
     timer_path = unit_dir / SYSTEMD_TIMER_NAME
+    state = args.state.expanduser().resolve()
     service, timer = build_systemd_units(
         wakectl_bin=resolve_wakectl_bin(),
-        state=args.state,
+        state=state,
         interval_seconds=args.interval,
     )
 
@@ -308,6 +305,7 @@ def cmd_systemd_install(args: argparse.Namespace) -> int:
                 {
                     "service": str(service_path),
                     "timer": str(timer_path),
+                    "state": str(state),
                     "enabled": True,
                     "started": True,
                 },
@@ -317,6 +315,7 @@ def cmd_systemd_install(args: argparse.Namespace) -> int:
     else:
         print(f"installed\t{service_path}")
         print(f"installed\t{timer_path}")
+        print(f"state\t{state}")
         print(f"started\t{SYSTEMD_TIMER_NAME}")
     return 0
 

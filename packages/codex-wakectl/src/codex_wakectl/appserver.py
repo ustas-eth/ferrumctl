@@ -10,8 +10,8 @@ from urllib.parse import urlparse
 
 import websockets
 
-from .constants import CLIENT_VERSION
-from .errors import WakectlError
+from .constants import CLIENT_VERSION, MAX_WEBSOCKET_MESSAGE_BYTES
+from .errors import WakeDeferred, WakectlError
 
 
 class AppServer:
@@ -86,6 +86,7 @@ async def connect_websocket(endpoint: str) -> Any:
             socket_path,
             uri="ws://localhost/rpc",
             compression=None,
+            max_size=MAX_WEBSOCKET_MESSAGE_BYTES,
             user_agent_header=None,
         )
     parsed = urlparse(endpoint)
@@ -94,6 +95,7 @@ async def connect_websocket(endpoint: str) -> Any:
     return await websockets.connect(
         endpoint,
         compression=None,
+        max_size=MAX_WEBSOCKET_MESSAGE_BYTES,
         user_agent_header=None,
     )
 
@@ -101,12 +103,23 @@ async def connect_websocket(endpoint: str) -> Any:
 def resolve_unix_endpoint(endpoint: str) -> str:
     raw = endpoint.removeprefix("unix://")
     if not raw:
-        codex_home = Path(os.environ.get("CODEX_HOME", Path.home() / ".codex"))
-        return str(codex_home / "app-server-control" / "app-server-control.sock")
-    path = Path(raw)
+        path = Path(os.environ.get("CODEX_HOME", Path.home() / ".codex"))
+        path = path / "app-server-control" / "app-server-control.sock"
+    else:
+        path = Path(raw)
+    path = path.expanduser()
     if not path.is_absolute():
         path = Path.cwd() / path
-    return str(path)
+    return str(path.resolve())
+
+
+def normalize_endpoint(endpoint: str) -> str:
+    if endpoint.startswith("unix://"):
+        return "unix://" + resolve_unix_endpoint(endpoint)
+    parsed = urlparse(endpoint)
+    if parsed.scheme != "ws":
+        raise WakectlError("endpoint must be unix://, unix://PATH, or ws://HOST:PORT")
+    return endpoint
 
 
 async def list_loaded(app: AppServer) -> list[str]:
@@ -123,12 +136,41 @@ async def list_loaded(app: AppServer) -> list[str]:
             return ids
 
 
-async def get_thread_status(app: AppServer, thread_id: str) -> dict[str, Any]:
+async def read_thread(app: AppServer, thread_id: str) -> dict[str, Any]:
     result = await app.request(
         "thread/read",
         {"threadId": thread_id, "includeTurns": False},
     )
-    return result["thread"].get("status", {"type": "unknown"})
+    return result["thread"]
+
+
+async def get_thread_status(app: AppServer, thread_id: str) -> dict[str, Any]:
+    thread = await read_thread(app, thread_id)
+    return thread.get("status", {"type": "unknown"})
+
+
+async def list_thread_turns(
+    app: AppServer,
+    thread_id: str,
+    *,
+    limit: int = 1,
+    items_view: str = "notLoaded",
+) -> list[dict[str, Any]]:
+    result = await app.request(
+        "thread/turns/list",
+        {
+            "threadId": thread_id,
+            "limit": limit,
+            "sortDirection": "desc",
+            "itemsView": items_view,
+        },
+    )
+    return result.get("data", [])
+
+
+async def latest_turn(app: AppServer, thread_id: str) -> dict[str, Any] | None:
+    turns = await list_thread_turns(app, thread_id)
+    return turns[0] if turns else None
 
 
 def status_name(status: dict[str, Any]) -> str:
@@ -136,7 +178,7 @@ def status_name(status: dict[str, Any]) -> str:
 
 
 def thread_is_active(status: dict[str, Any]) -> bool:
-    return status_name(status) not in {"idle", "unknown"}
+    return status_name(status) == "active"
 
 
 async def send_turn(
@@ -148,11 +190,16 @@ async def send_turn(
 ) -> dict[str, Any]:
     loaded = await list_loaded(app)
     if thread_id not in loaded:
-        raise WakectlError(f"thread is not loaded on this app-server: {thread_id}")
+        raise WakeDeferred(f"thread is not loaded on this app-server: {thread_id}")
     status = await get_thread_status(app, thread_id)
     name = status_name(status)
-    if name != "idle" and not allow_active:
-        raise WakectlError(f"thread is {name}; refusing to send without --allow-active")
+    if name == "active":
+        if not allow_active:
+            raise WakeDeferred("thread is active; refusing to send without --allow-active")
+    elif name == "notLoaded":
+        raise WakeDeferred("thread is not loaded")
+    elif name != "idle":
+        raise WakectlError(f"thread status is {name}; refusing to send")
     result = await app.request(
         "turn/start",
         {
@@ -167,6 +214,25 @@ async def send_turn(
         },
     )
     return result["turn"]
+
+
+async def interrupt_turn(app: AppServer, thread_id: str) -> dict[str, Any]:
+    loaded = await list_loaded(app)
+    if thread_id not in loaded:
+        raise WakectlError(f"thread is not loaded on this app-server: {thread_id}")
+    status = await get_thread_status(app, thread_id)
+    if not thread_is_active(status):
+        raise WakectlError(f"thread is {status_name(status)}; no active turn to interrupt")
+
+    turn = await latest_turn(app, thread_id)
+    if turn is None or turn.get("status") != "inProgress" or not turn.get("id"):
+        raise WakectlError("active turn id is unavailable; inspect the thread and retry")
+    turn_id = turn["id"]
+    await app.request(
+        "turn/interrupt",
+        {"threadId": thread_id, "turnId": turn_id},
+    )
+    return {"id": turn_id, "status": "interrupted"}
 
 
 async def get_goal(app: AppServer, thread_id: str) -> dict[str, Any] | None:

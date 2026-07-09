@@ -37,6 +37,16 @@ def parse_positive_int(value: str) -> int:
     return parsed
 
 
+def parse_nonnegative_int(value: str) -> int:
+    try:
+        parsed = int(value.replace("_", ""))
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be an integer") from exc
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be non-negative")
+    return parsed
+
+
 def parse_positive_float(value: str) -> float:
     try:
         parsed = float(value)

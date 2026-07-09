@@ -6,8 +6,8 @@ import subprocess
 import uuid
 from typing import Any
 
-from .appserver import get_goal, get_thread_status, status_name, thread_is_active
-from .constants import DEFAULT_TIMEOUT
+from .appserver import get_goal, list_thread_turns
+from .constants import DEFAULT_TIMEOUT, TERMINAL_TURN_STATUSES
 from .errors import WakectlError
 from .parsing import format_time, now_seconds
 
@@ -47,13 +47,42 @@ async def goal_condition_ready(
     if goal is None:
         return False, {}, "no goal"
 
+    tokens_used = int(goal.get("tokensUsed") or 0)
+    time_used = int(goal.get("timeUsedSeconds") or 0)
+    repeating = "tokensUsedEvery" in condition or "timeUsedEvery" in condition
+    created_at = goal.get("createdAt")
+    previous_created_at = condition.get("goalCreatedAt")
+    if repeating and created_at is not None and created_at != previous_created_at:
+        updated_condition = dict(condition)
+        updated_condition["goalCreatedAt"] = created_at
+        updates: dict[str, Any] = {"condition": updated_condition}
+        if "tokensUsedEvery" in condition:
+            updates["lastTokensUsedBucket"] = tokens_used // condition["tokensUsedEvery"]
+        if "timeUsedEvery" in condition:
+            updates["lastTimeUsedBucket"] = time_used // condition["timeUsedEvery"]
+        return False, updates, "watched goal changed"
+
+    reset_updates: dict[str, Any] = {}
+    if "tokensUsedEvery" in condition:
+        interval = condition["tokensUsedEvery"]
+        bucket = tokens_used // interval
+        previous = int((job or {}).get("lastTokensUsedBucket") or 0)
+        if bucket < previous:
+            reset_updates["lastTokensUsedBucket"] = bucket
+    if "timeUsedEvery" in condition:
+        interval = condition["timeUsedEvery"]
+        bucket = time_used // interval
+        previous = int((job or {}).get("lastTimeUsedBucket") or 0)
+        if bucket < previous:
+            reset_updates["lastTimeUsedBucket"] = bucket
+    if reset_updates:
+        return False, reset_updates, "goal usage counters reset"
+
     statuses = condition.get("statuses")
     if statuses and goal.get("status") not in statuses:
         return False, {}, f"status is {goal.get('status')}"
 
-    tokens_used = int(goal.get("tokensUsed") or 0)
     token_budget = goal.get("tokenBudget")
-    time_used = int(goal.get("timeUsedSeconds") or 0)
 
     if "tokensLeftLte" in condition:
         if token_budget is None:
@@ -87,37 +116,93 @@ async def goal_condition_ready(
     return True, {}, "goal predicate matched"
 
 
+def with_turn_cursor(
+    condition: dict[str, Any],
+    turn: dict[str, Any] | None,
+) -> dict[str, Any]:
+    updated = dict(condition)
+    updated.pop("observedActive", None)
+    updated.pop("lastStatus", None)
+    updated["cursorTurnId"] = turn.get("id") if turn else None
+    updated["cursorTurnStatus"] = turn.get("status") if turn else None
+    return updated
+
+
+async def seed_stop_condition(app: Any, condition: dict[str, Any]) -> dict[str, Any]:
+    turns = await list_thread_turns(
+        app,
+        condition["threadId"],
+        limit=1,
+        items_view="notLoaded",
+    )
+    return with_turn_cursor(condition, turns[0] if turns else None)
+
+
+def completed_turn_after_cursor(
+    turns: list[dict[str, Any]],
+    cursor_id: str | None,
+    cursor_status: str | None,
+) -> dict[str, Any] | None:
+    if not turns:
+        return None
+
+    cursor_index = next(
+        (index for index, turn in enumerate(turns) if turn.get("id") == cursor_id),
+        None,
+    )
+    if cursor_index is None:
+        candidates = turns
+    else:
+        candidates = turns[:cursor_index]
+        cursor = turns[cursor_index]
+        if (
+            cursor_status == "inProgress"
+            and cursor.get("status") in TERMINAL_TURN_STATUSES
+        ):
+            candidates = [*candidates, cursor]
+
+    return next(
+        (turn for turn in candidates if turn.get("status") in TERMINAL_TURN_STATUSES),
+        None,
+    )
+
+
 async def stop_condition_ready(
     app: Any,
     condition: dict[str, Any],
 ) -> tuple[bool, dict[str, Any], str]:
-    status = await get_thread_status(app, condition["threadId"])
-    name = status_name(status)
-    observed_active = bool(condition.get("observedActive"))
-    updated = dict(condition)
-    updated["lastStatus"] = name
+    turns = await list_thread_turns(
+        app,
+        condition["threadId"],
+        limit=2,
+        items_view="notLoaded",
+    )
+    latest = turns[0] if turns else None
 
-    if thread_is_active(status):
-        if not observed_active:
-            updated["observedActive"] = True
-            return False, {"condition": updated}, f"status is {name}"
-        return False, {}, f"status is {name}"
-
-    if name != "idle":
-        if condition.get("lastStatus") != name:
-            return False, {"condition": updated}, f"status is {name}"
-        return False, {}, f"status is {name}"
-
-    if observed_active:
-        if condition.get("repeat"):
-            updated["observedActive"] = False
+    if "cursorTurnId" not in condition:
+        legacy_observed_active = bool(condition.get("observedActive"))
+        updated = with_turn_cursor(condition, latest)
+        if (
+            legacy_observed_active
+            and latest is not None
+            and latest.get("status") in TERMINAL_TURN_STATUSES
+        ):
             return True, {"condition": updated}, "thread stopped"
-        return True, {}, "thread stopped"
+        return False, {"condition": updated}, "waiting for turn completion"
 
-    if condition.get("lastStatus") != name:
-        updated["observedActive"] = False
-        return False, {"condition": updated}, "waiting for active turn"
-    return False, {}, "waiting for active turn"
+    completed = completed_turn_after_cursor(
+        turns,
+        condition.get("cursorTurnId"),
+        condition.get("cursorTurnStatus"),
+    )
+    updated = with_turn_cursor(condition, latest)
+    condition_updates = {} if updated == condition else {"condition": updated}
+    if completed is not None:
+        status = completed.get("status", "stopped")
+        return True, {"condition": updated}, f"turn {completed.get('id')} {status}"
+    if latest is None:
+        return False, condition_updates, "waiting for first turn"
+    return False, condition_updates, f"latest turn is {latest.get('status', 'unknown')}"
 
 
 async def condition_ready(
@@ -243,7 +328,6 @@ def build_stop_condition(args: argparse.Namespace) -> dict[str, Any]:
     condition: dict[str, Any] = {
         "type": "stop",
         "threadId": args.thread_id,
-        "observedActive": False,
     }
     if getattr(args, "repeat", False):
         condition["repeat"] = True

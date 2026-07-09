@@ -7,10 +7,7 @@ from .commands import (
     cmd_add,
     cmd_cancel,
     cmd_list,
-    cmd_loaded,
     cmd_run,
-    cmd_send,
-    cmd_status,
     cmd_systemd_install,
     cmd_systemd_uninstall,
     cmd_wait,
@@ -22,7 +19,15 @@ from .conditions import (
     build_time_condition,
 )
 from .constants import DEFAULT_LEASE_SECONDS, DEFAULT_SYSTEMD_INTERVAL_SECONDS, DEFAULT_TIMEOUT
-from .parsing import parse_at, parse_duration, parse_positive_float, parse_positive_int, parse_statuses
+from .live_commands import cmd_inspect, cmd_interrupt, cmd_loaded, cmd_send, cmd_status
+from .parsing import (
+    parse_at,
+    parse_duration,
+    parse_nonnegative_int,
+    parse_positive_float,
+    parse_positive_int,
+    parse_statuses,
+)
 from .state import default_state_path
 
 
@@ -133,12 +138,12 @@ def add_cmd_condition_parser(sub: argparse._SubParsersAction[argparse.ArgumentPa
 
 
 def add_stop_condition_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    parser = sub.add_parser("stop", help="thread stop edge condition")
+    parser = sub.add_parser("stop", help="thread turn-completion condition")
     parser.add_argument("thread_id", help="thread to watch")
     parser.add_argument(
         "--repeat",
         action="store_true",
-        help="re-arm after each stop and fire again after the next active-to-idle edge",
+        help="re-arm after each observed terminal turn",
     )
     parser.add_argument(
         "--max-fires",
@@ -153,7 +158,7 @@ def add_stop_condition_parser(sub: argparse._SubParsersAction[argparse.ArgumentP
 def add_wait_options(parser: argparse.ArgumentParser, *, defaults: bool) -> None:
     parser.add_argument(
         "--poll-interval",
-        type=float,
+        type=parse_positive_float,
         default=30.0 if defaults else argparse.SUPPRESS,
         help="seconds between condition checks",
     )
@@ -199,7 +204,7 @@ def add_wait_cmd_condition_parser(
 def add_wait_stop_condition_parser(
     sub: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
-    parser = sub.add_parser("stop", help="wait for thread stop edge")
+    parser = sub.add_parser("stop", help="wait for a later turn to end")
     parser.add_argument("thread_id", help="thread to watch")
     parser.set_defaults(condition_builder=build_stop_condition)
     add_wait_options(parser, defaults=False)
@@ -209,7 +214,7 @@ def add_wait_stop_condition_parser(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="codex-wakectl",
-        description="Wake app-server-backed Codex threads now or when a condition is met.",
+        description="Inspect, control, and wake app-server-backed Codex threads.",
     )
     add_global_options(parser, defaults=True)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -218,10 +223,21 @@ def build_parser() -> argparse.ArgumentParser:
     add_global_options(loaded, defaults=False)
     loaded.set_defaults(func=cmd_loaded)
 
-    status = sub.add_parser("status", help="show loaded and active status for a thread")
+    status = sub.add_parser("status", help="show loaded state and thread status")
     status.add_argument("thread_id")
     add_global_options(status, defaults=False)
     status.set_defaults(func=cmd_status)
+
+    inspect = sub.add_parser("inspect", help="show recent thread activity")
+    inspect.add_argument("thread_id")
+    inspect.add_argument(
+        "--items",
+        type=parse_nonnegative_int,
+        default=12,
+        help="recent latest-turn items to show; 0 shows all",
+    )
+    add_global_options(inspect, defaults=False)
+    inspect.set_defaults(func=cmd_inspect)
 
     send = sub.add_parser("send", help="send an immediate wake")
     send.add_argument("thread_id")
@@ -229,6 +245,11 @@ def build_parser() -> argparse.ArgumentParser:
     send.add_argument("--allow-active", action="store_true", help="send even if the target is active")
     add_global_options(send, defaults=False)
     send.set_defaults(func=cmd_send)
+
+    interrupt = sub.add_parser("interrupt", help="interrupt the active turn")
+    interrupt.add_argument("thread_id")
+    add_global_options(interrupt, defaults=False)
+    interrupt.set_defaults(func=cmd_interrupt)
 
     add = sub.add_parser("add", help="persist a wake job")
     add_global_options(add, defaults=False)
