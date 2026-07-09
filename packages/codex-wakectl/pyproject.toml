@@ -5,12 +5,17 @@ build-backend = "hatchling.build"
 [project]
 name = "codex-wakectl"
 version = "0.1.0"
-description = "Small Unix-style CLI for waking app-server-backed Codex threads"
+description = "Inspect, control, and wake app-server-backed Codex threads"
 readme = "README.md"
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
   "websockets>=15,<16",
 ]
+
+[project.urls]
+Repository = "https://github.com/ustas-eth/ferrumctl"
 
 [project.scripts]
 codex-wakectl = "codex_wakectl.cli:main"

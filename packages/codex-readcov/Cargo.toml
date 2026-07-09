@@ -2,7 +2,10 @@
 name = "codex-readcov"
 version = "0.1.0"
 edition = "2024"
+description = "Count file read actions in Codex rollout transcripts"
 license = "MIT"
+repository = "https://github.com/ustas-eth/ferrumctl"
+readme = "README.md"
 
 [[bin]]
 name = "codex-readcov"
@@ -11,6 +14,6 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
-codex-shell-command = { git = "https://github.com/openai/codex.git", tag = "rust-v0.141.0" }
+codex-shell-command = { git = "https://github.com/openai/codex.git", tag = "rust-v0.144.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

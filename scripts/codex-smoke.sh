@@ -105,10 +105,6 @@ parser_tag=$(sed -n 's/.*tag = "\(rust-v[^"]*\)".*/\1/p' "$ROOT/packages/codex-r
 if [[ -n "$parser_tag" ]]; then
   printf 'codex-readcov parser dependency: codex-shell-command %s\n' "$parser_tag"
 fi
-if [[ -n "$codex_semver" && -n "$parser_tag" && "$parser_tag" != "rust-v$codex_semver" ]]; then
-  fail "codex-readcov parser tag $parser_tag does not match codex-cli $codex_semver"
-fi
-
 log "goalctl stdio app-server compatibility"
 missing_thread="00000000-0000-4000-8000-000000000001"
 if goalctl --json --timeout 5 get "$missing_thread" >"$SMOKE_ROOT/goal.out" 2>"$SMOKE_ROOT/goal.err"; then
@@ -119,6 +115,16 @@ grep -Eq 'thread not found|invalid thread id' "$SMOKE_ROOT/goal.err" || {
   fail "unexpected goalctl error"
 }
 printf 'goalctl reached app-server and got expected temporary-thread error\n'
+
+if goalctl --json --timeout 5 update "$missing_thread" \
+  --clear-token-budget >"$SMOKE_ROOT/goal-clear.out" 2>"$SMOKE_ROOT/goal-clear.err"; then
+  fail "expected missing token-budget thread to fail"
+fi
+grep -Eq 'thread not found|invalid thread id' "$SMOKE_ROOT/goal-clear.err" || {
+  sed -n '1,40p' "$SMOKE_ROOT/goal-clear.err" >&2
+  fail "unexpected token-budget clear error"
+}
+printf 'goalctl token-budget removal reached app-server\n'
 
 log "wakectl unix app-server compatibility"
 if command -v setsid >/dev/null 2>&1; then
@@ -146,6 +152,49 @@ done
 
 wakectl --timeout 5 loaded >"$SMOKE_ROOT/loaded.out"
 printf 'wakectl reached app-server; loaded threads: %s\n' "$(wc -l <"$SMOKE_ROOT/loaded.out")"
+
+if wakectl --timeout 5 add stop "$missing_thread" \
+  --to "$missing_thread" "smoke" >"$SMOKE_ROOT/turns.out" 2>"$SMOKE_ROOT/turns.err"; then
+  fail "expected missing stop-watch thread to fail"
+fi
+grep -Eq 'thread not found|thread not loaded' "$SMOKE_ROOT/turns.err" || {
+  sed -n '1,40p' "$SMOKE_ROOT/turns.err" >&2
+  fail "unexpected thread/turns/list error"
+}
+printf 'wakectl reached paged turn history and got expected temporary-thread error\n'
+
+if PYTHONPATH="$ROOT/packages/codex-wakectl/src${PYTHONPATH:+:$PYTHONPATH}" \
+  "$PYTHON" - "$missing_thread" >"$SMOKE_ROOT/interrupt.out" 2>"$SMOKE_ROOT/interrupt.err" <<'PY'
+import asyncio
+import sys
+
+from codex_wakectl.appserver import AppServer
+from codex_wakectl.errors import WakectlError
+
+
+async def main() -> int:
+    try:
+        async with AppServer("unix://", 5) as app:
+            await app.request(
+                "turn/interrupt",
+                {"threadId": sys.argv[1], "turnId": "00000000-0000-4000-8000-000000000002"},
+            )
+    except WakectlError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    return 0
+
+
+raise SystemExit(asyncio.run(main()))
+PY
+then
+  fail "expected missing interrupt thread to fail"
+fi
+grep -Eq 'thread not found|thread not loaded|invalid thread id' "$SMOKE_ROOT/interrupt.err" || {
+  sed -n '1,40p' "$SMOKE_ROOT/interrupt.err" >&2
+  fail "unexpected turn/interrupt error"
+}
+printf 'wakectl reached turn interruption API\n'
 
 log "readcov rollout parser compatibility"
 project="$SMOKE_ROOT/project"
@@ -185,5 +234,9 @@ readcov top "$rollout" "$project/src" --paths-only --limit 0 >"$SMOKE_ROOT/readc
 grep -qx 'src/a.rs' "$SMOKE_ROOT/readcov.out" || fail "readcov did not report src/a.rs"
 grep -qx 'src/b.rs' "$SMOKE_ROOT/readcov.out" || fail "readcov did not report src/b.rs"
 printf 'readcov parsed fixture rollout\n'
+
+if [[ -n "$codex_semver" && -n "$parser_tag" && "$parser_tag" != "rust-v$codex_semver" ]]; then
+  fail "codex-readcov parser tag $parser_tag does not match codex-cli $codex_semver"
+fi
 
 printf '\ncodex smoke passed\n'
