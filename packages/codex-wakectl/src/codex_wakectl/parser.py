@@ -98,7 +98,9 @@ def add_target_message(parser: argparse.ArgumentParser) -> None:
 def add_time_condition_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = sub.add_parser("time", help="time-based condition")
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--after", type=parse_duration, help="duration such as 10m or 2h")
+    group.add_argument(
+        "--after", type=parse_duration, help="duration such as 10m or 3m30s"
+    )
     group.add_argument("--at", type=parse_at, help="ISO timestamp with timezone")
     parser.set_defaults(condition_builder=build_time_condition)
     add_target_message(parser)

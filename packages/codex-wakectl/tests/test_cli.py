@@ -27,10 +27,32 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(cli.parse_duration("2h"), 7200)
         self.assertEqual(cli.parse_duration("1d"), 86400)
         self.assertEqual(cli.parse_duration("1_000s"), 1000)
+        self.assertEqual(cli.parse_duration("3m30s"), 210)
+        self.assertEqual(cli.parse_duration("1d2h3m4s"), 93784)
 
     def test_parse_duration_rejects_missing_unit(self) -> None:
         with self.assertRaises(argparse.ArgumentTypeError):
             cli.parse_duration("300")
+
+    def test_parse_duration_rejects_partial_or_zero_values(self) -> None:
+        for value in ("3m 30s", "3m30", "3x30s", "0s", ""):
+            with self.subTest(value=value):
+                with self.assertRaises(argparse.ArgumentTypeError):
+                    cli.parse_duration(value)
+
+    def test_add_accepts_compound_duration(self) -> None:
+        args = cli.build_parser().parse_args(
+            [
+                "add",
+                "time",
+                "--after",
+                "3m30s",
+                "--to",
+                "thread",
+                "message",
+            ]
+        )
+        self.assertEqual(args.after, 210)
 
     def test_parse_tokens_are_plain_integers(self) -> None:
         self.assertEqual(cli.parse_positive_int("3000000"), 3000000)

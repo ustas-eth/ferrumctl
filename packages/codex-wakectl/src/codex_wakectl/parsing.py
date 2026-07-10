@@ -8,7 +8,7 @@ from datetime import datetime
 from .constants import STATUS_VALUES
 
 
-DURATION_RE = re.compile(r"^([0-9][0-9_]*)([smhd])$")
+DURATION_PART_RE = re.compile(r"([0-9][0-9_]*)([smhd])")
 
 
 def now_seconds() -> int:
@@ -16,15 +16,22 @@ def now_seconds() -> int:
 
 
 def parse_duration(value: str) -> int:
-    match = DURATION_RE.match(value)
-    if not match:
-        raise argparse.ArgumentTypeError("must be an integer duration with unit s, m, h, or d")
-    number = int(match.group(1).replace("_", ""))
-    unit = match.group(2)
-    scale = {"s": 1, "m": 60, "h": 3600, "d": 86400}[unit]
-    if number <= 0:
-        raise argparse.ArgumentTypeError("must be positive")
-    return number * scale
+    position = 0
+    seconds = 0
+    for match in DURATION_PART_RE.finditer(value):
+        if match.start() != position:
+            break
+        number = int(match.group(1).replace("_", ""))
+        unit = match.group(2)
+        scale = {"s": 1, "m": 60, "h": 3600, "d": 86400}[unit]
+        seconds += number * scale
+        position = match.end()
+
+    if position != len(value) or seconds <= 0:
+        raise argparse.ArgumentTypeError(
+            "must be a positive duration using s, m, h, or d, such as 3m30s"
+        )
+    return seconds
 
 
 def parse_positive_int(value: str) -> int:
