@@ -234,7 +234,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--items",
         type=parse_nonnegative_int,
         default=12,
-        help="recent latest-turn items to show; 0 shows all",
+        help="recent latest-turn items to print; 0 prints all",
+    )
+    inspect.add_argument(
+        "--brief",
+        action="store_true",
+        help="load only turn summaries, without command or tool activity",
+    )
+    inspect.add_argument(
+        "--no-previous",
+        action="store_true",
+        help="omit the previous turn and its response",
     )
     add_global_options(inspect, defaults=False)
     inspect.set_defaults(func=cmd_inspect)

@@ -49,6 +49,12 @@ Inspect recent activity without modifying the thread:
 codex-wakectl inspect THREAD_ID
 ```
 
+For a faster status and response summary, without command or tool activity:
+
+```sh
+codex-wakectl inspect THREAD_ID --brief
+```
+
 Send a turn now:
 
 ```sh

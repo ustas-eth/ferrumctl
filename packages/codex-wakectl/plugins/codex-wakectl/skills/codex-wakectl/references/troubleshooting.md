@@ -16,6 +16,16 @@ codex-wakectl status THREAD_ID
 Use `codex-wakectl inspect THREAD_ID` when status alone does not explain whether
 the thread is progressing, waiting, failed, or already finished.
 
+If full inspection is slow or exceeds the app-server response limit, request
+only the newest summary:
+
+```sh
+codex-wakectl inspect THREAD_ID --brief --no-previous
+```
+
+`--items N` shortens printed full output but does not reduce the full turn
+transferred from the app-server.
+
 If the app-server is not the default `unix://`, pass the same `--endpoint` used
 when the sessions were started.
 

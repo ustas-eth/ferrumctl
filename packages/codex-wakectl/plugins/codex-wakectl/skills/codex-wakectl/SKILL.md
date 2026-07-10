@@ -40,6 +40,10 @@ Inspect another thread when its current state is not already clear:
 codex-wakectl inspect THREAD_ID
 ```
 
+Use `inspect THREAD_ID --brief` when status and recent responses are enough.
+Use the default full view when command or tool activity matters. Add
+`--no-previous` only when the prior turn is irrelevant or too large.
+
 Use native subagent input for an immediate message when this session has the
 live subagent handle. Use native wait or poll when this turn should stay active
 and blocking is acceptable.

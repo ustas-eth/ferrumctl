@@ -127,10 +127,14 @@ class ParseTests(unittest.TestCase):
         self.assertIs(args.func, cli.cmd_systemd_install)
 
     def test_inspect_and_interrupt_commands(self) -> None:
-        inspect = cli.build_parser().parse_args(["inspect", "thread", "--items", "0"])
+        inspect = cli.build_parser().parse_args(
+            ["inspect", "thread", "--items", "0", "--brief", "--no-previous"]
+        )
         interrupt = cli.build_parser().parse_args(["interrupt", "thread"])
 
         self.assertEqual(inspect.items, 0)
+        self.assertTrue(inspect.brief)
+        self.assertTrue(inspect.no_previous)
         self.assertIs(inspect.func, cli.cmd_inspect)
         self.assertIs(interrupt.func, cli.cmd_interrupt)
 

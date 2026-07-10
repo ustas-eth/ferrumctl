@@ -48,26 +48,29 @@ async def cmd_status(args: argparse.Namespace) -> int:
 
 async def cmd_inspect(args: argparse.Namespace) -> int:
     async with AppServer(args.endpoint, args.timeout) as app:
-        loaded = args.thread_id in await list_loaded(app)
-        thread = await read_thread(app, args.thread_id)
+        if args.brief:
+            detailed = []
+        else:
+            detailed = await list_thread_turns(
+                app,
+                args.thread_id,
+                limit=1,
+                items_view="full",
+            )
+        summary_turns = await list_thread_turns(
+            app,
+            args.thread_id,
+            limit=1 if args.no_previous else 2,
+            items_view="summary",
+        )
         goal_error = None
         try:
             goal = await get_goal(app, args.thread_id)
         except WakectlError as exc:
             goal = None
             goal_error = str(exc)
-        summary_turns = await list_thread_turns(
-            app,
-            args.thread_id,
-            limit=2,
-            items_view="summary",
-        )
-        detailed = await list_thread_turns(
-            app,
-            args.thread_id,
-            limit=1,
-            items_view="full",
-        )
+        thread = await read_thread(app, args.thread_id)
+        loaded = args.thread_id in await list_loaded(app)
     inspection = build_inspection(
         thread,
         loaded=loaded,

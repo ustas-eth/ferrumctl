@@ -26,12 +26,36 @@ interrupting still requires the target to be loaded on the selected endpoint.
 ## Inspection And Interruption
 
 `inspect` reads thread metadata, goal state, and the two newest turns through
-the app-server. The newest turn includes structured activity such as agent
-messages, command status, file changes, searches, and tool calls. Command output,
+the app-server. By default, the newest turn includes structured activity such
+as agent messages, command status, file changes, searches, and tool calls. The
+previous turn is a summary used to expose its agent response. Command output,
 patch content, and tool results are omitted from the report.
 
+`--brief` requests summary turns only. It avoids loading command output, patch
+content, and tool results that would be discarded, so it is the faster choice
+when status and recent responses are enough. `--no-previous` omits the previous
+turn. `--items` limits what wakectl prints after loading the newest turn; it does
+not reduce the full turn transferred by the app-server.
+
+Persisted turns provide start and completion timestamps in whole seconds and a
+duration in milliseconds when known. Completed command, MCP, and dynamic tool
+items can also provide durations. Codex rounds those durations down to whole
+milliseconds, so text output renders a native `0` as `<1ms`; JSON preserves the
+numeric value. Sleep items report their requested interval as `requested`, not
+measured elapsed time.
+
+Persisted turn items do not provide absolute timestamps. Live item
+notifications do, but they are delivered only to clients connected when the
+activity occurs and are not replayed to a later `inspect` process. Inspection
+therefore reports available turn boundary timestamps and item durations without
+inventing item times.
+
 The report is assembled from several app-server requests rather than one atomic
-snapshot. A running thread can advance while it is being inspected.
+snapshot. A running thread can advance while it is being inspected. Wakectl
+fetches a final turn summary and lifecycle state after any full-turn load; if a
+new turn appeared or its lifecycle changed, that summary is reported instead of
+combining stale activity with newer state. The turn line identifies the selected
+item view as `full` or `summary`.
 
 Inspection and durable stop watches use the experimental
 `thread/turns/list` method available in Codex 0.144 and compatible releases.

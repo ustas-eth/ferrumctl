@@ -1,6 +1,6 @@
 {
   "name": "codex-wakectl",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Codex skill for inspecting, controlling, and waking app-server-backed threads.",
   "author": {
     "name": "ustas-eth"

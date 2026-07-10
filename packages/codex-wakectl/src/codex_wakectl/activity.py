@@ -47,7 +47,13 @@ def summarize_item(item: dict[str, Any]) -> dict[str, Any]:
             for change in item.get("changes", [])
         ]
     elif kind == "mcpToolCall":
-        summary.update({"server": item.get("server"), "tool": item.get("tool")})
+        summary.update(
+            {
+                "server": item.get("server"),
+                "tool": item.get("tool"),
+                "error": item.get("error"),
+            }
+        )
     elif kind == "dynamicToolCall":
         summary.update(
             {
@@ -60,8 +66,9 @@ def summarize_item(item: dict[str, Any]) -> dict[str, Any]:
         summary.update(
             {
                 "tool": item.get("tool"),
+                "senderThreadId": item.get("senderThreadId"),
                 "receiverThreadIds": item.get("receiverThreadIds", []),
-                "agentsStates": item.get("agentsStates", {}),
+                "agentsStates": bounded_collab_states(item.get("agentsStates", {})),
             }
         )
     elif kind == "subAgentActivity":
@@ -69,6 +76,7 @@ def summarize_item(item: dict[str, Any]) -> dict[str, Any]:
             {
                 "kind": item.get("kind"),
                 "agentThreadId": item.get("agentThreadId"),
+                "agentPath": item.get("agentPath"),
             }
         )
     elif kind == "webSearch":
@@ -92,6 +100,8 @@ def summarize_turn(turn: dict[str, Any], item_limit: int) -> dict[str, Any]:
     return {
         "id": turn.get("id"),
         "status": turn.get("status"),
+        "itemsView": turn.get("itemsView"),
+        "error": turn.get("error"),
         "startedAt": started_at,
         "completedAt": completed_at,
         "durationMs": turn.get("durationMs"),
@@ -101,6 +111,41 @@ def summarize_turn(turn: dict[str, Any], item_limit: int) -> dict[str, Any]:
         ),
         "items": [summarize_item(item) for item in items],
     }
+
+
+def merge_turn_detail(
+    detailed: dict[str, Any], summary: dict[str, Any]
+) -> dict[str, Any]:
+    merged = dict(detailed)
+    for key in ("status", "error", "startedAt", "completedAt", "durationMs"):
+        if key in summary:
+            merged[key] = summary[key]
+
+    items = list(detailed.get("items", []))
+    positions = {
+        item["id"]: index
+        for index, item in enumerate(items)
+        if item.get("id") is not None
+    }
+    for item in summary.get("items", []):
+        item_id = item.get("id")
+        if item_id in positions:
+            items[positions[item_id]] = item
+        else:
+            items.append(item)
+            if item_id is not None:
+                positions[item_id] = len(items) - 1
+    merged["items"] = items
+    return merged
+
+
+def turn_lifecycle_changed(
+    detailed: dict[str, Any], summary: dict[str, Any]
+) -> bool:
+    return any(
+        detailed.get(key) != summary.get(key)
+        for key in ("status", "error", "startedAt", "completedAt", "durationMs")
+    )
 
 
 def build_inspection(
@@ -113,7 +158,16 @@ def build_inspection(
     summary_turns: list[dict[str, Any]],
     item_limit: int,
 ) -> dict[str, Any]:
-    latest = detailed_turn or (summary_turns[0] if summary_turns else None)
+    summary_latest = summary_turns[0] if summary_turns else None
+    if (
+        detailed_turn is not None
+        and summary_latest is not None
+        and detailed_turn.get("id") == summary_latest.get("id")
+        and not turn_lifecycle_changed(detailed_turn, summary_latest)
+    ):
+        latest = merge_turn_detail(detailed_turn, summary_latest)
+    else:
+        latest = summary_latest
     previous = next(
         (
             turn
@@ -144,20 +198,43 @@ def quoted(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
+def duration_label(milliseconds: int) -> str:
+    return "<1ms" if milliseconds == 0 else f"{milliseconds}ms"
+
+
+def bounded_collab_states(states: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {
+        thread_id: {
+            "status": state.get("status") if isinstance(state, dict) else state
+        }
+        for thread_id, state in states.items()
+    }
+
+
+def collab_state_statuses(states: dict[str, Any]) -> dict[str, Any]:
+    return {
+        thread_id: state.get("status") if isinstance(state, dict) else state
+        for thread_id, state in states.items()
+    }
+
+
 def turn_line(label: str, turn: dict[str, Any]) -> str:
     timestamp = turn.get("completedAt") or turn.get("startedAt")
     completed_ago = turn.get("completedAgoSeconds")
     started_ago = turn.get("startedAgoSeconds")
     age = f"ended={completed_ago}s" if completed_ago is not None else f"started={started_ago}s"
-    return "\t".join(
-        [
-            label,
-            str(turn.get("status") or "unknown"),
-            str(turn.get("id") or "-"),
-            format_time(timestamp) if timestamp is not None else "-",
-            age if completed_ago is not None or started_ago is not None else "started=-",
-        ]
-    )
+    fields = [
+        label,
+        str(turn.get("status") or "unknown"),
+        str(turn.get("id") or "-"),
+        format_time(timestamp) if timestamp is not None else "-",
+        age if completed_ago is not None or started_ago is not None else "started=-",
+    ]
+    if turn.get("itemsView") is not None:
+        fields.append(f"view={turn['itemsView']}")
+    if turn.get("durationMs") is not None:
+        fields.append(f"duration={duration_label(turn['durationMs'])}")
+    return "\t".join(fields)
 
 
 def item_line(prefix: str, item: dict[str, Any]) -> str:
@@ -183,10 +260,16 @@ def item_line(prefix: str, item: dict[str, Any]) -> str:
     elif kind == "collabAgentToolCall":
         value = {
             "tool": item.get("tool"),
+            "sender": item.get("senderThreadId"),
             "receivers": item.get("receiverThreadIds", []),
+            "states": collab_state_statuses(item.get("agentsStates", {})),
         }
     elif kind == "subAgentActivity":
-        value = {"kind": item.get("kind"), "thread": item.get("agentThreadId")}
+        value = {
+            "kind": item.get("kind"),
+            "thread": item.get("agentThreadId"),
+            "path": item.get("agentPath"),
+        }
     elif kind == "webSearch":
         value = item.get("query") or item.get("action")
     elif kind in {"imageView", "imageGeneration"}:
@@ -194,8 +277,25 @@ def item_line(prefix: str, item: dict[str, Any]) -> str:
     elif kind in {"enteredReviewMode", "exitedReviewMode"}:
         value = item.get("review")
     else:
-        value = ""
-    return f"{label}\t{quoted(value)}"
+        value = None
+
+    fields = [label]
+    if value is not None:
+        fields.append(quoted(value))
+    if kind == "sleep" and item.get("durationMs") is not None:
+        fields.append(f"requested={duration_label(item['durationMs'])}")
+    elif item.get("durationMs") is not None:
+        fields.append(f"duration={duration_label(item['durationMs'])}")
+    if kind == "commandExecution":
+        if item.get("exitCode") is not None:
+            fields.append(f"exit={item['exitCode']}")
+        if item.get("cwd") is not None:
+            fields.append(f"cwd={quoted(item['cwd'])}")
+    elif kind == "mcpToolCall" and item.get("error") is not None:
+        fields.append(f"error={quoted(item['error'])}")
+    elif kind == "dynamicToolCall" and item.get("success") is not None:
+        fields.append(f"success={str(item['success']).lower()}")
+    return "\t".join(fields)
 
 
 def format_inspection(inspection: dict[str, Any]) -> str:
@@ -238,10 +338,14 @@ def format_inspection(inspection: dict[str, Any]) -> str:
     latest = inspection.get("latestTurn")
     if latest is not None:
         lines.append(turn_line("latest", latest))
+        if latest.get("error") is not None:
+            lines.append(f"latest:error\t{quoted(latest['error'])}")
         lines.extend(item_line("", item) for item in latest.get("items", []))
     previous = inspection.get("previousTurn")
     if previous is not None:
         lines.append(turn_line("previous", previous))
+        if previous.get("error") is not None:
+            lines.append(f"previous:error\t{quoted(previous['error'])}")
         lines.extend(
             item_line("previous:", item)
             for item in previous.get("items", [])

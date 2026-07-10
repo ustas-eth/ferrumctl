@@ -96,6 +96,98 @@ export CODEX_HOME="$SMOKE_ROOT/codex-home"
 export XDG_STATE_HOME="$SMOKE_ROOT/state"
 mkdir -p "$CODEX_HOME" "$XDG_STATE_HOME"
 
+inspect_thread="00000000-0000-4000-8000-000000000010"
+inspect_turn="00000000-0000-4000-8000-000000000011"
+inspect_rollout="$CODEX_HOME/sessions/2026/01/02/rollout-2026-01-02T03-04-05-$inspect_thread.jsonl"
+mkdir -p "$(dirname "$inspect_rollout")"
+"$PYTHON" - "$inspect_rollout" "$inspect_thread" "$inspect_turn" "$SMOKE_ROOT" <<'PY'
+import json
+import sys
+
+rollout, thread_id, turn_id, cwd = sys.argv[1:]
+timestamp = "2026-01-02T03:04:05Z"
+events = [
+    {
+        "timestamp": timestamp,
+        "type": "session_meta",
+        "payload": {
+            "id": thread_id,
+            "timestamp": timestamp,
+            "cwd": cwd,
+            "originator": "ferrumctl-codex-smoke",
+            "cli_version": "0.0.0",
+            "source": "cli",
+            "thread_source": "user",
+            "model_provider": "openai",
+        },
+    },
+    {
+        "timestamp": timestamp,
+        "type": "event_msg",
+        "payload": {
+            "type": "turn_started",
+            "turn_id": turn_id,
+            "started_at": 1767323045,
+            "model_context_window": 200000,
+        },
+    },
+    {
+        "timestamp": timestamp,
+        "type": "response_item",
+        "payload": {
+            "type": "message",
+            "id": "user",
+            "role": "user",
+            "content": [{"type": "input_text", "text": "Smoke request."}],
+        },
+    },
+    {
+        "timestamp": timestamp,
+        "type": "event_msg",
+        "payload": {
+            "type": "user_message",
+            "message": "Smoke request.",
+            "kind": "plain",
+        },
+    },
+    {
+        "timestamp": timestamp,
+        "type": "response_item",
+        "payload": {
+            "type": "message",
+            "id": "answer",
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": "Smoke complete."}],
+            "phase": "final_answer",
+        },
+    },
+    {
+        "timestamp": timestamp,
+        "type": "event_msg",
+        "payload": {
+            "type": "agent_message",
+            "message": "Smoke complete.",
+            "phase": "final_answer",
+        },
+    },
+    {
+        "timestamp": timestamp,
+        "type": "event_msg",
+        "payload": {
+            "type": "turn_complete",
+            "turn_id": turn_id,
+            "last_agent_message": "Smoke complete.",
+            "completed_at": 1767323047,
+            "duration_ms": 2000,
+        },
+    },
+]
+
+with open(rollout, "w", encoding="utf-8") as handle:
+    for event in events:
+        handle.write(json.dumps(event, separators=(",", ":")) + "\n")
+PY
+
 log "Codex version"
 codex_version=$("$CODEX_BIN" --version)
 printf '%s\n' "$codex_version"
@@ -152,6 +244,40 @@ done
 
 wakectl --timeout 5 loaded >"$SMOKE_ROOT/loaded.out"
 printf 'wakectl reached app-server; loaded threads: %s\n' "$(wc -l <"$SMOKE_ROOT/loaded.out")"
+
+wakectl --timeout 5 inspect "$inspect_thread" \
+  --no-previous >"$SMOKE_ROOT/inspect.out"
+grep -q $'^latest\tcompleted\t'"$inspect_turn" "$SMOKE_ROOT/inspect.out" || {
+  sed -n '1,40p' "$SMOKE_ROOT/inspect.out" >&2
+  fail "wakectl full inspection omitted completed turn"
+}
+grep -Fq $'view=full\tduration=2000ms' "$SMOKE_ROOT/inspect.out" || {
+  sed -n '1,40p' "$SMOKE_ROOT/inspect.out" >&2
+  fail "wakectl full inspection omitted turn timing"
+}
+grep -Fqx $'agentMessage:final_answer\t"Smoke complete."' "$SMOKE_ROOT/inspect.out" || {
+  sed -n '1,40p' "$SMOKE_ROOT/inspect.out" >&2
+  fail "wakectl full inspection omitted final response"
+}
+
+wakectl --timeout 5 --json inspect "$inspect_thread" \
+  --brief --no-previous >"$SMOKE_ROOT/inspect-brief.json"
+"$PYTHON" - "$SMOKE_ROOT/inspect-brief.json" "$inspect_turn" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    inspection = json.load(handle)
+turn = inspection["latestTurn"]
+assert turn["id"] == sys.argv[2]
+assert turn["status"] == "completed"
+assert turn["itemsView"] == "summary"
+assert turn["startedAt"] == 1767323045
+assert turn["completedAt"] == 1767323047
+assert turn["durationMs"] == 2000
+assert turn["items"][-1]["text"] == "Smoke complete."
+PY
+printf 'wakectl inspected persisted full and summary turn history\n'
 
 if wakectl --timeout 5 add stop "$missing_thread" \
   --to "$missing_thread" "smoke" >"$SMOKE_ROOT/turns.out" 2>"$SMOKE_ROOT/turns.err"; then

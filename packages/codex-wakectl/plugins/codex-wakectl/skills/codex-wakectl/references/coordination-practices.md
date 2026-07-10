@@ -46,6 +46,17 @@ The report distinguishes thread status, goal status, the newest turn, recent
 structured activity, and the previous turn's agent response. It does not return
 command output or modify the thread.
 
+Start with a summary when only orientation or the recent response is needed:
+
+```sh
+codex-wakectl inspect THREAD_ID --brief
+```
+
+Use the default full view when command and tool activity matters. `--items N`
+keeps its printed report short but does not reduce the turn data loaded from the
+app-server. Add `--no-previous` only when the prior turn is irrelevant or its
+response would make the report too large.
+
 ## Native Handles, Wait, and Queued Wakes
 
 When a supervising agent has a native subagent input handle, that handle is the
