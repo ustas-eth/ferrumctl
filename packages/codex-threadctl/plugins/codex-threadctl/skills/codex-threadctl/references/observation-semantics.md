@@ -10,7 +10,7 @@ be incomplete or stale.
 The selected app-server endpoint defines live state. A loaded thread can be
 `active`, `idle`, or in another server-reported state. A persisted thread can
 still be inspected when it is not loaded, but it cannot be interrupted or
-compacted through that server.
+given input through that server until it is resumed.
 
 `inspect` assembles metadata, loaded state, goal state, and recent turns through
 separate requests. A running thread can advance between those requests. The
@@ -33,14 +33,12 @@ summary. `--brief` requests summaries only. `--items` limits printed items after
 the newest full turn is transferred; it does not reduce that app-server
 response.
 
-`messages` selects the first user message and final or latest agent message from
-each summary turn, then returns the newest requested messages in chronological
-order. Intermediate agent updates remain available in a full inspection of the
-newest turn, but are not conversation-list entries. `--limit 0` scans the full
-materialized history. Each locator contains a turn id and item id because item
-ids can repeat across turns or compaction windows.
+`messages` reads full turn pages and returns retained user and agent messages in
+chronological order. `--limit 0` scans the full materialized history. Each
+locator contains a turn id and item id because item ids can repeat across turns
+or compaction windows.
 
-`message` pages through summary turns until it finds that pair, then prints the
+`message` pages through full turns until it finds that pair, then prints the
 complete message text retained by Codex. Codex 0.144 has no working item lookup
 endpoint, so old message retrieval can still reconstruct a large rollout more
 than once even though network output stays small.
@@ -50,8 +48,10 @@ do not provide absolute item timestamps, so threadctl does not invent them.
 
 ## Context State
 
-When `thread/read` provides a rollout path, `inspect` reads the newest native
-token-count and compaction records from that file. Context usage is the latest
+For a local Unix endpoint, `inspect` reads the newest native token-count and
+compaction records from the rollout path reported by `thread/read`. Remote
+endpoints omit this local-file view rather than assuming the server path exists
+on the client host. Context usage is the latest
 recorded model exchange, not a continuous process measurement. It can remain
 unchanged during a long command, and the report includes its observation time
 and age for that reason.

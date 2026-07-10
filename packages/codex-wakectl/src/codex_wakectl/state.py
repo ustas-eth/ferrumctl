@@ -25,6 +25,8 @@ JOB_COLUMNS = {
     "fireCount": "fire_count",
     "lastFiredAt": "last_fired_at",
     "lastTurnId": "last_turn_id",
+    "lastClientMessageId": "last_client_message_id",
+    "lastDeliveryMode": "last_delivery_mode",
     "lastReason": "last_reason",
     "lastError": "last_error",
     "lastTokensUsedBucket": "last_tokens_used_bucket",
@@ -38,6 +40,8 @@ OPTIONAL_JOB_FIELDS = [
     "firedAt",
     "lastFiredAt",
     "lastTurnId",
+    "lastClientMessageId",
+    "lastDeliveryMode",
     "lastReason",
     "lastError",
     "lastTokensUsedBucket",
@@ -77,6 +81,8 @@ def open_state(path: Path) -> sqlite3.Connection:
             fire_count INTEGER NOT NULL DEFAULT 0,
             last_fired_at INTEGER,
             last_turn_id TEXT,
+            last_client_message_id TEXT,
+            last_delivery_mode TEXT,
             last_reason TEXT,
             last_error TEXT,
             last_tokens_used_bucket INTEGER,
@@ -95,6 +101,8 @@ def open_state(path: Path) -> sqlite3.Connection:
     )
     ensure_column(conn, "timeout", "REAL")
     ensure_column(conn, "allow_active", "INTEGER NOT NULL DEFAULT 0")
+    ensure_column(conn, "last_client_message_id", "TEXT")
+    ensure_column(conn, "last_delivery_mode", "TEXT")
     return conn
 
 
@@ -140,9 +148,10 @@ def insert_job(state_path: Path, job: dict[str, Any]) -> None:
                 timeout, allow_active,
                 created_at, updated_at, fired_at, fire_count, last_fired_at,
                 last_turn_id, last_reason, last_error, last_tokens_used_bucket,
-                last_time_used_bucket, lease_owner, lease_started_at, lease_until
+                last_time_used_bucket, lease_owner, lease_started_at, lease_until,
+                last_client_message_id, last_delivery_mode
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 job["id"],
@@ -166,6 +175,8 @@ def insert_job(state_path: Path, job: dict[str, Any]) -> None:
                 job.get("leaseOwner"),
                 job.get("leaseStartedAt"),
                 job.get("leaseUntil"),
+                job.get("lastClientMessageId"),
+                job.get("lastDeliveryMode"),
             ),
         )
     finally:
@@ -175,7 +186,11 @@ def insert_job(state_path: Path, job: dict[str, Any]) -> None:
 def list_jobs(state_path: Path, *, include_all: bool = False) -> list[dict[str, Any]]:
     conn = open_state(state_path)
     try:
-        where = "" if include_all else "WHERE status = 'pending'"
+        where = (
+            ""
+            if include_all
+            else "WHERE status IN ('pending', 'failed', 'uncertain')"
+        )
         rows = conn.execute(
             f"""
             SELECT * FROM jobs
@@ -189,6 +204,7 @@ def list_jobs(state_path: Path, *, include_all: bool = False) -> list[dict[str, 
 
 
 def cancel_job(state_path: Path, job_id: str) -> bool:
+    ts = now_seconds()
     conn = open_state(state_path)
     try:
         conn.execute("BEGIN IMMEDIATE")
@@ -200,9 +216,11 @@ def cancel_job(state_path: Path, job_id: str) -> bool:
                 lease_owner = NULL,
                 lease_started_at = NULL,
                 lease_until = NULL
-            WHERE id = ? AND status = 'pending'
+            WHERE id = ?
+              AND status = 'pending'
+              AND (lease_owner IS NULL OR lease_until IS NULL OR lease_until <= ?)
             """,
-            (now_seconds(), job_id),
+            (ts, job_id, ts),
         )
         conn.commit()
         return cur.rowcount > 0
@@ -288,6 +306,33 @@ def update_claimed_job(
             WHERE id = ? AND lease_owner = ? AND status = 'pending'
             """,
             params,
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def renew_claimed_job(
+    state_path: Path,
+    job_id: str,
+    owner: str,
+    lease_seconds: int,
+) -> bool:
+    ts = now_seconds()
+    conn = open_state(state_path)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        cur = conn.execute(
+            """
+            UPDATE jobs
+            SET lease_until = ?, updated_at = ?
+            WHERE id = ? AND lease_owner = ? AND status = 'pending'
+            """,
+            (ts + lease_seconds, ts, job_id, owner),
         )
         conn.commit()
         return cur.rowcount > 0

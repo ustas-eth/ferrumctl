@@ -14,6 +14,8 @@ def summarize_item(item: dict[str, Any]) -> dict[str, Any]:
 
     if kind == "userMessage":
         summary["text"] = message_text(item)
+        if item.get("clientId") is not None:
+            summary["clientId"] = item["clientId"]
     elif kind == "agentMessage":
         summary["text"] = item.get("text", "")
         if item.get("phase") is not None:
@@ -108,6 +110,7 @@ def message_record(turn: dict[str, Any], item: dict[str, Any]) -> dict[str, Any]
         "itemId": item.get("id"),
         "role": "user" if item.get("type") == "userMessage" else "agent",
         "phase": item.get("phase"),
+        "clientId": item.get("clientId"),
         "text": message_text(item),
         "turnStatus": turn.get("status"),
         "startedAt": turn.get("startedAt"),

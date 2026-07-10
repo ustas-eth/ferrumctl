@@ -1,23 +1,29 @@
 from __future__ import annotations
 
 import argparse
+import math
 
 from .commands import (
-    cmd_compact,
     cmd_inspect,
     cmd_interrupt,
     cmd_loaded,
     cmd_message,
     cmd_messages,
+    cmd_resume,
+    cmd_start,
     cmd_status,
+    cmd_steer,
 )
 from .constants import CLIENT_VERSION, DEFAULT_TIMEOUT
 
 
 def positive_float(value: str) -> float:
-    parsed = float(value)
-    if parsed <= 0:
-        raise argparse.ArgumentTypeError("must be greater than zero")
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a positive finite number") from exc
+    if not math.isfinite(parsed) or parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a positive finite number")
     return parsed
 
 
@@ -32,7 +38,7 @@ def add_global_options(parser: argparse.ArgumentParser, *, defaults: bool) -> No
     parser.add_argument(
         "--endpoint",
         default="unix://" if defaults else argparse.SUPPRESS,
-        help="app-server endpoint: unix://, unix://PATH, or ws://HOST:PORT",
+        help="app-server endpoint: unix://, unix://PATH, ws://HOST:PORT, or wss://HOST:PORT",
     )
     parser.add_argument(
         "--timeout",
@@ -107,14 +113,33 @@ def build_parser() -> argparse.ArgumentParser:
     add_global_options(message, defaults=False)
     message.set_defaults(func=cmd_message)
 
-    interrupt = sub.add_parser("interrupt", help="interrupt the active turn")
+    start = sub.add_parser("start", help="send input as a new turn on an idle thread")
+    start.add_argument("thread_id")
+    start.add_argument("message")
+    add_global_options(start, defaults=False)
+    start.set_defaults(func=cmd_start)
+
+    steer = sub.add_parser("steer", help="send input to one expected active turn")
+    steer.add_argument("thread_id")
+    steer.add_argument("turn_id")
+    steer.add_argument("message")
+    add_global_options(steer, defaults=False)
+    steer.set_defaults(func=cmd_steer)
+
+    interrupt = sub.add_parser("interrupt", help="request interruption of one turn")
     interrupt.add_argument("thread_id")
+    interrupt.add_argument("turn_id")
+    interrupt.add_argument(
+        "--wait",
+        action="store_true",
+        help="wait for the turn to reach a terminal status",
+    )
     add_global_options(interrupt, defaults=False)
     interrupt.set_defaults(func=cmd_interrupt)
 
-    compact = sub.add_parser("compact", help="compact an idle thread")
-    compact.add_argument("thread_id")
-    add_global_options(compact, defaults=False)
-    compact.set_defaults(func=cmd_compact)
+    resume = sub.add_parser("resume", help="load a persisted thread on app-server")
+    resume.add_argument("thread_id")
+    add_global_options(resume, defaults=False)
+    resume.set_defaults(func=cmd_resume)
 
     return parser

@@ -6,9 +6,8 @@ Small Unix-style control tools for Codex agent workflows.
 Use the tools separately and compose them with the shell:
 
 - `codex-goalctl` reads and changes persisted Codex thread goals.
-- `codex-wakectl` sends and schedules app-server-backed Codex thread input.
-- `codex-threadctl` inspects thread activity and history and applies explicit
-  lifecycle controls.
+- `codex-threadctl` inspects threads and applies immediate, turn-scoped control.
+- `codex-wakectl` waits for conditions and schedules durable thread input.
 - `codex-readcov` counts file-read actions from Codex rollout transcripts.
 
 The optional Codex plugins add skills that explain when agents should use each
@@ -21,8 +20,8 @@ git clone https://github.com/ustas-eth/ferrumctl
 cd ferrumctl
 
 uv tool install ./packages/codex-goalctl
-uv tool install ./packages/codex-wakectl
 uv tool install ./packages/codex-threadctl
+uv tool install ./packages/codex-wakectl
 cargo install --locked --path ./packages/codex-readcov
 ```
 
@@ -35,8 +34,8 @@ Install the optional skills from the root marketplace:
 ```sh
 codex plugin marketplace add ustas-eth/ferrumctl
 codex plugin add codex-goalctl@ferrumctl
-codex plugin add codex-wakectl@ferrumctl
 codex plugin add codex-threadctl@ferrumctl
+codex plugin add codex-wakectl@ferrumctl
 codex plugin add codex-readcov@ferrumctl
 ```
 
@@ -53,7 +52,7 @@ MAIN=main-thread-id
 
 codex-readcov snapshot "$WORKER" > worker.before.json
 codex-goalctl replace "$WORKER" "Review this package and mark the goal complete."
-codex-wakectl send "$WORKER" "A goal was assigned. Call get_goal and proceed."
+codex-threadctl start "$WORKER" "A goal was assigned. Call get_goal and proceed."
 codex-threadctl inspect "$WORKER"
 codex-readcov delta worker.before.json packages --limit 20
 ```
@@ -110,8 +109,8 @@ More combinations are in [docs/coordination-recipes.md](docs/coordination-recipe
 ```text
 packages/
   codex-goalctl/
-  codex-wakectl/
   codex-threadctl/
+  codex-wakectl/
   codex-readcov/
 ```
 

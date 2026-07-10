@@ -12,13 +12,13 @@ process.
 `codex-goalctl` reads and edits persisted goal state. It provides durable intent
 and counters, but does not start a turn or deliver input.
 
-`codex-wakectl` sends normal input through a selected app-server and can persist
-conditions that deliver input later. Its SQLite queue is shared state separate
-from Codex.
+`codex-wakectl` waits for conditions and persists jobs that deliver normal input
+later. Its SQLite queue is shared state separate from Codex.
 
 `codex-threadctl` observes thread status, materialized turns, goal state, and
-context records. It also exposes deliberate interruption and compaction. Its
-inspection is a read-only aggregate, not an atomic snapshot.
+context records. It also starts or steers immediate input, resumes persisted
+threads, and interrupts exact turns. Its inspection is a read-only aggregate,
+not an atomic snapshot.
 
 `codex-readcov` reads rollout transcripts and reports recorded file-read
 actions. It provides transcript evidence, not verified operating-system access.
@@ -71,12 +71,13 @@ context, unless the user explicitly requests another installed command.
 Common subsets:
 
 - `goalctl`: external goal assignment and status checks.
-- `wakectl`: immediate input, later attention, stop watches, and host
+- `wakectl`: later attention, blocking conditions, stop watches, and host
   predicates.
-- `threadctl`: current activity, conversation retrieval, interruption, and
-  compaction.
+- `threadctl`: current activity, conversation retrieval, immediate input,
+  resume, and turn-scoped interruption.
 - `readcov`: read counts, interval deltas, overlap, and gaps.
-- `goalctl + wakectl`: durable assignment plus input delivery.
+- `goalctl + threadctl`: durable assignment plus immediate input delivery.
+- `goalctl + wakectl`: durable assignment plus conditional later delivery.
 - `wakectl + threadctl`: later attention plus deliberate observation.
 - `threadctl + readcov`: behavioral inspection plus recorded read evidence.
 
@@ -95,5 +96,5 @@ The surfaces can differ temporarily:
 
 Treat cross-surface workflows as retryable. Keep durable intent in goals, use
 small idempotent queued messages when context remains authoritative, inspect
-before destructive control, take read snapshots around the interval of
+before interruption, take read snapshots around the interval of
 interest, and cancel only queued jobs owned by the current workflow.

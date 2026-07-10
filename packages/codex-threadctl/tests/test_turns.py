@@ -71,7 +71,7 @@ class MessageTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["text"], "wanted")
         self.assertEqual(result["turnId"], "old")
         self.assertTrue(
-            all(call.kwargs["items_view"] == "summary" for call in mocked.await_args_list)
+            all(call.kwargs["items_view"] == "full" for call in mocked.await_args_list)
         )
 
     async def test_find_message_rejects_non_message_item(self):

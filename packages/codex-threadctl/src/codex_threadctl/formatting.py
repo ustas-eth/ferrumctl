@@ -144,6 +144,8 @@ def format_inspection(inspection: dict[str, Any]) -> str:
                 ]
             )
         )
+    elif inspection.get("contextError"):
+        lines.append(f"context\tunavailable\t{quoted(inspection['contextError'])}")
     compaction = inspection.get("compaction")
     if compaction is not None:
         window = compaction.get("windowNumber")

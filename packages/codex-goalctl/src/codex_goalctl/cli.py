@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 from typing import Any
@@ -58,7 +59,7 @@ def positive_float(value: str) -> float:
         parsed = float(value)
     except ValueError as exc:
         raise argparse.ArgumentTypeError("must be a number") from exc
-    if parsed <= 0:
+    if not math.isfinite(parsed) or parsed <= 0:
         raise argparse.ArgumentTypeError("must be positive")
     return parsed
 
@@ -150,7 +151,7 @@ def add_common_options(parser: argparse.ArgumentParser, *, defaults: bool) -> No
         "--timeout",
         type=positive_float,
         default=(
-            float(os.environ.get("CODEX_GOALCTL_TIMEOUT", "20"))
+            positive_float(os.environ.get("CODEX_GOALCTL_TIMEOUT", "20"))
             if defaults
             else argparse.SUPPRESS
         ),

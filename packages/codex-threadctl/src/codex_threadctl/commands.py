@@ -6,12 +6,14 @@ import sys
 
 from .appserver import (
     AppServer,
-    compact_thread,
     get_goal,
     interrupt_thread,
     list_loaded,
     list_turn_page,
     read_thread,
+    resume_thread,
+    start_turn,
+    steer_turn,
 )
 from .context import read_context_state
 from .errors import ThreadctlError
@@ -24,7 +26,7 @@ async def cmd_loaded(args: argparse.Namespace) -> int:
         thread_ids = await list_loaded(app)
     if args.json:
         print(json.dumps({"threadIds": thread_ids}, indent=2))
-    else:
+    elif thread_ids:
         print("\n".join(thread_ids))
     return 0
 
@@ -56,6 +58,7 @@ async def cmd_status(args: argparse.Namespace) -> int:
 
 async def cmd_inspect(args: argparse.Namespace) -> int:
     async with AppServer(args.endpoint, args.timeout) as app:
+        local_rollout = app.endpoint.startswith("unix://")
         detailed = []
         if not args.brief:
             detailed = (
@@ -83,7 +86,12 @@ async def cmd_inspect(args: argparse.Namespace) -> int:
         thread = await read_thread(app, args.thread_id)
         loaded = args.thread_id in await list_loaded(app)
 
-    context, compaction = read_context_state(thread.get("path"))
+    if local_rollout:
+        context, compaction = read_context_state(thread.get("path"))
+        context_error = None
+    else:
+        context, compaction = None, None
+        context_error = "rollout context is unavailable through a remote endpoint"
     inspection = build_inspection(
         thread,
         loaded=loaded,
@@ -94,6 +102,7 @@ async def cmd_inspect(args: argparse.Namespace) -> int:
         item_limit=args.items,
         context=context,
         compaction=compaction,
+        context_error=context_error,
     )
     if args.json:
         print(json.dumps(inspection, indent=2))
@@ -132,9 +141,39 @@ async def cmd_message(args: argparse.Namespace) -> int:
     return 0
 
 
+async def cmd_start(args: argparse.Namespace) -> int:
+    async with AppServer(args.endpoint, args.timeout) as app:
+        result = await start_turn(app, args.thread_id, args.message)
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print(f"{result['delivery']}\t{result['turnId']}")
+    return 0
+
+
+async def cmd_steer(args: argparse.Namespace) -> int:
+    async with AppServer(args.endpoint, args.timeout) as app:
+        result = await steer_turn(
+            app,
+            args.thread_id,
+            args.turn_id,
+            args.message,
+        )
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print(f"{result['delivery']}\t{result['turnId']}")
+    return 0
+
+
 async def cmd_interrupt(args: argparse.Namespace) -> int:
     async with AppServer(args.endpoint, args.timeout) as app:
-        result = await interrupt_thread(app, args.thread_id)
+        result = await interrupt_thread(
+            app,
+            args.thread_id,
+            args.turn_id,
+            wait=args.wait,
+        )
     if args.json:
         print(json.dumps(result, indent=2))
     else:
@@ -142,11 +181,17 @@ async def cmd_interrupt(args: argparse.Namespace) -> int:
     return 0
 
 
-async def cmd_compact(args: argparse.Namespace) -> int:
+async def cmd_resume(args: argparse.Namespace) -> int:
     async with AppServer(args.endpoint, args.timeout) as app:
-        result = await compact_thread(app, args.thread_id)
+        thread = await resume_thread(app, args.thread_id)
+    result = {
+        "threadId": thread.get("id", args.thread_id),
+        "status": thread.get("status", {"type": "unknown"}),
+    }
     if args.json:
         print(json.dumps(result, indent=2))
     else:
-        print(f"{result['status']}\t{result['threadId']}")
+        status = result["status"]
+        name = status.get("type", "unknown") if isinstance(status, dict) else "unknown"
+        print(f"{name}\t{result['threadId']}")
     return 0

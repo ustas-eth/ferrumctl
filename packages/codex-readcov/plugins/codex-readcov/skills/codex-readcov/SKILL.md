@@ -23,6 +23,9 @@ coverage, or summarize file contents.
 - Path operands filter reported reads; they do not define a coverage universe.
 - Counts classify recorded commands; they do not verify command success or file
   contents returned to the model.
+- Current `exec` wrapper calls are parsed as JavaScript. If nested command
+  arguments are constructed dynamically, readcov fails instead of returning
+  incomplete coverage as zero.
 
 For the current thread, use `CODEX_THREAD_ID` when it is available:
 

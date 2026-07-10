@@ -3,16 +3,23 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import math
 import sys
 import time
 from typing import Any
 
-from .appserver import (
+from codex_threadctl.appserver import (
     AppServer,
+    deliver_input,
     get_goal,
     normalize_endpoint,
-    send_turn,
 )
+from codex_threadctl.errors import (
+    DeliveryUncertain,
+    ThreadNotLoaded,
+    ThreadStateError,
+)
+
 from .conditions import (
     condition_needs_app,
     condition_ready,
@@ -21,25 +28,47 @@ from .conditions import (
     new_job,
     seed_stop_condition,
 )
-from .constants import SYSTEMD_SERVICE_NAME, SYSTEMD_TIMER_NAME
-from .errors import WakeDeferred, WakectlError
+from .constants import (
+    CLIENT_VERSION,
+    DELIVERY_LEASE_TIMEOUTS,
+    SYSTEMD_SERVICE_NAME,
+    SYSTEMD_TIMER_NAME,
+)
+from .errors import WakectlError
 from .parsing import now_seconds
-from .state import cancel_job, claim_pending_jobs, insert_job, list_jobs, update_claimed_job
+from .state import (
+    cancel_job,
+    claim_pending_jobs,
+    insert_job,
+    list_jobs,
+    renew_claimed_job,
+    update_claimed_job,
+)
 from .systemd import build_systemd_units, resolve_wakectl_bin, run_systemctl, systemd_user_dir
 
 
-async def seed_repeating_goal_job(args: argparse.Namespace, job: dict[str, Any]) -> None:
+class LeaseLost(Exception):
+    pass
+
+
+def wakectl_appserver(endpoint: str, timeout: float) -> AppServer:
+    return AppServer(
+        endpoint,
+        timeout,
+        client_name="codex_wakectl",
+        client_title="codex-wakectl",
+        client_version=CLIENT_VERSION,
+    )
+
+
+async def seed_goal_job(args: argparse.Namespace, job: dict[str, Any]) -> None:
     condition = job["condition"]
-    if condition.get("type") != "goal" or not condition_repeats(condition):
+    if condition.get("type") != "goal":
         return
-    try:
-        async with AppServer(job["endpoint"], args.timeout) as app:
-            goal = await get_goal(app, condition["threadId"])
-    except Exception as exc:
-        job["lastError"] = f"could not seed interval bucket: {exc}"
-        return
+    async with wakectl_appserver(job["endpoint"], args.timeout) as app:
+        goal = await get_goal(app, condition["threadId"])
     if goal is None:
-        job["lastReason"] = "no goal while seeding interval bucket"
+        job["lastReason"] = "no goal while seeding watch"
         return
     created_at = goal.get("createdAt")
     if created_at is not None:
@@ -55,7 +84,7 @@ async def seed_repeating_goal_job(args: argparse.Namespace, job: dict[str, Any])
 async def seed_stop_job(args: argparse.Namespace, job: dict[str, Any]) -> None:
     if job["condition"].get("type") != "stop":
         return
-    async with AppServer(job["endpoint"], args.timeout) as app:
+    async with wakectl_appserver(job["endpoint"], args.timeout) as app:
         job["condition"] = await seed_stop_condition(app, job["condition"])
 
 
@@ -70,7 +99,7 @@ async def cmd_add(args: argparse.Namespace) -> int:
         allow_active=args.allow_active,
         timeout=args.timeout,
     )
-    await seed_repeating_goal_job(args, job)
+    await seed_goal_job(args, job)
     await seed_stop_job(args, job)
     insert_job(args.state, job)
     if args.json:
@@ -80,51 +109,94 @@ async def cmd_add(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_moved(args: argparse.Namespace) -> int:
+    raise WakectlError(f"command moved; use {args.moved_to}")
+
+
 async def cmd_wait(args: argparse.Namespace) -> int:
     condition = args.condition_builder(args)
     deadline = time.monotonic() + args.max_wait if args.max_wait is not None else None
-    app_cm: Any = AppServer(args.endpoint, args.timeout) if condition_needs_app(condition) else None
-    app = await app_cm.__aenter__() if app_cm is not None else None
     job_state: dict[str, Any] = {}
-    try:
-        if condition["type"] == "stop":
+    reason = "maximum wait elapsed"
+    if condition["type"] == "stop":
+        seed_timeout = (
+            min(args.timeout, float(args.max_wait))
+            if args.max_wait is not None
+            else args.timeout
+        )
+        async with wakectl_appserver(args.endpoint, seed_timeout) as app:
             condition = await seed_stop_condition(app, condition)
-        while True:
-            ready, updates, reason = await condition_ready(
-                app,
+
+    while True:
+        remaining = None if deadline is None else deadline - time.monotonic()
+        if remaining is not None and remaining <= 0:
+            if args.json:
+                print(json.dumps({"ready": False, "reason": reason}, indent=2))
+            else:
+                print(reason, file=sys.stderr)
+            return 1
+        predicate_timeout = (
+            args.timeout if remaining is None else min(args.timeout, remaining)
+        )
+
+        async def check_once() -> tuple[bool, dict[str, Any], str]:
+            if condition_needs_app(condition):
+                async with wakectl_appserver(args.endpoint, predicate_timeout) as app:
+                    return await condition_ready(
+                        app,
+                        condition,
+                        job_state,
+                        timeout=predicate_timeout,
+                    )
+            return await condition_ready(
+                None,
                 condition,
                 job_state,
-                timeout=args.timeout,
+                timeout=predicate_timeout,
             )
-            if ready:
-                if args.json:
-                    print(
-                        json.dumps(
-                            {"ready": True, "reason": reason, "updates": updates},
-                            indent=2,
-                        )
+
+        check = check_once()
+        try:
+            if remaining is None:
+                ready, updates, reason = await check
+            else:
+                ready, updates, reason = await asyncio.wait_for(
+                    check,
+                    timeout=remaining,
+                )
+        except TimeoutError:
+            reason = "maximum wait elapsed"
+            if args.json:
+                print(json.dumps({"ready": False, "reason": reason}, indent=2))
+            else:
+                print(reason, file=sys.stderr)
+            return 1
+        if ready:
+            if args.json:
+                print(
+                    json.dumps(
+                        {"ready": True, "reason": reason, "updates": updates},
+                        indent=2,
                     )
-                else:
-                    print(reason)
-                return 0
-            job_state.update(updates)
-            if "condition" in updates:
-                condition = updates["condition"]
-            if deadline is not None and time.monotonic() >= deadline:
-                if args.json:
-                    print(json.dumps({"ready": False, "reason": reason}, indent=2))
-                else:
-                    print(reason, file=sys.stderr)
-                return 1
-            sleep_for = args.poll_interval
-            if condition["type"] == "time":
-                sleep_for = min(sleep_for, max(0.0, condition["at"] - now_seconds()))
-            if deadline is not None:
-                sleep_for = min(sleep_for, max(0.0, deadline - time.monotonic()))
-            await asyncio.sleep(max(0.1, sleep_for))
-    finally:
-        if app_cm is not None:
-            await app_cm.__aexit__(None, None, None)
+                )
+            else:
+                print(reason)
+            return 0
+        job_state.update(updates)
+        if "condition" in updates:
+            condition = updates["condition"]
+        if updates.get("status") in {"failed", "superseded"}:
+            if args.json:
+                print(json.dumps({"ready": False, "reason": reason}, indent=2))
+            else:
+                print(reason, file=sys.stderr)
+            return 1
+        sleep_for = args.poll_interval
+        if condition["type"] == "time":
+            sleep_for = min(sleep_for, max(0.0, condition["at"] - now_seconds()))
+        if deadline is not None:
+            sleep_for = min(sleep_for, max(0.0, deadline - time.monotonic()))
+        await asyncio.sleep(max(0.1, sleep_for))
 
 
 async def cmd_run(args: argparse.Namespace) -> int:
@@ -137,24 +209,42 @@ async def cmd_run(args: argparse.Namespace) -> int:
             endpoint = job.get("endpoint") or args.endpoint
             timeout = job["timeout"] if job.get("timeout") is not None else args.timeout
             allow_active = bool(job.get("allowActive"))
+            lease_window = max(
+                args.lease_seconds,
+                math.ceil(timeout * DELIVERY_LEASE_TIMEOUTS) + 5,
+            )
+            if not renew_claimed_job(
+                args.state,
+                job["id"],
+                owner,
+                lease_window,
+            ):
+                raise LeaseLost("lease lost before condition check")
+
             if condition_needs_app(job["condition"]):
-                async with AppServer(endpoint, timeout) as app:
+                async with wakectl_appserver(endpoint, timeout) as app:
                     ready, updates, reason = await condition_ready(
                         app,
                         job["condition"],
                         job,
                         timeout=timeout,
                     )
-                    turn = (
-                        await send_turn(
+                    if ready:
+                        if not renew_claimed_job(
+                            args.state,
+                            job["id"],
+                            owner,
+                            lease_window,
+                        ):
+                            raise LeaseLost("lease lost before delivery")
+                        delivery = await deliver_input(
                             app,
                             job["targetThreadId"],
                             job["message"],
                             allow_active=allow_active,
                         )
-                        if ready
-                        else None
-                    )
+                    else:
+                        delivery = None
             else:
                 ready, updates, reason = await condition_ready(
                     None,
@@ -163,15 +253,22 @@ async def cmd_run(args: argparse.Namespace) -> int:
                     timeout=timeout,
                 )
                 if ready:
-                    async with AppServer(endpoint, timeout) as app:
-                        turn = await send_turn(
+                    if not renew_claimed_job(
+                        args.state,
+                        job["id"],
+                        owner,
+                        lease_window,
+                    ):
+                        raise LeaseLost("lease lost before delivery")
+                    async with wakectl_appserver(endpoint, timeout) as app:
+                        delivery = await deliver_input(
                             app,
                             job["targetThreadId"],
                             job["message"],
                             allow_active=allow_active,
                         )
                 else:
-                    turn = None
+                    delivery = None
 
             if not ready:
                 pending_updates = dict(updates)
@@ -183,14 +280,20 @@ async def cmd_run(args: argparse.Namespace) -> int:
                     pending_updates,
                 )
                 if committed:
-                    skipped.append({"id": job["id"], "reason": reason})
+                    skipped.append(
+                        {
+                            "id": job["id"],
+                            "status": pending_updates.get("status", "pending"),
+                            "reason": reason,
+                        }
+                    )
                 else:
                     had_error = True
                     skipped.append({"id": job["id"], "reason": "lease lost before update"})
                 continue
 
-            if turn is None:
-                raise WakectlError("condition was ready but no input turn was created")
+            if delivery is None:
+                raise WakectlError("condition was ready but input was not delivered")
 
             ts = now_seconds()
             next_fire_count = int(job.get("fireCount") or 0) + 1
@@ -199,7 +302,9 @@ async def cmd_run(args: argparse.Namespace) -> int:
                 {
                     "fireCount": next_fire_count,
                     "lastFiredAt": ts,
-                    "lastTurnId": turn.get("id"),
+                    "lastTurnId": delivery.get("turnId"),
+                    "lastClientMessageId": delivery.get("clientMessageId"),
+                    "lastDeliveryMode": delivery.get("delivery"),
                     "lastReason": reason,
                     "lastError": None,
                 }
@@ -213,11 +318,18 @@ async def cmd_run(args: argparse.Namespace) -> int:
                 result_updates["firedAt"] = ts
             committed = update_claimed_job(args.state, job["id"], owner, result_updates)
             if committed:
-                fired.append({"id": job["id"], "turnId": turn.get("id"), "reason": reason})
+                fired.append(
+                    {
+                        "id": job["id"],
+                        "turnId": delivery.get("turnId"),
+                        "delivery": delivery.get("delivery"),
+                        "reason": reason,
+                    }
+                )
             else:
                 had_error = True
                 skipped.append({"id": job["id"], "reason": "lease lost after wake"})
-        except WakeDeferred as exc:
+        except (ThreadNotLoaded, ThreadStateError) as exc:
             reason = str(exc)
             committed = update_claimed_job(
                 args.state,
@@ -230,6 +342,29 @@ async def cmd_run(args: argparse.Namespace) -> int:
             else:
                 had_error = True
                 skipped.append({"id": job["id"], "reason": "lease lost after deferral"})
+        except DeliveryUncertain as exc:
+            had_error = True
+            reason = str(exc)
+            committed = update_claimed_job(
+                args.state,
+                job["id"],
+                owner,
+                {
+                    "status": "uncertain",
+                    "lastTurnId": exc.turn_id,
+                    "lastClientMessageId": exc.client_message_id,
+                    "lastError": reason,
+                },
+            )
+            skipped.append(
+                {
+                    "id": job["id"],
+                    "reason": reason if committed else "lease lost after uncertain delivery",
+                }
+            )
+        except LeaseLost as exc:
+            had_error = True
+            skipped.append({"id": job["id"], "reason": str(exc)})
         except Exception as exc:
             had_error = True
             reason = str(exc)
@@ -248,9 +383,15 @@ async def cmd_run(args: argparse.Namespace) -> int:
         print(json.dumps({"fired": fired, "skipped": skipped}, indent=2))
     else:
         for item in fired:
-            print(f"fired\t{item['id']}\t{item.get('turnId') or '-'}")
+            print(
+                f"fired\t{item['id']}\t{item.get('turnId') or '-'}"
+                f"\t{item.get('delivery') or '-'}"
+            )
         for item in skipped:
-            print(f"pending\t{item['id']}\t{item['reason']}", file=sys.stderr)
+            print(
+                f"{item.get('status', 'pending')}\t{item['id']}\t{item['reason']}",
+                file=sys.stderr,
+            )
     return 1 if had_error else 0
 
 
@@ -277,7 +418,9 @@ def cmd_list(args: argparse.Namespace) -> int:
 
 def cmd_cancel(args: argparse.Namespace) -> int:
     if not cancel_job(args.state, args.job_id):
-        raise WakectlError(f"unknown or non-pending job id: {args.job_id}")
+        raise WakectlError(
+            f"job is unknown, terminal, or currently claimed: {args.job_id}"
+        )
     if args.json:
         print(json.dumps({"canceled": args.job_id}, indent=2))
     else:

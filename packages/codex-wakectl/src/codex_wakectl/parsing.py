@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import re
 import time
 from datetime import datetime
@@ -8,7 +9,13 @@ from datetime import datetime
 from .constants import STATUS_VALUES
 
 
-DURATION_PART_RE = re.compile(r"([0-9][0-9_]*)([smhd])")
+INTEGER_RE = r"(?:0|[1-9][0-9]*(?:_[0-9]+)*)"
+DURATION_RE = re.compile(
+    rf"^(?:(?P<d>{INTEGER_RE})d)?"
+    rf"(?:(?P<h>{INTEGER_RE})h)?"
+    rf"(?:(?P<m>{INTEGER_RE})m)?"
+    rf"(?:(?P<s>{INTEGER_RE})s)?$"
+)
 
 
 def now_seconds() -> int:
@@ -16,21 +23,18 @@ def now_seconds() -> int:
 
 
 def parse_duration(value: str) -> int:
-    position = 0
-    seconds = 0
-    for match in DURATION_PART_RE.finditer(value):
-        if match.start() != position:
-            break
-        number = int(match.group(1).replace("_", ""))
-        unit = match.group(2)
-        scale = {"s": 1, "m": 60, "h": 3600, "d": 86400}[unit]
-        seconds += number * scale
-        position = match.end()
-
-    if position != len(value) or seconds <= 0:
+    match = DURATION_RE.fullmatch(value)
+    if match is None:
         raise argparse.ArgumentTypeError(
-            "must be a positive duration using s, m, h, or d, such as 3m30s"
+            "must be a positive duration with unique descending units, such as 3m30s"
         )
+    seconds = sum(
+        int(match.group(unit).replace("_", "")) * scale
+        for unit, scale in (("d", 86400), ("h", 3600), ("m", 60), ("s", 1))
+        if match.group(unit) is not None
+    )
+    if seconds <= 0:
+        raise argparse.ArgumentTypeError("must be positive")
     return seconds
 
 
@@ -49,7 +53,7 @@ def parse_positive_float(value: str) -> float:
         parsed = float(value)
     except ValueError as exc:
         raise argparse.ArgumentTypeError("must be a positive number") from exc
-    if parsed <= 0:
+    if not math.isfinite(parsed) or parsed <= 0:
         raise argparse.ArgumentTypeError("must be positive")
     return parsed
 

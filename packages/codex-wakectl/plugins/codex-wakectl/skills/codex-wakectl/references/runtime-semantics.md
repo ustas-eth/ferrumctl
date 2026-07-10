@@ -16,16 +16,12 @@ job stores an absolute Unix socket path so a later runner does not reinterpret
 it under another cwd or `CODEX_HOME`.
 
 If the server is down, the endpoint changed, or the target is not loaded,
-queued jobs remain pending. Immediate `send` reports the failure directly.
+queued jobs remain pending.
+
+Codex rejects direct app-server input to v2 subagents. Schedule those through
+their native parent instead of using them as wake targets.
 
 ## Conditions
-
-Immediate sends are not queued. They check the target's loaded and active state,
-then submit a normal input turn.
-
-If the target is active, delivery is refused unless `--allow-active` is set.
-With that option, current Codex app-server behavior queues input behind an
-active regular turn. Review and compaction turns are not steerable this way.
 
 Queued conditions are polling-backed. Time conditions fire when a runner first
 observes that their time has passed; they are not exact timers.
@@ -35,10 +31,25 @@ status, token, and time predicate matches. `--tokens-left-lte` requires a goal
 token budget. Token predicates read the goal's cumulative `tokensUsed` counter,
 not current context-window usage.
 
+A goal watch records the goal creation time visible when it is created. If that
+assignment is replaced, the job becomes `superseded` rather than firing for the
+replacement. If no goal exists at creation, the watch binds to the first one it
+observes later.
+
+Codex exposes goal creation time at one-second resolution. Two assignments
+created in the same second can be indistinguishable to a polling watcher.
+
 Stop conditions use materialized turn history. At creation, the job records the
 newest turn id and status. It fires when that turn becomes terminal or a newer
 turn reaches `completed`, `interrupted`, or `failed`, including a turn that
 starts and finishes between runner passes.
+
+If no turn existed when the watch was created, the first later terminal turn
+is treated as the observed completion.
+
+The runner pages history until it finds the stored turn cursor. If rollback,
+compaction, or another history change removes that cursor, the job becomes
+`failed`; older terminal turns are not treated as new evidence.
 
 Command conditions retain argv and creation cwd, but execute in the runner's
 environment. The wakectl timeout also bounds the command. Predicates may run
@@ -52,8 +63,8 @@ the job is created, so old milestones do not fire immediately. If usage crosses
 several buckets between passes, one wake is sent and the cursor advances to the
 newest bucket.
 
-Repeating goal jobs remember the watched goal's creation time. A replacement
-goal or lower counters rebase the stored bucket without firing.
+Lower usage counters rebase a repeating milestone without firing. A replacement
+goal supersedes the entire watch.
 
 Stop wakes repeat only with `--repeat`. Multiple completed turns between passes
 are coalesced into one wake and the cursor advances to the newest observed
@@ -64,16 +75,29 @@ turn. Use `--max-fires N` when a repeating job should end by itself.
 Wakes are ordinary user input in the target thread. They continue its existing
 context and remain in its transcript.
 
-Queued delivery is at-least-once. A wake can arrive late, retry after a failed
-send, duplicate if a runner crashes after delivery, or become redundant after
-manual handling.
+Queued delivery is at-least-once. A wake can arrive late, duplicate if a runner
+crashes after delivery, or become redundant after manual handling.
 
 By default, queued wakes send only to idle targets. An active or not-loaded
-target defers delivery and leaves the job pending. Use `--allow-active` only for
-input that remains valid while the current turn continues.
+target defers delivery and leaves the job pending. The runner confirms the
+client message in materialized history before recording a new turn as fired.
+The idle check and native start request are not atomic; if another regular turn
+wins that race, the recorded delivery mode is `steered`.
 
-`systemError`, connection, predicate, database, and other operational failures
-also leave jobs pending, but make that `run` invocation exit nonzero and record
+With `--allow-active`, the runner obtains the current active turn id and uses
+native `turn/steer` with that expected id. A stale id, review turn, or compaction
+turn is rejected instead of steering a replacement turn.
+
+If the outcome of a submitted start or steer request cannot be confirmed, the
+job becomes `uncertain`. It is not retried automatically because the input may
+already have been delivered.
+
+The runner does not answer approval or user-input requests raised by the
+resulting turn. A capable app-server client must remain available to resolve
+them.
+
+RPC, connection, predicate, database, and other operational failures also leave
+jobs pending, but make that `run` invocation exit nonzero and record
 `lastError`.
 
 ## State
@@ -88,9 +112,11 @@ or `~/.local/state/codex-wakectl/jobs.sqlite3` when `XDG_STATE_HOME` is unset.
 Override it with `--state PATH`.
 
 The default database is shared by all workflows using the same host user and
-state path. `run` claims pending jobs before evaluating them; expired claims can
-be retried after a crashed process. `cancel` changes pending jobs only, while
-`list --all` retains fired and canceled rows as history.
+state path. `run` claims pending jobs and renews each claim before condition
+evaluation and delivery. Expired claims can be retried after a crashed process;
+at-least-once duplicates remain possible if a process stops after delivery but
+before committing the result. `cancel` changes only pending jobs without a live
+claim, while `list --all` retains terminal rows as history.
 
 The systemd timer is the canonical recurring runner on hosts with user systemd.
 Its fixed unit names process one state database at a time. Installing it again

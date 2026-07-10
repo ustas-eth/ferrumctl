@@ -1,47 +1,65 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import contextlib
 import io
 import sqlite3
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
 
-from codex_wakectl import cli
+from codex_threadctl.errors import ThreadctlError
 from codex_wakectl import commands
+from codex_wakectl import conditions
+from codex_wakectl import parser
+from codex_wakectl import parsing
+from codex_wakectl import state
+from codex_wakectl import systemd
+from codex_wakectl.errors import WakectlError
 
 
 class ParseTests(unittest.TestCase):
     def test_version(self) -> None:
         with contextlib.redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
-                cli.build_parser().parse_args(["--version"])
+                parser.build_parser().parse_args(["--version"])
         self.assertEqual(output.getvalue(), "codex-wakectl 0.3.0\n")
 
     def test_parse_duration(self) -> None:
-        self.assertEqual(cli.parse_duration("10s"), 10)
-        self.assertEqual(cli.parse_duration("5m"), 300)
-        self.assertEqual(cli.parse_duration("2h"), 7200)
-        self.assertEqual(cli.parse_duration("1d"), 86400)
-        self.assertEqual(cli.parse_duration("1_000s"), 1000)
-        self.assertEqual(cli.parse_duration("3m30s"), 210)
-        self.assertEqual(cli.parse_duration("1d2h3m4s"), 93784)
+        self.assertEqual(parsing.parse_duration("10s"), 10)
+        self.assertEqual(parsing.parse_duration("5m"), 300)
+        self.assertEqual(parsing.parse_duration("2h"), 7200)
+        self.assertEqual(parsing.parse_duration("1d"), 86400)
+        self.assertEqual(parsing.parse_duration("1_000s"), 1000)
+        self.assertEqual(parsing.parse_duration("3m30s"), 210)
+        self.assertEqual(parsing.parse_duration("1d2h3m4s"), 93784)
 
     def test_parse_duration_rejects_missing_unit(self) -> None:
         with self.assertRaises(argparse.ArgumentTypeError):
-            cli.parse_duration("300")
+            parsing.parse_duration("300")
 
     def test_parse_duration_rejects_partial_or_zero_values(self) -> None:
-        for value in ("3m 30s", "3m30", "3x30s", "0s", ""):
+        for value in (
+            "3m 30s",
+            "3m30",
+            "3x30s",
+            "0s",
+            "",
+            "1m2m",
+            "1s1m",
+            "1_m",
+            "1__0s",
+        ):
             with self.subTest(value=value):
                 with self.assertRaises(argparse.ArgumentTypeError):
-                    cli.parse_duration(value)
+                    parsing.parse_duration(value)
 
     def test_add_accepts_compound_duration(self) -> None:
-        args = cli.build_parser().parse_args(
+        args = parser.build_parser().parse_args(
             [
                 "add",
                 "time",
@@ -55,24 +73,37 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(args.after, 210)
 
     def test_parse_tokens_are_plain_integers(self) -> None:
-        self.assertEqual(cli.parse_positive_int("3000000"), 3000000)
-        self.assertEqual(cli.parse_positive_int("3_000_000"), 3000000)
+        self.assertEqual(parsing.parse_positive_int("3000000"), 3000000)
+        self.assertEqual(parsing.parse_positive_int("3_000_000"), 3000000)
 
     def test_parse_positive_float(self) -> None:
-        self.assertEqual(cli.parse_positive_float("1.5"), 1.5)
-        with self.assertRaises(argparse.ArgumentTypeError):
-            cli.parse_positive_float("0")
+        self.assertEqual(parsing.parse_positive_float("1.5"), 1.5)
+        for value in ("0", "nan", "inf", "-inf"):
+            with self.subTest(value=value):
+                with self.assertRaises(argparse.ArgumentTypeError):
+                    parsing.parse_positive_float(value)
+
+    def test_removed_immediate_command_has_migration_hint(self) -> None:
+        args = parser.build_parser().parse_args(["send", "thread", "message"])
+        with self.assertRaisesRegex(WakectlError, "codex-threadctl start"):
+            args.func(args)
+
+    def test_removed_commands_are_hidden_from_help(self) -> None:
+        output = parser.build_parser().format_help()
+        self.assertNotIn("==SUPPRESS==", output)
+        self.assertNotIn("    send", output)
+        self.assertIn("{add,wait,run,list,cancel,systemd}", output)
 
     def test_parse_statuses(self) -> None:
         self.assertEqual(
-            cli.parse_statuses("complete,budgetLimited"),
+            parsing.parse_statuses("complete,budgetLimited"),
             ["complete", "budgetLimited"],
         )
         with self.assertRaises(argparse.ArgumentTypeError):
-            cli.parse_statuses("done")
+            parsing.parse_statuses("done")
 
     def test_wait_options_after_condition(self) -> None:
-        args = cli.build_parser().parse_args(
+        args = parser.build_parser().parse_args(
             ["wait", "time", "--after", "1s", "--max-wait", "2s"]
         )
         self.assertEqual(args.after, 1)
@@ -81,12 +112,12 @@ class ParseTests(unittest.TestCase):
     def test_wait_poll_interval_must_be_positive(self) -> None:
         with contextlib.redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit):
-                cli.build_parser().parse_args(
+                parser.build_parser().parse_args(
                     ["wait", "time", "--after", "1s", "--poll-interval", "0"]
                 )
 
     def test_add_globals_after_condition(self) -> None:
-        args = cli.build_parser().parse_args(
+        args = parser.build_parser().parse_args(
             [
                 "add",
                 "time",
@@ -102,7 +133,7 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(str(args.state), "/tmp/jobs.sqlite3")
 
     def test_add_stores_wake_policy_options(self) -> None:
-        args = cli.build_parser().parse_args(
+        args = parser.build_parser().parse_args(
             [
                 "add",
                 "time",
@@ -120,7 +151,7 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(args.timeout, 45)
 
     def test_add_stop_repeat_options(self) -> None:
-        args = cli.build_parser().parse_args(
+        args = parser.build_parser().parse_args(
             [
                 "add",
                 "stop",
@@ -133,26 +164,26 @@ class ParseTests(unittest.TestCase):
                 "worker stopped",
             ]
         )
-        condition = cli.build_stop_condition(args)
+        condition = conditions.build_stop_condition(args)
         self.assertEqual(condition["type"], "stop")
         self.assertTrue(condition["repeat"])
         self.assertEqual(condition["maxFires"], 3)
 
     def test_run_replaces_tick(self) -> None:
-        args = cli.build_parser().parse_args(["run", "--limit", "1"])
+        args = parser.build_parser().parse_args(["run", "--limit", "1"])
         self.assertEqual(args.limit, 1)
-        self.assertIs(args.func, cli.cmd_run)
+        self.assertIs(args.func, commands.cmd_run)
 
         with contextlib.redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit):
-                cli.build_parser().parse_args(["tick"])
+                parser.build_parser().parse_args(["tick"])
             with self.assertRaises(SystemExit):
-                cli.build_parser().parse_args(["run", "--allow-active"])
+                parser.build_parser().parse_args(["run", "--allow-active"])
 
     def test_systemd_install_options(self) -> None:
-        args = cli.build_parser().parse_args(["systemd", "install", "--interval", "5m"])
+        args = parser.build_parser().parse_args(["systemd", "install", "--interval", "5m"])
         self.assertEqual(args.interval, 300)
-        self.assertIs(args.func, cli.cmd_systemd_install)
+        self.assertIs(args.func, commands.cmd_systemd_install)
 
 class ConditionTests(unittest.TestCase):
     def test_goal_condition_requires_predicate(self) -> None:
@@ -165,8 +196,8 @@ class ConditionTests(unittest.TestCase):
             time_used_gte=None,
             time_used_every=None,
         )
-        with self.assertRaises(cli.WakectlError):
-            cli.build_goal_condition(args)
+        with self.assertRaises(WakectlError):
+            conditions.build_goal_condition(args)
 
     def test_goal_condition_rejects_multiple_repeating_predicates(self) -> None:
         args = argparse.Namespace(
@@ -178,8 +209,8 @@ class ConditionTests(unittest.TestCase):
             time_used_gte=None,
             time_used_every=1800,
         )
-        with self.assertRaises(cli.WakectlError):
-            cli.build_goal_condition(args)
+        with self.assertRaises(WakectlError):
+            conditions.build_goal_condition(args)
 
     def test_goal_max_fires_requires_repeating_predicate(self) -> None:
         args = argparse.Namespace(
@@ -192,8 +223,8 @@ class ConditionTests(unittest.TestCase):
             time_used_every=None,
             max_fires=2,
         )
-        with self.assertRaises(cli.WakectlError):
-            cli.build_goal_condition(args)
+        with self.assertRaises(WakectlError):
+            conditions.build_goal_condition(args)
 
     def test_goal_repeating_bucket(self) -> None:
         condition = {"type": "goal", "threadId": "t", "tokensUsedEvery": 3000000}
@@ -204,7 +235,7 @@ class ConditionTests(unittest.TestCase):
             async def request(self, method, params):
                 return {"goal": goal}
 
-        ready, updates, _ = cli.asyncio.run(cli.goal_condition_ready(App(), condition, job))
+        ready, updates, _ = asyncio.run(conditions.goal_condition_ready(App(), condition, job))
         self.assertTrue(ready)
         self.assertEqual(updates["lastTokensUsedBucket"], 2)
 
@@ -217,8 +248,8 @@ class ConditionTests(unittest.TestCase):
             async def request(self, method, params):
                 return {"goal": goal}
 
-        ready, updates, reason = cli.asyncio.run(
-            cli.goal_condition_ready(App(), condition, job)
+        ready, updates, reason = asyncio.run(
+            conditions.goal_condition_ready(App(), condition, job)
         )
 
         self.assertFalse(ready)
@@ -239,15 +270,15 @@ class ConditionTests(unittest.TestCase):
             async def request(self, method, params):
                 return {"goal": goal}
 
-        ready, updates, reason = cli.asyncio.run(
-            cli.goal_condition_ready(App(), condition, job)
+        ready, updates, reason = asyncio.run(
+            conditions.goal_condition_ready(App(), condition, job)
         )
 
         self.assertFalse(ready)
         self.assertEqual(updates["lastTokensUsedBucket"], 0)
         self.assertEqual(reason, "goal usage counters reset")
 
-    def test_goal_repeating_bucket_rebases_for_replacement(self) -> None:
+    def test_goal_watch_is_superseded_by_replacement(self) -> None:
         condition = {
             "type": "goal",
             "threadId": "t",
@@ -261,14 +292,13 @@ class ConditionTests(unittest.TestCase):
             async def request(self, method, params):
                 return {"goal": goal}
 
-        ready, updates, reason = cli.asyncio.run(
-            cli.goal_condition_ready(App(), condition, job)
+        ready, updates, reason = asyncio.run(
+            conditions.goal_condition_ready(App(), condition, job)
         )
 
         self.assertFalse(ready)
-        self.assertEqual(updates["condition"]["goalCreatedAt"], 20)
-        self.assertEqual(updates["lastTokensUsedBucket"], 5)
-        self.assertEqual(reason, "watched goal changed")
+        self.assertEqual(updates["status"], "superseded")
+        self.assertEqual(reason, "watched goal was replaced")
 
     def test_stop_condition_detects_same_turn_becoming_terminal(self) -> None:
         class App:
@@ -283,14 +313,14 @@ class ConditionTests(unittest.TestCase):
                 if method != "thread/turns/list":
                     raise AssertionError(f"unexpected method: {method}")
 
-        condition = cli.asyncio.run(
-            cli.seed_stop_condition(
+        condition = asyncio.run(
+            conditions.seed_stop_condition(
                 App([{"id": "turn-1", "status": "inProgress"}]),
                 {"type": "stop", "threadId": "t"},
             )
         )
-        ready, updates, reason = cli.asyncio.run(
-            cli.stop_condition_ready(
+        ready, updates, reason = asyncio.run(
+            conditions.stop_condition_ready(
                 App([{"id": "turn-1", "status": "completed"}]),
                 condition,
             )
@@ -314,8 +344,8 @@ class ConditionTests(unittest.TestCase):
             "cursorTurnId": "turn-1",
             "cursorTurnStatus": "completed",
         }
-        ready, updates, reason = cli.asyncio.run(
-            cli.stop_condition_ready(
+        ready, updates, reason = asyncio.run(
+            conditions.stop_condition_ready(
                 App(
                     [
                         {"id": "turn-2", "status": "completed"},
@@ -337,6 +367,7 @@ class ConditionTests(unittest.TestCase):
                     "data": [
                         {"id": "turn-3", "status": "inProgress"},
                         {"id": "turn-2", "status": "completed"},
+                        {"id": "turn-1", "status": "completed"},
                     ]
                 }
 
@@ -348,30 +379,78 @@ class ConditionTests(unittest.TestCase):
             "cursorTurnStatus": "completed",
         }
 
-        ready, updates, reason = cli.asyncio.run(cli.stop_condition_ready(App(), condition))
+        ready, updates, reason = asyncio.run(conditions.stop_condition_ready(App(), condition))
 
         self.assertTrue(ready)
         self.assertEqual(reason, "turn turn-2 completed")
         self.assertEqual(updates["condition"]["cursorTurnId"], "turn-3")
         self.assertEqual(updates["condition"]["cursorTurnStatus"], "inProgress")
-        self.assertTrue(cli.condition_repeats(updates["condition"]))
+        self.assertTrue(conditions.condition_repeats(updates["condition"]))
 
     def test_stop_condition_seeds_without_firing_for_existing_turn(self) -> None:
         class App:
             async def request(self, method, params):
                 return {"data": [{"id": "turn-1", "status": "completed"}]}
 
-        ready, updates, reason = cli.asyncio.run(
-            cli.stop_condition_ready(App(), {"type": "stop", "threadId": "t"})
+        ready, updates, reason = asyncio.run(
+            conditions.stop_condition_ready(App(), {"type": "stop", "threadId": "t"})
         )
         self.assertFalse(ready)
         self.assertEqual(reason, "waiting for turn completion")
         self.assertEqual(updates["condition"]["cursorTurnId"], "turn-1")
 
+    def test_stop_condition_fires_for_first_turn_after_empty_seed(self) -> None:
+        class App:
+            def __init__(self, turns: list[dict[str, str]]):
+                self.turns = turns
+
+            async def request(self, method, params):
+                return {"data": self.turns}
+
+        condition = asyncio.run(
+            conditions.seed_stop_condition(
+                App([]),
+                {"type": "stop", "threadId": "t"},
+            )
+        )
+        ready, updates, reason = asyncio.run(
+            conditions.stop_condition_ready(
+                App([{"id": "turn-1", "status": "completed"}]),
+                condition,
+            )
+        )
+
+        self.assertTrue(ready)
+        self.assertEqual(reason, "turn turn-1 completed")
+        self.assertEqual(updates["condition"]["cursorTurnId"], "turn-1")
+
+    def test_stop_condition_fails_when_cursor_disappears(self) -> None:
+        class App:
+            async def request(self, method, params):
+                return {
+                    "data": [{"id": "older", "status": "completed"}],
+                    "nextCursor": None,
+                }
+
+        ready, updates, reason = asyncio.run(
+            conditions.stop_condition_ready(
+                App(),
+                {
+                    "type": "stop",
+                    "threadId": "t",
+                    "cursorTurnId": "missing",
+                    "cursorTurnStatus": "inProgress",
+                },
+            )
+        )
+        self.assertFalse(ready)
+        self.assertEqual(updates["status"], "failed")
+        self.assertIn("missing", reason)
+
     def test_stop_max_fires_requires_repeat(self) -> None:
         args = argparse.Namespace(thread_id="thread", repeat=False, max_fires=2)
-        with self.assertRaises(cli.WakectlError):
-            cli.build_stop_condition(args)
+        with self.assertRaises(WakectlError):
+            conditions.build_stop_condition(args)
 
     def test_max_fires_reached(self) -> None:
         condition = {
@@ -380,8 +459,8 @@ class ConditionTests(unittest.TestCase):
             "repeat": True,
             "maxFires": 2,
         }
-        self.assertFalse(cli.max_fires_reached(condition, 1))
-        self.assertTrue(cli.max_fires_reached(condition, 2))
+        self.assertFalse(conditions.max_fires_reached(condition, 1))
+        self.assertTrue(conditions.max_fires_reached(condition, 2))
 
     def test_cmd_condition_timeout(self) -> None:
         condition = {
@@ -389,17 +468,86 @@ class ConditionTests(unittest.TestCase):
             "argv": [sys.executable, "-c", "import time; time.sleep(1)"],
         }
 
-        ready, updates, reason = cli.cmd_condition_ready(condition, timeout=0.01)
+        ready, updates, reason = conditions.cmd_condition_ready(condition, timeout=0.01)
 
         self.assertFalse(ready)
         self.assertEqual(updates, {})
         self.assertEqual(reason, "command timed out after 0.01s")
 
+    def test_wait_max_wait_bounds_slow_predicate(self) -> None:
+        args = argparse.Namespace(
+            condition_builder=lambda _: {
+                "type": "cmd",
+                "argv": [sys.executable, "-c", "import time; time.sleep(1)"],
+            },
+            max_wait=0.05,
+            timeout=1.0,
+            endpoint="unix://",
+            poll_interval=0.01,
+            json=True,
+        )
+
+        started = time.monotonic()
+        with contextlib.redirect_stdout(io.StringIO()):
+            result = asyncio.run(commands.cmd_wait(args))
+        elapsed = time.monotonic() - started
+
+        self.assertEqual(result, 1)
+        self.assertLess(elapsed, 0.5)
+
+    def test_wait_reconnects_for_each_appserver_poll(self) -> None:
+        opened = 0
+        closed = 0
+
+        class FakeAppServer:
+            async def __aenter__(self):
+                nonlocal opened
+                opened += 1
+                return self
+
+            async def __aexit__(self, *args: object) -> None:
+                nonlocal closed
+                closed += 1
+
+        args = argparse.Namespace(
+            condition_builder=lambda _: {
+                "type": "goal",
+                "threadId": "worker",
+                "statuses": ["complete"],
+            },
+            max_wait=None,
+            timeout=1.0,
+            endpoint="unix://",
+            poll_interval=0.01,
+            json=True,
+        )
+        checks = mock.AsyncMock(
+            side_effect=[
+                (False, {}, "status is active"),
+                (True, {}, "goal predicate matched"),
+            ]
+        )
+
+        with (
+            mock.patch.object(
+                commands,
+                "wakectl_appserver",
+                side_effect=lambda *args: FakeAppServer(),
+            ),
+            mock.patch.object(commands, "condition_ready", checks),
+            mock.patch.object(commands.asyncio, "sleep", mock.AsyncMock()),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            result = asyncio.run(commands.cmd_wait(args))
+
+        self.assertEqual(result, 0)
+        self.assertEqual((opened, closed), (2, 2))
+
     def test_state_database_round_trip(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "jobs.sqlite3"
-            job = cli.new_job(
-                {"type": "time", "at": cli.now_seconds() + 60},
+            job = conditions.new_job(
+                {"type": "time", "at": parsing.now_seconds() + 60},
                 "thread",
                 "message",
                 "unix://",
@@ -407,8 +555,8 @@ class ConditionTests(unittest.TestCase):
                 timeout=45.0,
             )
 
-            cli.insert_job(path, job)
-            jobs = cli.list_jobs(path)
+            state.insert_job(path, job)
+            jobs = state.list_jobs(path)
 
             self.assertEqual(len(jobs), 1)
             self.assertEqual(jobs[0]["id"], job["id"])
@@ -419,7 +567,7 @@ class ConditionTests(unittest.TestCase):
     def test_cmd_add_time_job_persists_cli_policy_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "jobs.sqlite3"
-            args = cli.build_parser().parse_args(
+            args = parser.build_parser().parse_args(
                 [
                     "--endpoint",
                     "unix://custom.sock",
@@ -440,11 +588,11 @@ class ConditionTests(unittest.TestCase):
 
             stdout = io.StringIO()
             with contextlib.redirect_stdout(stdout):
-                rc = cli.asyncio.run(args.func(args))
+                rc = asyncio.run(args.func(args))
 
             self.assertEqual(rc, 0)
             self.assertRegex(stdout.getvalue().strip(), r"^[0-9a-f]{12}$")
-            jobs = cli.list_jobs(path)
+            jobs = state.list_jobs(path)
             self.assertEqual(len(jobs), 1)
             self.assertEqual(jobs[0]["condition"]["type"], "time")
             self.assertEqual(jobs[0]["targetThreadId"], "target-thread")
@@ -456,7 +604,7 @@ class ConditionTests(unittest.TestCase):
 
     def test_cmd_add_stop_seeds_persisted_turn_cursor(self) -> None:
         class FakeAppServer:
-            def __init__(self, endpoint: str, timeout: float) -> None:
+            def __init__(self, endpoint: str, timeout: float, **kwargs: object) -> None:
                 pass
 
             async def __aenter__(self):
@@ -472,7 +620,7 @@ class ConditionTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "jobs.sqlite3"
-            args = cli.build_parser().parse_args(
+            args = parser.build_parser().parse_args(
                 [
                     "add",
                     "stop",
@@ -489,48 +637,98 @@ class ConditionTests(unittest.TestCase):
                 mock.patch.object(commands, "AppServer", FakeAppServer),
                 contextlib.redirect_stdout(io.StringIO()),
             ):
-                self.assertEqual(cli.asyncio.run(args.func(args)), 0)
+                self.assertEqual(asyncio.run(args.func(args)), 0)
 
-            condition = cli.list_jobs(path)[0]["condition"]
+            condition = state.list_jobs(path)[0]["condition"]
             self.assertEqual(condition["cursorTurnId"], "turn-1")
             self.assertEqual(condition["cursorTurnStatus"], "inProgress")
+
+    def test_cmd_add_goal_does_not_persist_after_seed_failure(self) -> None:
+        class BrokenAppServer:
+            async def __aenter__(self):
+                raise ThreadctlError("goal unavailable")
+
+            async def __aexit__(self, *args: object) -> None:
+                return None
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "jobs.sqlite3"
+            args = parser.build_parser().parse_args(
+                [
+                    "add",
+                    "goal",
+                    "worker",
+                    "--status",
+                    "complete",
+                    "--to",
+                    "main",
+                    "worker complete",
+                    "--state",
+                    str(path),
+                ]
+            )
+
+            with mock.patch.object(
+                commands,
+                "wakectl_appserver",
+                return_value=BrokenAppServer(),
+            ):
+                with self.assertRaisesRegex(ThreadctlError, "goal unavailable"):
+                    asyncio.run(args.func(args))
+
+            self.assertFalse(path.exists())
 
     def test_cancel_only_changes_pending_jobs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "jobs.sqlite3"
-            job = cli.new_job(
-                {"type": "time", "at": cli.now_seconds() + 60},
+            job = conditions.new_job(
+                {"type": "time", "at": parsing.now_seconds() + 60},
                 "thread",
                 "message",
                 "unix://",
             )
-            cli.insert_job(path, job)
-            owner, _ = cli.claim_pending_jobs(path, 60)
+            state.insert_job(path, job)
+            owner, _ = state.claim_pending_jobs(path, 60)
             self.assertTrue(
-                cli.update_claimed_job(
+                state.update_claimed_job(
                     path,
                     job["id"],
                     owner,
-                    {"status": "fired", "firedAt": cli.now_seconds()},
+                    {"status": "fired", "firedAt": parsing.now_seconds()},
                 )
             )
 
-            self.assertFalse(cli.cancel_job(path, job["id"]))
-            self.assertEqual(cli.list_jobs(path, include_all=True)[0]["status"], "fired")
+            self.assertFalse(state.cancel_job(path, job["id"]))
+            self.assertEqual(state.list_jobs(path, include_all=True)[0]["status"], "fired")
+
+    def test_cancel_refuses_job_claimed_by_runner(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "jobs.sqlite3"
+            job = conditions.new_job(
+                {"type": "time", "at": parsing.now_seconds() + 60},
+                "thread",
+                "message",
+                "unix://",
+            )
+            state.insert_job(path, job)
+            state.claim_pending_jobs(path, 60)
+
+            self.assertFalse(state.cancel_job(path, job["id"]))
+            self.assertEqual(state.list_jobs(path)[0]["status"], "pending")
 
     def test_text_list_prefers_current_error_over_prior_reason(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "jobs.sqlite3"
-            job = cli.new_job(
-                {"type": "time", "at": cli.now_seconds() + 60},
+            job = conditions.new_job(
+                {"type": "time", "at": parsing.now_seconds() + 60},
                 "thread",
                 "message",
                 "unix://",
             )
-            cli.insert_job(path, job)
-            owner, _ = cli.claim_pending_jobs(path, 60)
+            state.insert_job(path, job)
+            owner, _ = state.claim_pending_jobs(path, 60)
             self.assertTrue(
-                cli.update_claimed_job(
+                state.update_claimed_job(
                     path,
                     job["id"],
                     owner,
@@ -541,7 +739,7 @@ class ConditionTests(unittest.TestCase):
             stdout = io.StringIO()
 
             with contextlib.redirect_stdout(stdout):
-                self.assertEqual(cli.cmd_list(args), 0)
+                self.assertEqual(commands.cmd_list(args), 0)
 
             self.assertIn("socket unavailable", stdout.getvalue())
             self.assertNotIn("waiting", stdout.getvalue())
@@ -585,7 +783,7 @@ class ConditionTests(unittest.TestCase):
             )
             conn.close()
 
-            jobs = cli.list_jobs(path)
+            jobs = state.list_jobs(path)
 
             self.assertEqual(jobs[0]["id"], "oldjob")
             self.assertFalse(jobs[0]["allowActive"])
@@ -594,62 +792,62 @@ class ConditionTests(unittest.TestCase):
     def test_claimed_jobs_are_released_explicitly(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "jobs.sqlite3"
-            job = cli.new_job(
-                {"type": "time", "at": cli.now_seconds() + 60},
+            job = conditions.new_job(
+                {"type": "time", "at": parsing.now_seconds() + 60},
                 "thread",
                 "message",
                 "unix://",
             )
-            cli.insert_job(path, job)
+            state.insert_job(path, job)
 
-            owner, jobs = cli.claim_pending_jobs(path, 60)
+            owner, jobs = state.claim_pending_jobs(path, 60)
             self.assertEqual([claimed["id"] for claimed in jobs], [job["id"]])
 
-            _, overlapping = cli.claim_pending_jobs(path, 60)
+            _, overlapping = state.claim_pending_jobs(path, 60)
             self.assertEqual(overlapping, [])
 
             self.assertTrue(
-                cli.update_claimed_job(
+                state.update_claimed_job(
                     path,
                     job["id"],
                     owner,
                     {"lastReason": "waiting"},
                 )
             )
-            stored = cli.list_jobs(path)[0]
+            stored = state.list_jobs(path)[0]
             self.assertEqual(stored["lastReason"], "waiting")
             self.assertNotIn("leaseOwner", stored)
 
-            _, reclaimed = cli.claim_pending_jobs(path, 60)
+            _, reclaimed = state.claim_pending_jobs(path, 60)
             self.assertEqual([claimed["id"] for claimed in reclaimed], [job["id"]])
 
     def test_claim_limit_only_claims_limited_jobs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "jobs.sqlite3"
-            first = cli.new_job(
-                {"type": "time", "at": cli.now_seconds() + 60},
+            first = conditions.new_job(
+                {"type": "time", "at": parsing.now_seconds() + 60},
                 "first",
                 "message",
                 "unix://",
             )
-            second = cli.new_job(
-                {"type": "time", "at": cli.now_seconds() + 60},
+            second = conditions.new_job(
+                {"type": "time", "at": parsing.now_seconds() + 60},
                 "second",
                 "message",
                 "unix://",
             )
-            cli.insert_job(path, first)
-            cli.insert_job(path, second)
+            state.insert_job(path, first)
+            state.insert_job(path, second)
 
-            _, claimed = cli.claim_pending_jobs(path, 60, limit=1)
+            _, claimed = state.claim_pending_jobs(path, 60, limit=1)
             self.assertEqual(len(claimed), 1)
 
-            _, next_claimed = cli.claim_pending_jobs(path, 60, limit=1)
+            _, next_claimed = state.claim_pending_jobs(path, 60, limit=1)
             self.assertEqual(len(next_claimed), 1)
             self.assertNotEqual(claimed[0]["id"], next_claimed[0]["id"])
 
     def test_systemd_units_run_queue_once(self) -> None:
-        service, timer = cli.build_systemd_units(
+        service, timer = systemd.build_systemd_units(
             wakectl_bin="/usr/local/bin/codex-wakectl",
             state=Path("/tmp/wake jobs.sqlite3"),
             interval_seconds=30,

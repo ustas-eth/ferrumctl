@@ -3,12 +3,9 @@
 `codex-threadctl` inspects and controls Codex threads through a shared
 `codex app-server`.
 
-Use it to check thread activity, inspect recent work and context usage, retrieve
-conversation messages, interrupt a turn, or request compaction. It does not
-send input, edit goals, or measure file-read coverage.
-
-It is also the home of the observation and lifecycle commands moved out of
-`codex-wakectl` 0.3.
+Use it to inspect recent work, retrieve conversation messages, start or steer
+input, resume a persisted thread, or interrupt one known turn. It does not edit
+goals, schedule future work, or measure file-read coverage.
 
 ## Install
 
@@ -53,11 +50,18 @@ codex-threadctl message THREAD_ID TURN_ID ITEM_ID
 The list output includes both ids because an item id is only unique within its
 turn.
 
-Interrupt active work or compact an idle thread with no active goal:
+Start a new turn on an idle thread, or steer one known active turn:
 
 ```sh
-codex-threadctl interrupt THREAD_ID
-codex-threadctl compact THREAD_ID
+codex-threadctl start THREAD_ID "Check your goal and continue."
+codex-threadctl steer THREAD_ID TURN_ID "Focus on the failing test first."
+```
+
+Resume a stored thread or request interruption of one exact turn:
+
+```sh
+codex-threadctl resume THREAD_ID
+codex-threadctl interrupt THREAD_ID TURN_ID --wait
 ```
 
 Use `--json` when another program will parse output.

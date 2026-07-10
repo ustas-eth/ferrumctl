@@ -68,6 +68,7 @@ def build_inspection(
     item_limit: int,
     context: dict[str, Any] | None,
     compaction: dict[str, Any] | None,
+    context_error: str | None = None,
 ) -> dict[str, Any]:
     summary_latest = summary_turns[0] if summary_turns else None
     if (
@@ -107,6 +108,7 @@ def build_inspection(
     return {
         "thread": thread_summary,
         "context": context,
+        "contextError": context_error,
         "compaction": compaction,
         "goal": goal,
         "goalError": goal_error,
@@ -140,9 +142,9 @@ async def recent_messages(
             app,
             thread_id,
             cursor=cursor,
-            limit=50,
+            limit=10,
             sort_direction="desc",
-            items_view="summary",
+            items_view="full",
         )
         turns = page.get("data", [])
         for turn in turns:
@@ -157,7 +159,7 @@ async def recent_messages(
         next_cursor = page.get("nextCursor")
         if not turns or next_cursor is None:
             break
-        if next_cursor in seen_cursors:
+        if not isinstance(next_cursor, str) or next_cursor in seen_cursors:
             raise ThreadctlError("app-server repeated a turn pagination cursor")
         seen_cursors.add(next_cursor)
         cursor = next_cursor
@@ -183,9 +185,9 @@ async def find_message(
             app,
             thread_id,
             cursor=cursor,
-            limit=50,
+            limit=10,
             sort_direction="desc",
-            items_view="summary",
+            items_view="full",
         )
         turns = page.get("data", [])
         for turn in turns:
@@ -204,7 +206,7 @@ async def find_message(
         next_cursor = page.get("nextCursor")
         if not turns or next_cursor is None:
             raise ThreadctlError(f"turn not found: {turn_id}")
-        if next_cursor in seen_cursors:
+        if not isinstance(next_cursor, str) or next_cursor in seen_cursors:
             raise ThreadctlError("app-server repeated a turn pagination cursor")
         seen_cursors.add(next_cursor)
         cursor = next_cursor

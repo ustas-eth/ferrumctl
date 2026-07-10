@@ -46,8 +46,8 @@ A goal was assigned. Call get_goal and proceed.
 ```
 
 Use native subagent input when a native subagent handle is available. Use
-`codex-wakectl send` only if the `codex-wakectl` skill is available, and either
-the worker is app-server-backed with only a thread id or host-level delivery is
+`codex-threadctl start` only if the `codex-threadctl` skill is available and the
+worker is app-server-backed with only a thread id or host-level control is
 explicitly intended.
 
 Inspect state:

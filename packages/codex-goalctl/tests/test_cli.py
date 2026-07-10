@@ -12,8 +12,10 @@ from codex_goalctl import cli
 class ParseTests(unittest.TestCase):
     def test_timeout_must_be_positive(self) -> None:
         self.assertEqual(cli.positive_float("1.5"), 1.5)
-        with self.assertRaises(argparse.ArgumentTypeError):
-            cli.positive_float("0")
+        for value in ("0", "nan", "inf", "-inf"):
+            with self.subTest(value=value):
+                with self.assertRaises(argparse.ArgumentTypeError):
+                    cli.positive_float(value)
 
     def test_parser_rejects_negative_timeout(self) -> None:
         with contextlib.redirect_stderr(io.StringIO()):

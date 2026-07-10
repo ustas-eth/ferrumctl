@@ -1,3 +1,4 @@
+use anyhow::Context;
 use anyhow::Result;
 use anyhow::bail;
 use codex_shell_command::parse_command::parse_command;
@@ -9,6 +10,7 @@ use std::io::BufRead;
 use std::path::Path;
 use std::path::PathBuf;
 
+use crate::javascript::exec_calls;
 use crate::paths::resolve_path;
 use crate::rollout::parse_rollout_json_line;
 
@@ -104,44 +106,62 @@ pub(crate) fn count_from_exec_calls(
         if value.get("type").and_then(Value::as_str) != Some("response_item") {
             continue;
         }
-        if payload.get("type").and_then(Value::as_str) != Some("function_call") {
-            continue;
-        }
-        if payload.get("name").and_then(Value::as_str) != Some("exec_command") {
-            continue;
-        }
-
-        let Some(arguments) = payload.get("arguments").and_then(Value::as_str) else {
-            continue;
-        };
-        let call: Value = serde_json::from_str(arguments)?;
-        let Some(cmd) = call.get("cmd").and_then(Value::as_str) else {
-            continue;
-        };
-
-        counts.exec_calls += 1;
-        let workdir = call
-            .get("workdir")
-            .and_then(Value::as_str)
-            .map(|path| resolve_path(cwd, Path::new(path)))
-            .unwrap_or_else(|| cwd.to_path_buf());
-        let shell = call
-            .get("shell")
-            .and_then(Value::as_str)
-            .map(str::to_owned)
-            .or_else(|| env::var("SHELL").ok())
-            .unwrap_or_else(|| "bash".to_string());
-        let login = call.get("login").and_then(Value::as_bool).unwrap_or(true);
-        let flag = if login { "-lc" } else { "-c" };
-        let argv = vec![shell, flag.to_string(), cmd.to_string()];
-
-        for parsed in parse_command(&argv) {
-            let value = serde_json::to_value(parsed)?;
-            count_read_value(&mut counts.files, &value, &workdir, filters);
+        let payload_type = payload.get("type").and_then(Value::as_str);
+        let name = payload.get("name").and_then(Value::as_str);
+        if payload_type == Some("function_call") && name == Some("exec_command") {
+            let arguments = payload
+                .get("arguments")
+                .and_then(Value::as_str)
+                .context("exec_command call has no arguments")?;
+            let call: Value = serde_json::from_str(arguments)?;
+            count_exec_call(&mut counts, &call, cwd, filters)?;
+        } else if payload_type == Some("custom_tool_call") && name == Some("exec") {
+            let input = payload
+                .get("input")
+                .and_then(Value::as_str)
+                .context("exec custom tool call has no input")?;
+            for call in exec_calls(input)
+                .with_context(|| format!("parsing exec tool call at rollout line {line_no}"))?
+            {
+                count_exec_call(&mut counts, &call, cwd, filters)?;
+            }
         }
     }
 
     Ok(counts)
+}
+
+fn count_exec_call(
+    counts: &mut Counts,
+    call: &Value,
+    cwd: &Path,
+    filters: &[PathBuf],
+) -> Result<()> {
+    let cmd = call
+        .get("cmd")
+        .and_then(Value::as_str)
+        .context("exec_command call has no static cmd")?;
+    counts.exec_calls += 1;
+    let workdir = call
+        .get("workdir")
+        .and_then(Value::as_str)
+        .map(|path| resolve_path(cwd, Path::new(path)))
+        .unwrap_or_else(|| cwd.to_path_buf());
+    let shell = call
+        .get("shell")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+        .or_else(|| env::var("SHELL").ok())
+        .unwrap_or_else(|| "bash".to_string());
+    let login = call.get("login").and_then(Value::as_bool).unwrap_or(true);
+    let flag = if login { "-lc" } else { "-c" };
+    let argv = vec![shell, flag.to_string(), cmd.to_string()];
+
+    for parsed in parse_command(&argv) {
+        let value = serde_json::to_value(parsed)?;
+        count_read_value(&mut counts.files, &value, &workdir, filters);
+    }
+    Ok(())
 }
 
 fn count_read_value(
@@ -203,6 +223,23 @@ mod tests {
                 "type": "function_call",
                 "name": "exec_command",
                 "arguments": serde_json::to_string(&call)?,
+            },
+        });
+        let mut file = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(rollout)?;
+        writeln!(file, "{}", serde_json::to_string(&event)?)?;
+        Ok(())
+    }
+
+    fn append_custom_exec_rollout_event(rollout: &Path, source: &str) -> Result<()> {
+        let event = serde_json::json!({
+            "type": "response_item",
+            "payload": {
+                "type": "custom_tool_call",
+                "name": "exec",
+                "input": source,
             },
         });
         let mut file = fs::OpenOptions::new()
@@ -276,6 +313,50 @@ mod tests {
         assert_eq!(counts.files.get(&cwd.join("src/b.rs")), Some(&1));
         assert!(!counts.files.contains_key(&cwd.join("docs/ignored.md")));
 
+        Ok(())
+    }
+
+    #[test]
+    fn current_exec_envelope_counts_nested_command_reads() -> Result<()> {
+        let root = temp_test_dir("custom-exec")?;
+        let cwd = root.path.join("project");
+        fs::create_dir_all(cwd.join("src"))?;
+        let rollout = root.path.join("rollout.jsonl");
+        write_rollout_meta(&rollout, &cwd)?;
+        append_custom_exec_rollout_event(
+            &rollout,
+            r#"const result = await tools.exec_command({cmd: "cat src/current.rs", workdir: "/tmp/ignored"}); text(result.output);"#,
+        )?;
+
+        let counts = count_from_exec_calls(&rollout, &cwd, &[], ScanRange::default())?;
+
+        assert_eq!(counts.exec_calls, 1);
+        assert_eq!(
+            counts
+                .files
+                .get(&PathBuf::from("/tmp/ignored/src/current.rs")),
+            Some(&1),
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn current_exec_envelope_rejects_dynamic_command_arguments() -> Result<()> {
+        let root = temp_test_dir("custom-exec-dynamic")?;
+        let rollout = root.path.join("rollout.jsonl");
+        write_rollout_meta(&rollout, &root.path)?;
+        append_custom_exec_rollout_event(
+            &rollout,
+            "const options = load('command'); await tools.exec_command(options);",
+        )?;
+
+        let error = count_from_exec_calls(&rollout, &root.path, &[], ScanRange::default())
+            .expect_err("dynamic command arguments must fail closed");
+        assert!(
+            error
+                .to_string()
+                .contains("parsing exec tool call at rollout line 2")
+        );
         Ok(())
     }
 

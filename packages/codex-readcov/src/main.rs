@@ -1,4 +1,5 @@
 mod cli;
+mod javascript;
 mod output;
 mod paths;
 mod rollout;

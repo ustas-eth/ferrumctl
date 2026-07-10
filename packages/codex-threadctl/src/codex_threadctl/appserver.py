@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -11,30 +12,49 @@ from urllib.parse import urlparse
 import websockets
 
 from .constants import CLIENT_VERSION, MAX_WEBSOCKET_MESSAGE_BYTES
-from .errors import ThreadctlError
+from .errors import (
+    AppServerResponseError,
+    DeliveryUncertain,
+    ThreadctlError,
+    ThreadNotLoaded,
+    ThreadStateError,
+)
 
 
 class AppServer:
-    def __init__(self, endpoint: str, timeout: float):
-        self.endpoint = endpoint
+    def __init__(
+        self,
+        endpoint: str,
+        timeout: float,
+        *,
+        client_name: str = "codex_threadctl",
+        client_title: str = "codex-threadctl",
+        client_version: str = CLIENT_VERSION,
+    ):
+        self.endpoint = normalize_endpoint(endpoint)
         self.timeout = timeout
+        self.client_name = client_name
+        self.client_title = client_title
+        self.client_version = client_version
         self.next_id = 1
         self.ws: Any = None
+        self.server_info: dict[str, Any] = {}
 
     async def __aenter__(self) -> "AppServer":
-        self.ws = await connect_websocket(self.endpoint)
         try:
-            await self.request(
+            self.ws = await connect_websocket(self.endpoint)
+            result = await self.request(
                 "initialize",
                 {
                     "clientInfo": {
-                        "name": "codex_threadctl",
-                        "title": "codex-threadctl",
-                        "version": CLIENT_VERSION,
+                        "name": self.client_name,
+                        "title": self.client_title,
+                        "version": self.client_version,
                     },
                     "capabilities": {"experimentalApi": True},
                 },
             )
+            self.server_info = require_object(result, "initialize result")
             await self.notify("initialized", {})
         except Exception:
             ws = self.ws
@@ -52,6 +72,8 @@ class AppServer:
             await self.ws.close()
 
     async def request(self, method: str, params: dict[str, Any] | None = None) -> Any:
+        if self.ws is None:
+            raise ThreadctlError("app-server connection is not open")
         request_id = self.next_id
         self.next_id += 1
         message: dict[str, Any] = {"method": method, "id": request_id}
@@ -60,44 +82,63 @@ class AppServer:
         await self.ws.send(json.dumps(message, separators=(",", ":")))
 
         deadline = time.monotonic() + self.timeout
-        while time.monotonic() < deadline:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ThreadctlError(f"timed out waiting for app-server method {method}")
             try:
-                raw = await asyncio.wait_for(self.ws.recv(), timeout=0.2)
+                raw = await asyncio.wait_for(self.ws.recv(), timeout=min(0.2, remaining))
             except TimeoutError:
                 continue
-            response = json.loads(raw)
+            try:
+                response = json.loads(raw)
+            except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+                raise ThreadctlError("app-server returned invalid JSON") from exc
+            if not isinstance(response, dict):
+                raise ThreadctlError("app-server returned a non-object message")
+            if "method" in response:
+                continue
             if response.get("id") != request_id:
                 continue
             if "error" in response:
-                raise ThreadctlError(json.dumps(response["error"], separators=(",", ":")))
-            return response.get("result")
-        raise ThreadctlError(f"timed out waiting for app-server method {method}")
+                raise AppServerResponseError(response["error"])
+            if "result" not in response:
+                raise ThreadctlError(f"app-server method {method} returned no result")
+            return response["result"]
 
     async def notify(self, method: str, params: dict[str, Any] | None = None) -> None:
+        if self.ws is None:
+            raise ThreadctlError("app-server connection is not open")
         message: dict[str, Any] = {"method": method}
         if params is not None:
             message["params"] = params
         await self.ws.send(json.dumps(message, separators=(",", ":")))
 
 
+def require_object(value: Any, label: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ThreadctlError(f"app-server returned invalid {label}")
+    return value
+
+
 async def connect_websocket(endpoint: str) -> Any:
-    if endpoint.startswith("unix://"):
-        return await websockets.unix_connect(
-            resolve_unix_endpoint(endpoint),
-            uri="ws://localhost/rpc",
+    try:
+        if endpoint.startswith("unix://"):
+            return await websockets.unix_connect(
+                resolve_unix_endpoint(endpoint),
+                uri="ws://localhost/rpc",
+                compression=None,
+                max_size=MAX_WEBSOCKET_MESSAGE_BYTES,
+                user_agent_header=None,
+            )
+        return await websockets.connect(
+            endpoint,
             compression=None,
             max_size=MAX_WEBSOCKET_MESSAGE_BYTES,
             user_agent_header=None,
         )
-    parsed = urlparse(endpoint)
-    if parsed.scheme != "ws":
-        raise ThreadctlError("endpoint must be unix://, unix://PATH, or ws://HOST:PORT")
-    return await websockets.connect(
-        endpoint,
-        compression=None,
-        max_size=MAX_WEBSOCKET_MESSAGE_BYTES,
-        user_agent_header=None,
-    )
+    except (OSError, websockets.WebSocketException) as exc:
+        raise ThreadctlError(f"could not connect to app-server: {exc}") from exc
 
 
 def resolve_unix_endpoint(endpoint: str) -> str:
@@ -113,26 +154,51 @@ def resolve_unix_endpoint(endpoint: str) -> str:
     return str(path.resolve())
 
 
+def normalize_endpoint(endpoint: str) -> str:
+    if endpoint.startswith("unix://"):
+        return "unix://" + resolve_unix_endpoint(endpoint)
+    parsed = urlparse(endpoint)
+    if parsed.scheme not in {"ws", "wss"}:
+        raise ThreadctlError(
+            "endpoint must be unix://, unix://PATH, ws://HOST:PORT, or wss://HOST:PORT"
+        )
+    return endpoint
+
+
 async def list_loaded(app: AppServer) -> list[str]:
     thread_ids: list[str] = []
     cursor: str | None = None
+    seen_cursors: set[str] = set()
     while True:
         params: dict[str, Any] = {}
         if cursor is not None:
             params["cursor"] = cursor
-        result = await app.request("thread/loaded/list", params)
-        thread_ids.extend(result.get("data", []))
-        cursor = result.get("nextCursor")
-        if cursor is None:
+        result = require_object(
+            await app.request("thread/loaded/list", params),
+            "thread/loaded/list result",
+        )
+        data = result.get("data")
+        if not isinstance(data, list) or not all(isinstance(item, str) for item in data):
+            raise ThreadctlError("app-server returned invalid loaded thread data")
+        thread_ids.extend(data)
+        next_cursor = result.get("nextCursor")
+        if next_cursor is None:
             return thread_ids
+        if not isinstance(next_cursor, str) or next_cursor in seen_cursors:
+            raise ThreadctlError("app-server returned an invalid loaded-thread cursor")
+        seen_cursors.add(next_cursor)
+        cursor = next_cursor
 
 
 async def read_thread(app: AppServer, thread_id: str) -> dict[str, Any]:
-    result = await app.request(
-        "thread/read",
-        {"threadId": thread_id, "includeTurns": False},
+    result = require_object(
+        await app.request(
+            "thread/read",
+            {"threadId": thread_id, "includeTurns": False},
+        ),
+        "thread/read result",
     )
-    return result["thread"]
+    return require_object(result.get("thread"), "thread/read thread")
 
 
 async def list_turn_page(
@@ -152,58 +218,302 @@ async def list_turn_page(
     }
     if cursor is not None:
         params["cursor"] = cursor
-    return await app.request("thread/turns/list", params)
+    result = require_object(
+        await app.request("thread/turns/list", params),
+        "thread/turns/list result",
+    )
+    if not isinstance(result.get("data"), list):
+        raise ThreadctlError("app-server returned invalid turn data")
+    return result
 
 
-async def get_goal(app: AppServer, thread_id: str) -> dict[str, Any] | None:
-    result = await app.request("thread/goal/get", {"threadId": thread_id})
-    return result.get("goal")
-
-
-def status_name(thread: dict[str, Any]) -> str:
-    status = thread.get("status", {})
-    return str(status.get("type", "unknown"))
-
-
-async def interrupt_thread(app: AppServer, thread_id: str) -> dict[str, Any]:
-    if thread_id not in await list_loaded(app):
-        raise ThreadctlError(f"thread is not loaded on this app-server: {thread_id}")
-
-    thread = await read_thread(app, thread_id)
-    if status_name(thread) != "active":
-        raise ThreadctlError(f"thread is {status_name(thread)}; no active turn to interrupt")
-
+async def list_thread_turns(
+    app: AppServer,
+    thread_id: str,
+    *,
+    limit: int = 1,
+    items_view: str = "notLoaded",
+) -> list[dict[str, Any]]:
     page = await list_turn_page(
         app,
         thread_id,
-        limit=1,
-        items_view="notLoaded",
+        limit=limit,
+        items_view=items_view,
     )
-    turn = next(iter(page.get("data", [])), None)
-    if turn is None or turn.get("status") != "inProgress" or not turn.get("id"):
-        raise ThreadctlError("active turn id is unavailable; inspect the thread and retry")
+    return page["data"]
 
+
+async def get_goal(app: AppServer, thread_id: str) -> dict[str, Any] | None:
+    result = require_object(
+        await app.request("thread/goal/get", {"threadId": thread_id}),
+        "thread/goal/get result",
+    )
+    goal = result.get("goal")
+    if goal is not None and not isinstance(goal, dict):
+        raise ThreadctlError("app-server returned invalid goal data")
+    return goal
+
+
+def status_name(thread_or_status: dict[str, Any]) -> str:
+    status = thread_or_status.get("status", thread_or_status)
+    if not isinstance(status, dict):
+        return "unknown"
+    return str(status.get("type", "unknown"))
+
+
+async def get_thread_status(app: AppServer, thread_id: str) -> dict[str, Any]:
+    thread = await read_thread(app, thread_id)
+    status = thread.get("status")
+    if not isinstance(status, dict):
+        raise ThreadctlError("app-server returned invalid thread status")
+    return status
+
+
+async def require_loaded(app: AppServer, thread_id: str) -> None:
+    if thread_id not in await list_loaded(app):
+        raise ThreadNotLoaded(f"thread is not loaded on this app-server: {thread_id}")
+
+
+async def current_active_turn(app: AppServer, thread_id: str) -> dict[str, Any]:
+    turns = await list_thread_turns(app, thread_id, limit=1)
+    turn = turns[0] if turns else None
+    if not isinstance(turn, dict) or turn.get("status") != "inProgress" or not turn.get("id"):
+        raise ThreadStateError("active turn id is unavailable; inspect the thread and retry")
+    return turn
+
+
+def text_input(message: str) -> list[dict[str, Any]]:
+    return [{"type": "text", "text": message, "textElements": []}]
+
+
+def is_steer_state_error(error: AppServerResponseError) -> bool:
+    message = str(error)
+    return any(
+        fragment in message
+        for fragment in (
+            "no active turn to steer",
+            "expected active turn id",
+            "cannot steer a review turn",
+            "cannot steer a compact turn",
+        )
+    )
+
+
+async def confirm_input(
+    app: AppServer,
+    thread_id: str,
+    submitted_turn_id: str,
+    client_message_id: str,
+    timeout: float,
+) -> dict[str, Any]:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        page = await list_turn_page(
+            app,
+            thread_id,
+            limit=5,
+            items_view="full",
+        )
+        for turn in page["data"]:
+            if not isinstance(turn, dict):
+                continue
+            for item in turn.get("items", []):
+                if not isinstance(item, dict):
+                    continue
+                if item.get("type") != "userMessage":
+                    continue
+                if item.get("clientId") != client_message_id:
+                    continue
+                actual_turn_id = str(turn.get("id") or submitted_turn_id)
+                return {
+                    "threadId": thread_id,
+                    "turnId": actual_turn_id,
+                    "submittedTurnId": submitted_turn_id,
+                    "clientMessageId": client_message_id,
+                    "delivery": (
+                        "started" if actual_turn_id == submitted_turn_id else "steered"
+                    ),
+                    "turnStatus": turn.get("status"),
+                }
+        await asyncio.sleep(0.1)
+    raise DeliveryUncertain(submitted_turn_id, client_message_id)
+
+
+async def start_turn(
+    app: AppServer,
+    thread_id: str,
+    message: str,
+    *,
+    confirmation_timeout: float | None = None,
+) -> dict[str, Any]:
+    await require_loaded(app, thread_id)
+    status = await get_thread_status(app, thread_id)
+    name = status_name(status)
+    if name != "idle":
+        raise ThreadStateError(f"thread is {name}; refusing to start a new turn")
+
+    client_message_id = uuid.uuid4().hex
+    try:
+        result = require_object(
+            await app.request(
+                "turn/start",
+                {
+                    "threadId": thread_id,
+                    "clientUserMessageId": client_message_id,
+                    "input": text_input(message),
+                },
+            ),
+            "turn/start result",
+        )
+        turn = require_object(result.get("turn"), "turn/start turn")
+        turn_id = turn.get("id")
+        if not isinstance(turn_id, str) or not turn_id:
+            raise ThreadctlError("app-server returned turn/start without a turn id")
+    except AppServerResponseError:
+        raise
+    except (OSError, ThreadctlError, websockets.WebSocketException) as exc:
+        raise DeliveryUncertain(None, client_message_id) from exc
+    try:
+        return await confirm_input(
+            app,
+            thread_id,
+            turn_id,
+            client_message_id,
+            confirmation_timeout if confirmation_timeout is not None else app.timeout,
+        )
+    except DeliveryUncertain:
+        raise
+    except (OSError, ThreadctlError, websockets.WebSocketException) as exc:
+        raise DeliveryUncertain(turn_id, client_message_id) from exc
+
+
+async def steer_turn(
+    app: AppServer,
+    thread_id: str,
+    turn_id: str,
+    message: str,
+) -> dict[str, Any]:
+    await require_loaded(app, thread_id)
+    client_message_id = uuid.uuid4().hex
+    try:
+        result = require_object(
+            await app.request(
+                "turn/steer",
+                {
+                    "threadId": thread_id,
+                    "expectedTurnId": turn_id,
+                    "clientUserMessageId": client_message_id,
+                    "input": text_input(message),
+                },
+            ),
+            "turn/steer result",
+        )
+        accepted_turn_id = result.get("turnId")
+        if accepted_turn_id != turn_id:
+            raise ThreadctlError("app-server returned an unexpected steered turn id")
+    except AppServerResponseError as exc:
+        if is_steer_state_error(exc):
+            raise ThreadStateError(str(exc)) from exc
+        raise
+    except (OSError, ThreadctlError, websockets.WebSocketException) as exc:
+        raise DeliveryUncertain(turn_id, client_message_id) from exc
+    return {
+        "threadId": thread_id,
+        "turnId": turn_id,
+        "clientMessageId": client_message_id,
+        "delivery": "steered",
+    }
+
+
+async def deliver_input(
+    app: AppServer,
+    thread_id: str,
+    message: str,
+    *,
+    allow_active: bool,
+) -> dict[str, Any]:
+    await require_loaded(app, thread_id)
+    status = await get_thread_status(app, thread_id)
+    name = status_name(status)
+    if name == "idle":
+        return await start_turn(app, thread_id, message)
+    if name == "active" and allow_active:
+        turn = await current_active_turn(app, thread_id)
+        return await steer_turn(app, thread_id, str(turn["id"]), message)
+    if name == "active":
+        raise ThreadStateError("thread is active; active steering was not allowed")
+    if name == "notLoaded":
+        raise ThreadNotLoaded(f"thread is not loaded on this app-server: {thread_id}")
+    raise ThreadStateError(f"thread status is {name}; refusing to deliver input")
+
+
+async def read_turn(app: AppServer, thread_id: str, turn_id: str) -> dict[str, Any]:
+    cursor: str | None = None
+    seen_cursors: set[str] = set()
+    while True:
+        page = await list_turn_page(
+            app,
+            thread_id,
+            cursor=cursor,
+            limit=50,
+            items_view="summary",
+        )
+        for turn in page["data"]:
+            if isinstance(turn, dict) and turn.get("id") == turn_id:
+                return turn
+        next_cursor = page.get("nextCursor")
+        if next_cursor is None:
+            raise ThreadctlError(f"turn not found: {turn_id}")
+        if not isinstance(next_cursor, str) or next_cursor in seen_cursors:
+            raise ThreadctlError("app-server returned an invalid turn cursor")
+        seen_cursors.add(next_cursor)
+        cursor = next_cursor
+
+
+async def wait_for_turn_terminal(
+    app: AppServer,
+    thread_id: str,
+    turn_id: str,
+    timeout: float,
+) -> dict[str, Any]:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        turn = await read_turn(app, thread_id, turn_id)
+        if turn.get("status") != "inProgress":
+            return turn
+        await asyncio.sleep(0.1)
+    raise ThreadctlError(f"timed out waiting for turn to stop: {turn_id}")
+
+
+async def interrupt_thread(
+    app: AppServer,
+    thread_id: str,
+    turn_id: str,
+    *,
+    wait: bool,
+) -> dict[str, Any]:
+    await require_loaded(app, thread_id)
     await app.request(
         "turn/interrupt",
-        {"threadId": thread_id, "turnId": turn["id"]},
+        {"threadId": thread_id, "turnId": turn_id},
     )
-    return {"threadId": thread_id, "turnId": turn["id"], "status": "interrupted"}
+    result: dict[str, Any] = {
+        "threadId": thread_id,
+        "turnId": turn_id,
+        "status": "requested",
+    }
+    if wait:
+        turn = await wait_for_turn_terminal(app, thread_id, turn_id, app.timeout)
+        result["status"] = str(turn.get("status") or "unknown")
+    return result
 
 
-async def compact_thread(app: AppServer, thread_id: str) -> dict[str, Any]:
-    if thread_id not in await list_loaded(app):
-        raise ThreadctlError(f"thread is not loaded on this app-server: {thread_id}")
-
-    thread = await read_thread(app, thread_id)
-    name = status_name(thread)
-    if name == "active":
-        raise ThreadctlError("thread is active; manual compaction would replace its turn")
-    if name != "idle":
-        raise ThreadctlError(f"thread status is {name}; refusing to compact")
-
-    goal = await get_goal(app, thread_id)
-    if goal is not None and goal.get("status") == "active":
-        raise ThreadctlError("thread goal is active; pause it before manual compaction")
-
-    await app.request("thread/compact/start", {"threadId": thread_id})
-    return {"threadId": thread_id, "status": "started"}
+async def resume_thread(app: AppServer, thread_id: str) -> dict[str, Any]:
+    result = require_object(
+        await app.request(
+            "thread/resume",
+            {"threadId": thread_id, "excludeTurns": True},
+        ),
+        "thread/resume result",
+    )
+    return require_object(result.get("thread"), "thread/resume thread")

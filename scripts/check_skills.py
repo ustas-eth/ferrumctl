@@ -93,6 +93,40 @@ def check_manifest(path: Path) -> None:
         )
 
 
+def check_marketplace(manifests: list[Path]) -> None:
+    path = ROOT / ".agents/plugins/marketplace.json"
+    marketplace = require_mapping(json.loads(path.read_text()), path, "document")
+    plugins = marketplace.get("plugins")
+    if not isinstance(plugins, list):
+        raise ValueError(f"{relative(path)}: plugins must be a list")
+
+    expected = {manifest.parent.parent.name: manifest.parent.parent for manifest in manifests}
+    actual: dict[str, Path] = {}
+    for index, value in enumerate(plugins):
+        plugin = require_mapping(value, path, f"plugins[{index}]")
+        name = plugin.get("name")
+        if not isinstance(name, str) or not name:
+            raise ValueError(f"{relative(path)}: plugins[{index}].name is invalid")
+        if name in actual:
+            raise ValueError(f"{relative(path)}: duplicate plugin {name!r}")
+        source = require_mapping(plugin.get("source"), path, f"plugins[{index}].source")
+        source_path = source.get("path")
+        if source.get("source") != "local" or not isinstance(source_path, str):
+            raise ValueError(f"{relative(path)}: plugin {name!r} must use a local path")
+        resolved = (ROOT / source_path).resolve()
+        if not (resolved / ".codex-plugin/plugin.json").is_file():
+            raise ValueError(f"{relative(path)}: plugin path does not contain a manifest")
+        actual[name] = resolved
+
+    if set(actual) != set(expected):
+        raise ValueError(
+            f"{relative(path)}: marketplace plugins do not match package manifests"
+        )
+    for name, expected_path in expected.items():
+        if actual[name] != expected_path.resolve():
+            raise ValueError(f"{relative(path)}: plugin {name!r} points to the wrong path")
+
+
 def main() -> None:
     skills = sorted(ROOT.glob("packages/*/plugins/*/skills/*/SKILL.md"))
     manifests = sorted(ROOT.glob("packages/*/plugins/*/.codex-plugin/plugin.json"))
@@ -102,6 +136,7 @@ def main() -> None:
         check_skill(path)
     for path in manifests:
         check_manifest(path)
+    check_marketplace(manifests)
     print(f"validated {len(skills)} skills and {len(manifests)} plugin manifests")
 
 

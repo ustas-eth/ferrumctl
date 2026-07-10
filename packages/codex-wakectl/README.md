@@ -1,14 +1,14 @@
 # codex-wakectl
 
-`codex-wakectl` sends and schedules input for Codex threads through a shared
-`codex app-server`.
+`codex-wakectl` waits for conditions and schedules durable input for Codex
+threads through a shared `codex app-server`.
 
-Use it to deliver input now, wait for a Codex condition, or persist a wake that
-a runner will deliver later. Thread inspection, interruption, and compaction
-belong to `codex-threadctl`.
+Use it to block on a Codex condition or persist a wake that a runner will
+deliver later. Immediate input, inspection, and interruption belong to
+`codex-threadctl`.
 
 Wakectl 0.3 moves its former `loaded`, `status`, `inspect`, and `interrupt`
-commands to that package; `compact` is introduced there.
+commands, along with immediate `send`, to that package.
 
 ## Install
 
@@ -37,12 +37,6 @@ Only threads loaded on that endpoint can receive input. When
 `codex-threadctl` is installed, `codex-threadctl loaded` lists them.
 
 ## Examples
-
-Send input now:
-
-```sh
-codex-wakectl send THREAD_ID "Check your goal and continue if useful."
-```
 
 Wake this thread later:
 
@@ -77,9 +71,10 @@ codex-wakectl run
 codex-wakectl systemd install --interval 30s
 ```
 
-By default, wakectl sends only to idle targets. Use `--allow-active` only for
-input that remains safe while the current turn continues. The default queue is
-shared for the host user; keep job ids and cancel only jobs your workflow owns.
+By default, wakectl starts input only when the target appears idle. With
+`--allow-active`, it uses native turn-scoped steering when a regular turn is
+active. The default queue is shared for the host user; keep job ids and cancel
+only jobs your workflow owns.
 
 More detail:
 

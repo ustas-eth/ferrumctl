@@ -76,7 +76,7 @@ goalctl() {
 }
 
 wakectl() {
-  PYTHONPATH="$ROOT/packages/codex-wakectl/src${PYTHONPATH:+:$PYTHONPATH}" \
+  PYTHONPATH="$ROOT/packages/codex-threadctl/src:$ROOT/packages/codex-wakectl/src${PYTHONPATH:+:$PYTHONPATH}" \
     "$PYTHON" -c 'import sys; from codex_wakectl.cli import main; raise SystemExit(main(sys.argv[1:]))' "$@"
 }
 
@@ -338,6 +338,18 @@ grep -Fqx 'Smoke complete.' "$SMOKE_ROOT/message.out" || {
 }
 printf 'threadctl listed and retrieved materialized messages\n'
 
+threadctl --timeout 5 --json resume "$inspect_thread" >"$SMOKE_ROOT/resume.json"
+"$PYTHON" - "$SMOKE_ROOT/resume.json" "$inspect_thread" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    result = json.load(handle)
+assert result["threadId"] == sys.argv[2]
+assert result["status"]["type"] == "idle"
+PY
+printf 'threadctl resumed persisted state without starting a turn\n'
+
 if wakectl --timeout 5 add stop "$missing_thread" \
   --to "$missing_thread" "smoke" >"$SMOKE_ROOT/turns.out" 2>"$SMOKE_ROOT/turns.err"; then
   fail "expected missing stop-watch thread to fail"
@@ -348,68 +360,16 @@ grep -Eq 'thread not found|thread not loaded' "$SMOKE_ROOT/turns.err" || {
 }
 printf 'wakectl reached paged turn history and got expected temporary-thread error\n'
 
-if PYTHONPATH="$ROOT/packages/codex-threadctl/src${PYTHONPATH:+:$PYTHONPATH}" \
-  "$PYTHON" - "$missing_thread" >"$SMOKE_ROOT/interrupt.out" 2>"$SMOKE_ROOT/interrupt.err" <<'PY'
-import asyncio
-import sys
-
-from codex_threadctl.appserver import AppServer
-from codex_threadctl.errors import ThreadctlError
-
-
-async def main() -> int:
-    try:
-        async with AppServer("unix://", 5) as app:
-            await app.request(
-                "turn/interrupt",
-                {"threadId": sys.argv[1], "turnId": "00000000-0000-4000-8000-000000000002"},
-            )
-    except ThreadctlError as exc:
-        print(exc, file=sys.stderr)
-        return 1
-    return 0
-
-
-raise SystemExit(asyncio.run(main()))
-PY
-then
+if threadctl --timeout 5 --json interrupt "$missing_thread" \
+  "00000000-0000-4000-8000-000000000002" \
+  >"$SMOKE_ROOT/interrupt.out" 2>"$SMOKE_ROOT/interrupt.err"; then
   fail "expected missing interrupt thread to fail"
 fi
-grep -Eq 'thread not found|thread not loaded|invalid thread id' "$SMOKE_ROOT/interrupt.err" || {
+grep -Eq 'thread not found|thread (is )?not loaded|invalid thread id' "$SMOKE_ROOT/interrupt.err" || {
   sed -n '1,40p' "$SMOKE_ROOT/interrupt.err" >&2
   fail "unexpected turn/interrupt error"
 }
 printf 'threadctl reached turn interruption API\n'
-
-if PYTHONPATH="$ROOT/packages/codex-threadctl/src${PYTHONPATH:+:$PYTHONPATH}" \
-  "$PYTHON" - "$missing_thread" >"$SMOKE_ROOT/compact.out" 2>"$SMOKE_ROOT/compact.err" <<'PY'
-import asyncio
-import sys
-
-from codex_threadctl.appserver import AppServer
-from codex_threadctl.errors import ThreadctlError
-
-
-async def main() -> int:
-    try:
-        async with AppServer("unix://", 5) as app:
-            await app.request("thread/compact/start", {"threadId": sys.argv[1]})
-    except ThreadctlError as exc:
-        print(exc, file=sys.stderr)
-        return 1
-    return 0
-
-
-raise SystemExit(asyncio.run(main()))
-PY
-then
-  fail "expected missing compact thread to fail"
-fi
-grep -Eq 'thread not found|thread not loaded|invalid thread id' "$SMOKE_ROOT/compact.err" || {
-  sed -n '1,40p' "$SMOKE_ROOT/compact.err" >&2
-  fail "unexpected thread/compact/start error"
-}
-printf 'threadctl reached thread compaction API\n'
 
 log "readcov rollout parser compatibility"
 project="$SMOKE_ROOT/project"
@@ -431,11 +391,14 @@ events = [
     {
         "type": "response_item",
         "payload": {
-            "type": "function_call",
-            "name": "exec_command",
-            "arguments": json.dumps({
-                "cmd": "cat src/a.rs && sed -n '1,5p' src/b.rs",
-            }),
+            "type": "custom_tool_call",
+            "name": "exec",
+            "input": (
+                "const result = await tools.exec_command({"
+                "cmd: \"cat src/a.rs && sed -n '1,5p' src/b.rs\","
+                f"workdir: {json.dumps(project)}"
+                "}); text(result.output);"
+            ),
         },
     },
 ]
@@ -448,7 +411,7 @@ PY
 readcov top "$rollout" "$project/src" --paths-only --limit 0 >"$SMOKE_ROOT/readcov.out"
 grep -qx 'src/a.rs' "$SMOKE_ROOT/readcov.out" || fail "readcov did not report src/a.rs"
 grep -qx 'src/b.rs' "$SMOKE_ROOT/readcov.out" || fail "readcov did not report src/b.rs"
-printf 'readcov parsed fixture rollout\n'
+printf 'readcov parsed the current exec tool envelope\n'
 
 if [[ -n "$codex_semver" && -n "$parser_tag" && "$parser_tag" != "rust-v$codex_semver" ]]; then
   fail "codex-readcov parser tag $parser_tag does not match codex-cli $codex_semver"

@@ -6,7 +6,8 @@ import subprocess
 import uuid
 from typing import Any
 
-from .appserver import get_goal, list_thread_turns
+from codex_threadctl.appserver import get_goal, list_turn_page, list_thread_turns
+
 from .constants import DEFAULT_TIMEOUT, TERMINAL_TURN_STATUSES
 from .errors import WakectlError
 from .parsing import format_time, now_seconds
@@ -49,18 +50,21 @@ async def goal_condition_ready(
 
     tokens_used = int(goal.get("tokensUsed") or 0)
     time_used = int(goal.get("timeUsedSeconds") or 0)
-    repeating = "tokensUsedEvery" in condition or "timeUsedEvery" in condition
     created_at = goal.get("createdAt")
     previous_created_at = condition.get("goalCreatedAt")
-    if repeating and created_at is not None and created_at != previous_created_at:
+    identity_updates: dict[str, Any] = {}
+    if previous_created_at is None and created_at is not None:
         updated_condition = dict(condition)
         updated_condition["goalCreatedAt"] = created_at
-        updates: dict[str, Any] = {"condition": updated_condition}
-        if "tokensUsedEvery" in condition:
-            updates["lastTokensUsedBucket"] = tokens_used // condition["tokensUsedEvery"]
-        if "timeUsedEvery" in condition:
-            updates["lastTimeUsedBucket"] = time_used // condition["timeUsedEvery"]
-        return False, updates, "watched goal changed"
+        condition = updated_condition
+        identity_updates["condition"] = updated_condition
+    elif created_at is not None and created_at != previous_created_at:
+        if job is None:
+            raise WakectlError("watched goal was replaced")
+        return False, {"status": "superseded"}, "watched goal was replaced"
+
+    def combined(updates: dict[str, Any] | None = None) -> dict[str, Any]:
+        return {**identity_updates, **(updates or {})}
 
     reset_updates: dict[str, Any] = {}
     if "tokensUsedEvery" in condition:
@@ -76,44 +80,52 @@ async def goal_condition_ready(
         if bucket < previous:
             reset_updates["lastTimeUsedBucket"] = bucket
     if reset_updates:
-        return False, reset_updates, "goal usage counters reset"
+        return False, combined(reset_updates), "goal usage counters reset"
 
     statuses = condition.get("statuses")
     if statuses and goal.get("status") not in statuses:
-        return False, {}, f"status is {goal.get('status')}"
+        return False, combined(), f"status is {goal.get('status')}"
 
     token_budget = goal.get("tokenBudget")
 
     if "tokensLeftLte" in condition:
         if token_budget is None:
-            return False, {}, "goal has no token budget"
+            return False, combined(), "goal has no token budget"
         tokens_left = int(token_budget) - tokens_used
         if tokens_left > condition["tokensLeftLte"]:
-            return False, {}, f"tokens left {tokens_left}"
+            return False, combined(), f"tokens left {tokens_left}"
 
     if "tokensUsedGte" in condition and tokens_used < condition["tokensUsedGte"]:
-        return False, {}, f"tokens used {tokens_used}"
+        return False, combined(), f"tokens used {tokens_used}"
 
     if "timeUsedGte" in condition and time_used < condition["timeUsedGte"]:
-        return False, {}, f"time used {time_used}s"
+        return False, combined(), f"time used {time_used}s"
 
     if "tokensUsedEvery" in condition:
         interval = condition["tokensUsedEvery"]
         bucket = tokens_used // interval
         previous = int((job or {}).get("lastTokensUsedBucket") or 0)
         if bucket <= 0 or bucket <= previous:
-            return False, {}, f"tokens used bucket {bucket}"
-        return True, {"lastTokensUsedBucket": bucket}, f"tokens used {tokens_used}"
+            return False, combined(), f"tokens used bucket {bucket}"
+        return (
+            True,
+            combined({"lastTokensUsedBucket": bucket}),
+            f"tokens used {tokens_used}",
+        )
 
     if "timeUsedEvery" in condition:
         interval = condition["timeUsedEvery"]
         bucket = time_used // interval
         previous = int((job or {}).get("lastTimeUsedBucket") or 0)
         if bucket <= 0 or bucket <= previous:
-            return False, {}, f"time used bucket {bucket}"
-        return True, {"lastTimeUsedBucket": bucket}, f"time used {time_used}s"
+            return False, combined(), f"time used bucket {bucket}"
+        return (
+            True,
+            combined({"lastTimeUsedBucket": bucket}),
+            f"time used {time_used}s",
+        )
 
-    return True, {}, "goal predicate matched"
+    return True, combined(), "goal predicate matched"
 
 
 def with_turn_cursor(
@@ -138,6 +150,35 @@ async def seed_stop_condition(app: Any, condition: dict[str, Any]) -> dict[str, 
     return with_turn_cursor(condition, turns[0] if turns else None)
 
 
+async def turns_through_cursor(
+    app: Any,
+    thread_id: str,
+    cursor_id: str | None,
+) -> tuple[list[dict[str, Any]], bool]:
+    cursor: str | None = None
+    seen_cursors: set[str] = set()
+    turns: list[dict[str, Any]] = []
+    while True:
+        page = await list_turn_page(
+            app,
+            thread_id,
+            cursor=cursor,
+            limit=50,
+            items_view="notLoaded",
+        )
+        batch = [turn for turn in page["data"] if isinstance(turn, dict)]
+        turns.extend(batch)
+        if cursor_id is None or any(turn.get("id") == cursor_id for turn in batch):
+            return turns, True
+        next_cursor = page.get("nextCursor")
+        if next_cursor is None:
+            return turns, False
+        if not isinstance(next_cursor, str) or next_cursor in seen_cursors:
+            raise WakectlError("app-server returned an invalid turn cursor")
+        seen_cursors.add(next_cursor)
+        cursor = next_cursor
+
+
 def completed_turn_after_cursor(
     turns: list[dict[str, Any]],
     cursor_id: str | None,
@@ -146,20 +187,29 @@ def completed_turn_after_cursor(
     if not turns:
         return None
 
+    if cursor_id is None:
+        return next(
+            (
+                turn
+                for turn in turns
+                if turn.get("status") in TERMINAL_TURN_STATUSES
+            ),
+            None,
+        )
+
     cursor_index = next(
         (index for index, turn in enumerate(turns) if turn.get("id") == cursor_id),
         None,
     )
     if cursor_index is None:
-        candidates = turns
-    else:
-        candidates = turns[:cursor_index]
-        cursor = turns[cursor_index]
-        if (
-            cursor_status == "inProgress"
-            and cursor.get("status") in TERMINAL_TURN_STATUSES
-        ):
-            candidates = [*candidates, cursor]
+        return None
+    candidates = turns[:cursor_index]
+    cursor = turns[cursor_index]
+    if (
+        cursor_status == "inProgress"
+        and cursor.get("status") in TERMINAL_TURN_STATUSES
+    ):
+        candidates = [*candidates, cursor]
 
     return next(
         (turn for turn in candidates if turn.get("status") in TERMINAL_TURN_STATUSES),
@@ -171,15 +221,14 @@ async def stop_condition_ready(
     app: Any,
     condition: dict[str, Any],
 ) -> tuple[bool, dict[str, Any], str]:
-    turns = await list_thread_turns(
-        app,
-        condition["threadId"],
-        limit=2,
-        items_view="notLoaded",
-    )
-    latest = turns[0] if turns else None
-
     if "cursorTurnId" not in condition:
+        turns = await list_thread_turns(
+            app,
+            condition["threadId"],
+            limit=1,
+            items_view="notLoaded",
+        )
+        latest = turns[0] if turns else None
         legacy_observed_active = bool(condition.get("observedActive"))
         updated = with_turn_cursor(condition, latest)
         if (
@@ -189,6 +238,19 @@ async def stop_condition_ready(
         ):
             return True, {"condition": updated}, "thread stopped"
         return False, {"condition": updated}, "waiting for turn completion"
+
+    turns, cursor_found = await turns_through_cursor(
+        app,
+        condition["threadId"],
+        condition.get("cursorTurnId"),
+    )
+    latest = turns[0] if turns else None
+    if not cursor_found:
+        return (
+            False,
+            {"status": "failed"},
+            f"turn cursor no longer exists: {condition.get('cursorTurnId')}",
+        )
 
     completed = completed_turn_after_cursor(
         turns,

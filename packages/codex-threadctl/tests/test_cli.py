@@ -28,8 +28,10 @@ class ParserTests(unittest.TestCase):
             ["inspect", "thread", "--brief", "--items", "0"],
             ["messages", "thread", "--limit", "0"],
             ["message", "thread", "turn", "item"],
-            ["interrupt", "thread"],
-            ["compact", "thread"],
+            ["start", "thread", "message"],
+            ["steer", "thread", "turn", "message"],
+            ["interrupt", "thread", "turn", "--wait"],
+            ["resume", "thread"],
         ]
         for argv in cases:
             with self.subTest(argv=argv):
@@ -42,8 +44,25 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(args.endpoint, "unix:///tmp/socket")
         self.assertTrue(args.json)
 
+    def test_timeout_rejects_non_finite_values(self):
+        for value in ("nan", "inf", "-inf"):
+            with self.subTest(value=value):
+                with self.assertRaises(SystemExit):
+                    parser.build_parser().parse_args(["--timeout", value, "loaded"])
+
 
 class CommandTests(unittest.IsolatedAsyncioTestCase):
+    async def test_loaded_prints_nothing_for_empty_result(self):
+        args = parser.build_parser().parse_args(["loaded"])
+        with (
+            mock.patch.object(commands, "AppServer", return_value=FakeContext()),
+            mock.patch.object(commands, "list_loaded", mock.AsyncMock(return_value=[])),
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            result = await commands.cmd_loaded(args)
+        self.assertEqual(result, 0)
+        self.assertEqual(output.getvalue(), "")
+
     async def test_message_prints_exact_multiline_text(self):
         args = parser.build_parser().parse_args(["message", "thread", "turn", "item"])
         with (

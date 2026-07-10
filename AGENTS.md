@@ -17,9 +17,11 @@ commands should remain bound to one state surface.
 Keep the CLI layer neutral. Skills may recommend an opinionated Codex workflow,
 but the binaries should remain useful when installed and used separately.
 
-Avoid convenience abstractions until the repeated use case is obvious. In
-particular, do not introduce a suite wrapper, shared daemon, cross-package
-runtime dependency, or common library just to make the repo look unified.
+Avoid convenience abstractions until the repeated use case is obvious. Do not
+introduce a suite wrapper, shared daemon, or common library just to make the
+repo look unified. A cross-package dependency must represent a real behavioral
+layer; wakectl depends on threadctl's client because deferred delivery must use
+the same turn-scoped app-server operations as immediate control.
 
 ## System Boundaries
 
@@ -35,16 +37,19 @@ Those surfaces can be out of sync. Code and docs should not imply stronger
 consistency than Codex actually provides.
 
 `codex-wakectl` is the most stateful package because it coordinates queued jobs,
-condition cursors, delivery policy, and app-server transport. Treat changes
-there as coordination changes, not simple CLI plumbing.
+condition cursors, leases, and delivery policy. Treat changes there as
+coordination changes, not simple CLI plumbing.
 
 `codex-threadctl` depends on materialized turn pagination and selected rollout
-records. Keep message locators composite and preserve the distinction between a
-live status observation and persisted history.
+records. It owns synchronous app-server start, steer, resume, and interruption
+operations used by wakectl. Keep message locators composite and preserve the
+distinction between accepted requests, confirmed delivery, and persisted
+history.
 
 `codex-readcov` reports transcript-recorded read actions, not verified file
-access or an operating-system audit log. `codex-goalctl replace` is
-clear-then-set, and `codex-threadctl compact` has a non-atomic safety check.
+access or an operating-system audit log. It must reject unresolved dynamic
+command envelopes instead of silently under-counting. `codex-goalctl replace`
+is clear-then-set.
 
 ## Working Rules
 
@@ -67,3 +72,5 @@ clear-then-set, and `codex-threadctl compact` has a non-atomic safety check.
   output, keep the dependency narrow and name it in docs or tests.
 - Test stateful workflows through persisted command transitions, not only the
   helper functions that calculate each step.
+- Keep delegated review focused: use at most two reviewers at `xhigh` effort,
+  and do not use `max`.

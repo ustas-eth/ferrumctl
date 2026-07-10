@@ -28,7 +28,7 @@ observe the cleared state or overwrite the new state.
 Concurrent writes to the same goal are last-writer-wins. Use one owner for a
 thread goal when possible.
 
-## Live Wakes
+## Scheduled Wakes
 
 `codex-wakectl` can wake only threads loaded on the selected app-server. A valid
 thread id is not enough.
@@ -46,8 +46,18 @@ Queued wake messages should be short and idempotent unless the delayed input is
 deliberately meant to be the instruction.
 
 By default, wakes send only to idle target threads. Use `--allow-active` only
-for messages that are safe while the target keeps running. For checkpoints,
-wait until the target stops so the answer can be inspected before continuation.
+for messages that are safe while the target keeps running; active delivery uses
+native expected-turn steering. The idle check and native start request are not
+atomic, so the recorded delivery mode can still be `steered` if another turn
+wins that race.
+
+An input submission whose outcome cannot be confirmed becomes `uncertain` and
+is not retried automatically. Inspect the target and use its client message id
+before deciding whether another message is safe.
+
+Codex rejects direct app-server input to v2 subagents; use their native parent
+handle. Turns started through ferrumctl can still request approval or user
+input, which a capable app-server client must resolve.
 
 Sending to an idle goal-backed worker is appropriate when the message is meant
 to make it observe or continue the current goal, such as asking it to call
@@ -57,6 +67,8 @@ goal state deliberately instead of relying on turn idleness.
 Create `stop` watches before the turn they should observe. The job records the
 newest turn as its cursor, then detects later terminal turns from persisted turn
 history. Several completions between runner passes are coalesced into one wake.
+If that cursor disappears, the job fails rather than treating older history as
+a new completion.
 
 A wake sent by a running thread can arrive before that thread's final response
 is committed. A terminal goal status can also be observed before the current
@@ -70,9 +82,8 @@ threads, put results in a shared artifact or inspect the thread deliberately.
 Repeating conditions should have an owner and, when appropriate, a cap. Cancel
 stale jobs owned by that coordination loop when it is over. The default
 wakectl queue is shared; unrelated jobs may be pending in the same database.
-Treat a repeating goal wake as belonging to one goal. Replace the wake job when
-the goal is replaced when the old wake should not continue supervising the new
-assignment. Wakectl rebases its milestone cursor when it observes the new goal.
+Every goal watch belongs to one goal assignment. A replacement assignment marks
+the old watch `superseded`.
 
 ## Thread Observation And Control
 
@@ -88,10 +99,12 @@ Context usage is the latest recorded model exchange. It may remain unchanged
 during a long command and should be interpreted with its observation age. Goal
 token counters are cumulative and are not context-window usage.
 
-Interruption requires a loaded active turn. It stops that turn but does not
-pause a goal. Manual compaction replaces active work in native Codex, so
-threadctl refuses it unless the thread appears idle with no active goal. That
-check is not atomic with the request; avoid competing controllers.
+Immediate input and interruption require a loaded target. `start` confirms the
+actual delivery mode, while `steer` and `interrupt` require an expected turn id.
+Interruption reports `requested` unless the caller waits for terminal status;
+it does not pause a goal or terminate background terminals. `resume` loads
+persisted state but does not coordinate another server that may own the same
+thread.
 
 ## Read Coverage
 
@@ -108,7 +121,9 @@ more events later. Use explicit start and end snapshots when a fixed interval is
 needed.
 
 The result depends on Codex rollout schema and the command parser used by
-`codex-readcov`.
+`codex-readcov`. Current JavaScript tool envelopes are accepted only when nested
+command arguments are statically recoverable; unresolved calls fail the scan
+instead of being counted as zero.
 
 ## Cross-Surface Workflows
 
@@ -120,7 +135,7 @@ Prefer workflows that tolerate retries:
 
 - write durable intent to the goal
 - prefer small queued wake messages that mark the event
-- inspect before interruption or manual compaction
+- inspect before steering or interruption
 - snapshot before the interval being measured
 - cancel queued wakes owned by the workflow once their purpose is complete
 - use `--json` for machine parsing

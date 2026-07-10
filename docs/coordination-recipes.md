@@ -41,7 +41,7 @@ codex-readcov delta self.before.json packages --limit 20
 
 Main initializes work, worker runs, main reviews when the goal ends. The
 full version uses the `goalctl`, `wakectl`, `threadctl`, and `readcov` skills. If
-main has a native subagent handle, native input can replace `wakectl send` and
+main has a native subagent handle, native input can replace `threadctl start` and
 native result retrieval can replace message inspection. Native wait or poll can
 replace the wake watch only when main should stay active and blocking is
 acceptable.
@@ -60,7 +60,7 @@ codex-wakectl add goal "$WORKER" \
   --to "$MAIN" \
   "Worker goal reached a terminal status. Inspect it."
 
-codex-wakectl send "$WORKER" \
+codex-threadctl start "$WORKER" \
   "A goal was assigned. Call get_goal and proceed."
 ```
 
@@ -89,6 +89,7 @@ MAIN=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
 WORKER=worker-thread-id
 
 codex-threadctl inspect "$WORKER"
+TURN=active-turn-id
 
 codex-wakectl add goal "$WORKER" \
   --tokens-used-every 2000000 \
@@ -100,7 +101,7 @@ codex-wakectl add goal "$WORKER" \
 Use non-blocking steering when the worker may keep going:
 
 ```sh
-codex-wakectl send --allow-active "$WORKER" \
+codex-threadctl steer "$WORKER" "$TURN" \
   "Apply this ranking check to the next cycle and keep going."
 ```
 
@@ -112,18 +113,19 @@ Use a checkpoint when the answer must gate continuation:
 
 ```sh
 codex-threadctl inspect "$WORKER"
+TURN=active-turn-id
 codex-goalctl update "$WORKER" --status paused
-codex-threadctl interrupt "$WORKER"
+codex-threadctl interrupt "$WORKER" "$TURN" --wait
 
 codex-wakectl add stop "$WORKER" --to "$MAIN" \
   "Worker answered checkpoint."
-codex-wakectl send "$WORKER" \
+codex-threadctl start "$WORKER" \
   "Answer this checkpoint question briefly, update the relevant files if needed, and do not continue until resumed."
 
 # after inspection
 codex-threadctl inspect "$WORKER"
 codex-goalctl update "$WORKER" --status active
-codex-wakectl send "$WORKER" \
+codex-threadctl start "$WORKER" \
   "Resume the goal. Call get_goal and continue."
 ```
 
@@ -160,7 +162,7 @@ codex-wakectl add goal "$REVIEWER" \
   --to "$MAIN" \
   "Reviewer goal reached a terminal status. Inspect it."
 
-codex-wakectl send "$WORKER" \
+codex-threadctl start "$WORKER" \
   "A goal was assigned. Call get_goal and proceed."
 ```
 
@@ -179,7 +181,8 @@ or `codex-threadctl inspect "$REVIEWER"`.
 
 Use this when the targets are normal Codex sessions loaded on a shared
 app-server rather than native subagents of the current turn.
-The `threadctl` and `wakectl` skills provide observation and delivery;
+The `threadctl` and `wakectl` skills provide immediate control and scheduled
+delivery;
 `goalctl` and `readcov` add durable state and transcript evidence when
 available.
 
@@ -194,7 +197,7 @@ codex-wakectl add stop "$WORKER" \
   --to "$MAIN" \
   "Worker turn ended. Inspect it."
 
-codex-wakectl send "$WORKER" \
+codex-threadctl start "$WORKER" \
   "A goal was assigned. Call get_goal and proceed."
 ```
 
@@ -265,7 +268,7 @@ WORKER=worker-thread-id
 codex-threadctl --endpoint "$ENDPOINT" loaded
 codex-threadctl --endpoint "$ENDPOINT" inspect "$WORKER"
 codex-goalctl replace "$WORKER" "Work from this external assignment."
-codex-wakectl --endpoint "$ENDPOINT" send "$WORKER" \
+codex-threadctl --endpoint "$ENDPOINT" start "$WORKER" \
   "A goal was assigned. Call get_goal and proceed."
 codex-readcov snapshot "$WORKER" > worker.before.json
 ```

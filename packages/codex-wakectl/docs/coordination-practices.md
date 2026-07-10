@@ -14,7 +14,7 @@ SELF=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
 
 Wakeability is scoped to one app-server endpoint. A thread loaded through one
 endpoint cannot receive input through another. Use the same `--endpoint` for
-the sessions, immediate sends, and queued jobs in one workflow.
+the sessions and queued jobs in one workflow.
 
 ## Choosing A Channel
 
@@ -22,8 +22,8 @@ Use native subagent input when the current session owns the live handle and
 needs to send an immediate message. Use native wait or poll when this turn
 should stay active and blocking for the worker is acceptable.
 
-Use `codex-wakectl send` when the useful handle is a thread id or host-level
-delivery is intentional.
+`codex-threadctl start` and `steer` provide immediate thread-id control when no
+native handle is available.
 
 Use `codex-wakectl wait` when a script or session should block on a Codex
 condition without sending input. It exits `0` when ready and nonzero on timeout;
@@ -32,11 +32,10 @@ it does not persist a job.
 Use a queued wake when the current process or Codex turn should end while a
 runner watches the condition and resumes attention later.
 
-When thread state is unclear and the `codex-threadctl` skill is available,
-inspect before choosing whether to wait, send, or intervene. A wake is input to
-its target, not a result returned to its sender. Retrieve native subagent
-results through the native handle; otherwise use thread inspection or a shared
-result artifact when those surfaces are available.
+Inspect unclear thread state before choosing whether to wait or schedule input.
+A wake is input to its target, not a result returned to its sender. Native
+subagent results, materialized thread history, and shared artifacts are separate
+result channels.
 
 ## Goal State And Idleness
 
@@ -54,19 +53,18 @@ or inspect it after the goal predicate fires.
 
 ## Steering And Checkpoints
 
-Use `send --allow-active` for a correction, reminder, or constraint that can be
-handled without stopping current work. Ordinary follow-up should wait for an
-idle target.
+For queued delivery, `--allow-active` permits native expected-turn steering for
+a correction, reminder, or constraint that remains valid during current work.
+Ordinary follow-up should wait for an idle target.
 
 A running worker can send a handoff before its own final response is committed.
 Treat the handoff as readiness; use a stop condition when the receiver depends
 on the committed turn boundary.
 
-For a blocking checkpoint, first prevent automatic continuation. When goal
-control is available, pause an active goal. Stop the active turn through its
-native handle or through `codex-threadctl` when that skill is available. Arm a
-stop watch before sending the checkpoint question, then inspect the answer
-before resuming work.
+For a blocking checkpoint, first prevent automatic continuation by pausing any
+active goal. Interrupt the exact active turn and wait for terminal completion.
+If a later wake should follow the checkpoint response, arm its stop watch before
+starting the checkpoint turn.
 
 ## Persisted Jobs And Messages
 

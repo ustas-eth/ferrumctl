@@ -53,6 +53,9 @@ comm -23 all.txt read.txt
 Path operands filter the result. Use `--json` for structured output and
 `--paths-only` when composing with `sort`, `comm`, or `uniq`.
 
+If a recorded command was constructed dynamically and cannot be resolved,
+readcov exits with an error instead of reporting incomplete coverage as zero.
+
 More detail:
 
 - [docs/coverage-semantics.md](docs/coverage-semantics.md)

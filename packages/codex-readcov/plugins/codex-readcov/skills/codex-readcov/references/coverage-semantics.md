@@ -16,10 +16,15 @@ That cwd is used for path resolution and display.
 
 ## What Counts
 
-The scanner looks for recorded `exec_command` function calls. For each command,
-it reconstructs the shell invocation from the recorded `cmd`, `workdir`,
-`shell`, and `login` fields, then runs that invocation through
-`codex-shell-command`.
+The scanner recognizes both recorded `exec_command` function calls and the
+current `custom_tool_call` `exec` envelope. Current envelopes are parsed as
+JavaScript to find nested `tools.exec_command({...})` calls. Each static command
+object supplies `cmd`, `workdir`, `shell`, and `login`, and the reconstructed
+shell invocation is passed to `codex-shell-command`.
+
+If `tools.exec_command` is aliased or receives a dynamically constructed
+argument, the scan fails. Returning no result is safer than treating an
+unresolved command as zero reads.
 
 Only parser results classified as file reads are counted. Counts are read
 actions, not unique files; repeated reads of the same path increment the count.
@@ -44,6 +49,6 @@ currently-being-written event as corrupt data.
 
 ## Version Sensitivity
 
-The result depends on Codex rollout schema and on `codex-shell-command` parser
-behavior. Changes in either can change what is counted without changing
-`codex-readcov` command syntax.
+The result depends on Codex rollout schema, the recorded JavaScript tool
+envelope, and `codex-shell-command` parser behavior. Changes in any of them can
+change what is counted without changing `codex-readcov` command syntax.

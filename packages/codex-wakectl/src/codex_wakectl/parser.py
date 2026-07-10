@@ -7,6 +7,7 @@ from .commands import (
     cmd_add,
     cmd_cancel,
     cmd_list,
+    cmd_moved,
     cmd_run,
     cmd_systemd_install,
     cmd_systemd_uninstall,
@@ -24,7 +25,6 @@ from .constants import (
     DEFAULT_SYSTEMD_INTERVAL_SECONDS,
     DEFAULT_TIMEOUT,
 )
-from .delivery import cmd_send
 from .parsing import (
     parse_at,
     parse_duration,
@@ -39,7 +39,7 @@ def add_global_options(parser: argparse.ArgumentParser, *, defaults: bool) -> No
     parser.add_argument(
         "--endpoint",
         default="unix://" if defaults else argparse.SUPPRESS,
-        help="app-server endpoint: unix://, unix://PATH, or ws://HOST:PORT",
+        help="app-server endpoint: unix://, unix://PATH, ws://HOST:PORT, or wss://HOST:PORT",
     )
     parser.add_argument(
         "--timeout",
@@ -90,7 +90,7 @@ def add_target_message(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--allow-active",
         action="store_true",
-        help="send even if the target is active when the wake fires",
+        help="steer into the current regular turn if the target is active",
     )
     parser.add_argument("message", help="message to send when the wake fires")
 
@@ -220,20 +220,27 @@ def add_wait_stop_condition_parser(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="codex-wakectl",
-        description="Send and schedule input for app-server-backed Codex threads.",
+        description="Wait for conditions and schedule input for Codex threads.",
     )
     parser.add_argument(
         "--version", action="version", version=f"%(prog)s {CLIENT_VERSION}"
     )
     add_global_options(parser, defaults=True)
     sub = parser.add_subparsers(dest="command", required=True)
+    sub.metavar = "{add,wait,run,list,cancel,systemd}"
 
-    send = sub.add_parser("send", help="send an immediate wake")
-    send.add_argument("thread_id")
-    send.add_argument("message")
-    send.add_argument("--allow-active", action="store_true", help="send even if the target is active")
-    add_global_options(send, defaults=False)
-    send.set_defaults(func=cmd_send)
+    moved_commands = {
+        "send": "codex-threadctl start or codex-threadctl steer",
+        "loaded": "codex-threadctl loaded",
+        "status": "codex-threadctl status",
+        "inspect": "codex-threadctl inspect",
+        "interrupt": "codex-threadctl interrupt",
+    }
+    for name, replacement in moved_commands.items():
+        moved = sub.add_parser(name, help=argparse.SUPPRESS)
+        moved.add_argument("arguments", nargs=argparse.REMAINDER)
+        moved.set_defaults(func=cmd_moved, moved_to=replacement)
+        sub._choices_actions.pop()
 
     add = sub.add_parser("add", help="persist a wake job")
     add_global_options(add, defaults=False)
@@ -266,7 +273,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.set_defaults(func=cmd_run)
 
     list_parser = sub.add_parser("list", help="list wake jobs")
-    list_parser.add_argument("--all", action="store_true", help="include fired and canceled jobs")
+    list_parser.add_argument("--all", action="store_true", help="include terminal history")
     add_global_options(list_parser, defaults=False)
     list_parser.set_defaults(func=cmd_list)
 

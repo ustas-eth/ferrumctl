@@ -34,18 +34,19 @@ run git diff --check
 )
 
 (
-  cd packages/codex-wakectl
-  run env PYTHONPATH=src "$PYTHON" -m unittest discover -s tests -v
-)
-
-(
   cd packages/codex-threadctl
   run env PYTHONPATH=src "$PYTHON" -m unittest discover -s tests -v
 )
 
 (
+  cd packages/codex-wakectl
+  run env PYTHONPATH=src:../codex-threadctl/src "$PYTHON" -m unittest discover -s tests -v
+)
+
+(
   cd packages/codex-readcov
   run "$CARGO" test --locked
+  run "$CARGO" build --locked
 )
 
 (
@@ -60,13 +61,17 @@ run git diff --check
   export PATH="$bin_dir:$PATH"
 
   run "$UV" tool install ./packages/codex-goalctl
-  run "$UV" tool install ./packages/codex-wakectl
   run "$UV" tool install ./packages/codex-threadctl
+  run "$UV" tool install ./packages/codex-wakectl
   run "$bin_dir/codex-goalctl" --version
-  run "$bin_dir/codex-wakectl" --version
   run "$bin_dir/codex-threadctl" --version
+  run "$bin_dir/codex-wakectl" --version
+  test "$("$bin_dir/codex-goalctl" --version)" = "codex-goalctl 0.1.0"
+  test "$("$bin_dir/codex-threadctl" --version)" = "codex-threadctl 0.1.0"
+  test "$("$bin_dir/codex-wakectl" --version)" = "codex-wakectl 0.3.0"
 )
 
 run packages/codex-readcov/target/debug/codex-readcov --version
+test "$(packages/codex-readcov/target/debug/codex-readcov --version)" = "codex-readcov 0.1.0"
 
 printf '\nchecks passed\n'

@@ -6,7 +6,6 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from .constants import SYSTEMD_SERVICE_NAME, SYSTEMD_TIMER_NAME
 from .errors import WakectlError
 
 

@@ -71,6 +71,7 @@ class ItemTests(unittest.TestCase):
             {
                 "id": "item",
                 "type": "userMessage",
+                "clientId": "client",
                 "content": [
                     {"type": "text", "text": "first"},
                     {"type": "image", "url": "ignored"},
@@ -80,6 +81,7 @@ class ItemTests(unittest.TestCase):
         )
         self.assertEqual(result["text"], "first\nsecond")
         self.assertEqual((result["turnId"], result["itemId"]), ("turn", "item"))
+        self.assertEqual(result["clientId"], "client")
 
     def test_rejects_non_message_text(self):
         with self.assertRaisesRegex(ThreadctlError, "not a conversation message"):

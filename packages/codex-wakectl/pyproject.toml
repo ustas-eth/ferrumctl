@@ -5,14 +5,17 @@ build-backend = "hatchling.build"
 [project]
 name = "codex-wakectl"
 version = "0.3.0"
-description = "Send and schedule input for app-server-backed Codex threads"
+description = "Wait for conditions and schedule input for Codex threads"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
 dependencies = [
-  "websockets>=15,<16",
+  "codex-threadctl>=0.1,<0.2",
 ]
+
+[tool.uv.sources]
+codex-threadctl = { path = "../codex-threadctl" }
 
 [project.urls]
 Repository = "https://github.com/ustas-eth/ferrumctl"

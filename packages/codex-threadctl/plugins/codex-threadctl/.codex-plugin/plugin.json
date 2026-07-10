@@ -18,15 +18,16 @@
   "interface": {
     "displayName": "Codex Threadctl",
     "shortDescription": "Inspect and control app-server-backed Codex threads.",
-    "longDescription": "Codex Threadctl provides guidance for inspecting thread activity, context and compaction state, retrieving messages, interrupting active turns, and compacting idle threads.",
+    "longDescription": "Codex Threadctl provides guidance for inspecting thread activity and context, retrieving messages, starting or steering input, resuming stored threads, and interrupting exact turns.",
     "developerName": "ustas-eth",
     "category": "Productivity",
     "capabilities": [
       "Thread activity inspection",
       "Conversation message retrieval",
       "Context and compaction visibility",
-      "Active turn interruption",
-      "Manual compaction"
+      "Turn start and steering",
+      "Turn-scoped interruption",
+      "Persisted thread resume"
     ],
     "defaultPrompt": "Use $codex-threadctl to inspect a Codex thread and choose a safe lifecycle action."
   }
