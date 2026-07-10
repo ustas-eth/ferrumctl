@@ -6,7 +6,7 @@ import os
 import sys
 from typing import Any
 
-from .appserver import AppServer, appserver_request, connect_appserver
+from .appserver import CLIENT_VERSION, AppServer, appserver_request, connect_appserver
 from .errors import GoalctlError
 
 
@@ -167,6 +167,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="codex-goalctl",
         description="Manage Codex thread goals through codex app-server.",
+    )
+    parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {CLIENT_VERSION}"
     )
     add_common_options(parser, defaults=True)
 

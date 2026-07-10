@@ -12,12 +12,13 @@ Use real thread ids for placeholders such as `MAIN`, `WORKER`, `REVIEWER`,
 
 ## Self-Managing Thread
 
-Use `wakectl` for self-wakes. Use native goal tools for the current thread's
-goal when available; `goalctl` adds little for self-management.
+Use `wakectl` for self-wakes and `threadctl` for host-visible state. Use native
+goal tools for the current thread's goal when available; `goalctl` adds little
+for self-management.
 
 ```sh
 SELF=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
-codex-wakectl status "$SELF"
+codex-threadctl status "$SELF"
 
 codex-wakectl add time --after 30m \
   --to "$SELF" \
@@ -39,10 +40,11 @@ codex-readcov delta self.before.json packages --limit 20
 ## Two Threads: Main Plus Worker
 
 Main initializes work, worker runs, main reviews when the goal ends. The
-full version uses the `goalctl`, `wakectl`, and `readcov` skills. If main has a
-native subagent handle, native input can replace the `wakectl send`; native
-wait or poll can replace the wake watch only when main should stay active and
-blocking is acceptable.
+full version uses the `goalctl`, `wakectl`, `threadctl`, and `readcov` skills. If
+main has a native subagent handle, native input can replace `wakectl send` and
+native result retrieval can replace message inspection. Native wait or poll can
+replace the wake watch only when main should stay active and blocking is
+acceptable.
 
 ```sh
 MAIN=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
@@ -66,13 +68,13 @@ When main is resumed:
 
 ```sh
 codex-goalctl get "$WORKER"
-codex-wakectl inspect "$WORKER"
+codex-threadctl inspect "$WORKER"
 codex-readcov delta worker.before.json packages --limit 20
 ```
 
 If the inspected turn is still active, wait for it to end before relying on the
 final response. Retrieve a native subagent response through its native handle;
-for a standalone worker, use `inspect` or a shared result artifact.
+for a standalone worker, use `threadctl` or a shared result artifact.
 
 If main should end its turn and return later, keep the `wakectl add goal` watch.
 
@@ -86,7 +88,7 @@ promote a result.
 MAIN=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
 WORKER=worker-thread-id
 
-codex-wakectl inspect "$WORKER"
+codex-threadctl inspect "$WORKER"
 
 codex-wakectl add goal "$WORKER" \
   --tokens-used-every 2000000 \
@@ -109,9 +111,9 @@ resumption.
 Use a checkpoint when the answer must gate continuation:
 
 ```sh
-codex-wakectl inspect "$WORKER"
+codex-threadctl inspect "$WORKER"
 codex-goalctl update "$WORKER" --status paused
-codex-wakectl interrupt "$WORKER"
+codex-threadctl interrupt "$WORKER"
 
 codex-wakectl add stop "$WORKER" --to "$MAIN" \
   "Worker answered checkpoint."
@@ -119,7 +121,7 @@ codex-wakectl send "$WORKER" \
   "Answer this checkpoint question briefly, update the relevant files if needed, and do not continue until resumed."
 
 # after inspection
-codex-wakectl inspect "$WORKER"
+codex-threadctl inspect "$WORKER"
 codex-goalctl update "$WORKER" --status active
 codex-wakectl send "$WORKER" \
   "Resume the goal. Call get_goal and continue."
@@ -131,9 +133,9 @@ If inspection already shows the worker idle, skip `interrupt`.
 ## Three Threads: Main, Worker, Reviewer
 
 Main initializes. Worker does the task. Reviewer inspects the worker result and
-wakes main only after review. The full version uses all three skills. Without
-`readcov`, the reviewer inspects the result directly. Without `wakectl`, main
-must use native or manual input and wait paths.
+wakes main only after review. The full version uses all four skills. Without
+`readcov`, the reviewer uses the result and thread history directly. Without
+`wakectl`, main must use native or manual input and wait paths.
 
 ```sh
 MAIN=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
@@ -166,23 +168,24 @@ The reviewer can inspect coverage before reporting:
 
 ```sh
 codex-goalctl get "$WORKER"
-codex-wakectl inspect "$WORKER"
+codex-threadctl inspect "$WORKER"
 codex-readcov delta worker.before.json packages --limit 20
 ```
 
 When main wakes, it can retrieve the reviewer response through a native handle
-or `codex-wakectl inspect "$REVIEWER"`.
+or `codex-threadctl inspect "$REVIEWER"`.
 
 ## Standalone App-Server Sessions
 
 Use this when the targets are normal Codex sessions loaded on a shared
 app-server rather than native subagents of the current turn.
-The `wakectl` skill is the key surface for this topology; `goalctl` and
-`readcov` add durable state and transcript evidence when available.
+The `threadctl` and `wakectl` skills provide observation and delivery;
+`goalctl` and `readcov` add durable state and transcript evidence when
+available.
 
 ```sh
-codex-wakectl loaded
-codex-wakectl status "$WORKER"
+codex-threadctl loaded
+codex-threadctl status "$WORKER"
 
 codex-goalctl replace "$WORKER" \
   "Work from the persisted goal and mark it complete."
@@ -259,8 +262,8 @@ export CODEX_HOME=/path/to/codex-home
 ENDPOINT=unix:///path/to/codex.sock
 WORKER=worker-thread-id
 
-codex-wakectl --endpoint "$ENDPOINT" loaded
-codex-wakectl --endpoint "$ENDPOINT" inspect "$WORKER"
+codex-threadctl --endpoint "$ENDPOINT" loaded
+codex-threadctl --endpoint "$ENDPOINT" inspect "$WORKER"
 codex-goalctl replace "$WORKER" "Work from this external assignment."
 codex-wakectl --endpoint "$ENDPOINT" send "$WORKER" \
   "A goal was assigned. Call get_goal and proceed."
@@ -276,10 +279,10 @@ and cleanup ownership.
   goal status, turn completion, time, or command condition.
 - Worker pool: one goal and optional read snapshot per worker; use `wakectl`
   watches for attention, then retrieve each response through its native handle,
-  `inspect`, or a shared artifact.
+  `threadctl`, or a shared artifact.
 - Budget sentinel: use goal time/token predicates to wake the owner before
   budget exhaustion.
 - Script dispatcher: store snapshots, wake ids, and read lists as files; use
   `--json` for parsed state.
-- Manual operator dashboard: run `loaded`, `status`, `inspect`, `get`, `list`,
-  `top`, and `delta` ad hoc to inspect live, goal, queue, and transcript state.
+- Manual operator dashboard: combine threadctl `loaded`, `status`, and `inspect`
+  with goalctl `get`, wakectl `list`, and readcov `top` or `delta`.

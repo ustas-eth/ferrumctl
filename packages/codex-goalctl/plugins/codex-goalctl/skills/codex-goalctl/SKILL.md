@@ -91,8 +91,8 @@ Use `--json` when another script or tool will parse output.
 - Use `replace` for new assignments.
 - Use `update` for edits that should preserve counters.
 - Do not treat `--status paused` as an active-turn interrupt. When a blocking
-  checkpoint requires live control, use the native handle or `codex-wakectl`
-  only if its skill is available.
+  checkpoint requires live control, use the native handle or
+  `codex-threadctl` only if its skill is available.
 - Do not assume goal writes wake a worker; send a follow-up message when it
   should act now.
 - Prefer a short, direct follow-up message that tells the worker to call

@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "codex-wakectl"
-version = "0.2.0"
-description = "Inspect, control, and wake app-server-backed Codex threads"
+version = "0.3.0"
+description = "Send and schedule input for app-server-backed Codex threads"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"

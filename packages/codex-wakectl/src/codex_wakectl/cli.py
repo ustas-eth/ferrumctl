@@ -12,15 +12,12 @@ from .appserver import (
     connect_websocket,
     get_goal,
     get_thread_status,
-    interrupt_turn,
-    latest_turn,
     list_thread_turns,
     list_loaded,
     read_thread,
     resolve_unix_endpoint,
     send_turn,
     status_name,
-    thread_is_active,
 )
 from .commands import (
     cmd_add,
@@ -59,7 +56,7 @@ from .constants import (
     SYSTEMD_TIMER_NAME,
 )
 from .errors import WakectlError
-from .live_commands import cmd_inspect, cmd_interrupt, cmd_loaded, cmd_send, cmd_status
+from .delivery import cmd_send
 from .parser import (
     add_cmd_condition_parser,
     add_global_options,
@@ -82,7 +79,6 @@ from .parsing import (
     now_seconds,
     parse_at,
     parse_duration,
-    parse_nonnegative_int,
     parse_positive_float,
     parse_positive_int,
     parse_statuses,

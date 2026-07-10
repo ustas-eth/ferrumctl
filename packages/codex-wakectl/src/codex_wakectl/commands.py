@@ -189,6 +189,9 @@ async def cmd_run(args: argparse.Namespace) -> int:
                     skipped.append({"id": job["id"], "reason": "lease lost before update"})
                 continue
 
+            if turn is None:
+                raise WakectlError("condition was ready but no input turn was created")
+
             ts = now_seconds()
             next_fire_count = int(job.get("fireCount") or 0) + 1
             result_updates = dict(updates)

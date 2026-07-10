@@ -1,7 +1,7 @@
 {
   "name": "codex-wakectl",
-  "version": "0.2.0",
-  "description": "Codex skill for inspecting, controlling, and waking app-server-backed threads.",
+  "version": "0.3.0",
+  "description": "Codex skill for sending and scheduling app-server-backed thread input.",
   "author": {
     "name": "ustas-eth"
   },
@@ -17,17 +17,17 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Codex Wakectl",
-    "shortDescription": "Inspect, control, and wake app-server-backed Codex threads.",
-    "longDescription": "Codex Wakectl provides workflow guidance for inspecting recent thread activity, interrupting active turns, sending immediate input, and scheduling time, goal, turn-completion, or command-based wakes.",
+    "shortDescription": "Send and schedule input for app-server-backed Codex threads.",
+    "longDescription": "Codex Wakectl provides workflow guidance for immediate thread-id input, conditional wakes, blocking waits, queue runners, and repeating milestones.",
     "developerName": "ustas-eth",
     "category": "Productivity",
     "capabilities": [
-      "Codex thread wakes",
-      "Thread activity inspection",
-      "Active turn control",
+      "Immediate Codex thread input",
+      "Conditional thread wakes",
+      "Blocking condition waits",
       "Scheduled coordination",
       "Systemd timer guidance"
     ],
-    "defaultPrompt": "Use $codex-wakectl to inspect a Codex thread before choosing whether to wait, steer, interrupt, or wake it."
+    "defaultPrompt": "Use $codex-wakectl to send input now or resume a Codex thread when a later condition is met."
   }
 }

@@ -38,6 +38,19 @@ class ParseTests(unittest.TestCase):
                     ]
                 )
 
+    def test_common_options_work_after_subcommand_arguments(self) -> None:
+        args = cli.build_parser().parse_args(
+            ["replace", "thread", "objective", "--json", "--timeout", "5"]
+        )
+        self.assertTrue(args.json)
+        self.assertEqual(args.timeout, 5)
+
+    def test_version(self) -> None:
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            with self.assertRaisesRegex(SystemExit, "0"):
+                cli.build_parser().parse_args(["--version"])
+        self.assertEqual(output.getvalue(), "codex-goalctl 0.1.0\n")
+
 
 class FakeApp:
     def __init__(self) -> None:

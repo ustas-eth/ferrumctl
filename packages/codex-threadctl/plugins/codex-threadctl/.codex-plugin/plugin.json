@@ -1,0 +1,33 @@
+{
+  "name": "codex-threadctl",
+  "version": "0.1.0",
+  "description": "Codex skill for inspecting and controlling app-server-backed threads.",
+  "author": {
+    "name": "ustas-eth"
+  },
+  "homepage": "https://github.com/ustas-eth/ferrumctl/tree/main/packages/codex-threadctl",
+  "repository": "https://github.com/ustas-eth/ferrumctl",
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "threads",
+    "inspection",
+    "coordination"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Codex Threadctl",
+    "shortDescription": "Inspect and control app-server-backed Codex threads.",
+    "longDescription": "Codex Threadctl provides guidance for inspecting thread activity, context and compaction state, retrieving messages, interrupting active turns, and compacting idle threads.",
+    "developerName": "ustas-eth",
+    "category": "Productivity",
+    "capabilities": [
+      "Thread activity inspection",
+      "Conversation message retrieval",
+      "Context and compaction visibility",
+      "Active turn interruption",
+      "Manual compaction"
+    ],
+    "defaultPrompt": "Use $codex-threadctl to inspect a Codex thread and choose a safe lifecycle action."
+  }
+}

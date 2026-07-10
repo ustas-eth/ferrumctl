@@ -18,12 +18,16 @@ from .conditions import (
     build_stop_condition,
     build_time_condition,
 )
-from .constants import DEFAULT_LEASE_SECONDS, DEFAULT_SYSTEMD_INTERVAL_SECONDS, DEFAULT_TIMEOUT
-from .live_commands import cmd_inspect, cmd_interrupt, cmd_loaded, cmd_send, cmd_status
+from .constants import (
+    CLIENT_VERSION,
+    DEFAULT_LEASE_SECONDS,
+    DEFAULT_SYSTEMD_INTERVAL_SECONDS,
+    DEFAULT_TIMEOUT,
+)
+from .delivery import cmd_send
 from .parsing import (
     parse_at,
     parse_duration,
-    parse_nonnegative_int,
     parse_positive_float,
     parse_positive_int,
     parse_statuses,
@@ -214,40 +218,13 @@ def add_wait_stop_condition_parser(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="codex-wakectl",
-        description="Inspect, control, and wake app-server-backed Codex threads.",
+        description="Send and schedule input for app-server-backed Codex threads.",
+    )
+    parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {CLIENT_VERSION}"
     )
     add_global_options(parser, defaults=True)
     sub = parser.add_subparsers(dest="command", required=True)
-
-    loaded = sub.add_parser("loaded", help="list loaded thread ids")
-    add_global_options(loaded, defaults=False)
-    loaded.set_defaults(func=cmd_loaded)
-
-    status = sub.add_parser("status", help="show loaded state and thread status")
-    status.add_argument("thread_id")
-    add_global_options(status, defaults=False)
-    status.set_defaults(func=cmd_status)
-
-    inspect = sub.add_parser("inspect", help="show recent thread activity")
-    inspect.add_argument("thread_id")
-    inspect.add_argument(
-        "--items",
-        type=parse_nonnegative_int,
-        default=12,
-        help="recent latest-turn items to print; 0 prints all",
-    )
-    inspect.add_argument(
-        "--brief",
-        action="store_true",
-        help="load only turn summaries, without command or tool activity",
-    )
-    inspect.add_argument(
-        "--no-previous",
-        action="store_true",
-        help="omit the previous turn and its response",
-    )
-    add_global_options(inspect, defaults=False)
-    inspect.set_defaults(func=cmd_inspect)
 
     send = sub.add_parser("send", help="send an immediate wake")
     send.add_argument("thread_id")
@@ -255,11 +232,6 @@ def build_parser() -> argparse.ArgumentParser:
     send.add_argument("--allow-active", action="store_true", help="send even if the target is active")
     add_global_options(send, defaults=False)
     send.set_defaults(func=cmd_send)
-
-    interrupt = sub.add_parser("interrupt", help="interrupt the active turn")
-    interrupt.add_argument("thread_id")
-    add_global_options(interrupt, defaults=False)
-    interrupt.set_defaults(func=cmd_interrupt)
 
     add = sub.add_parser("add", help="persist a wake job")
     add_global_options(add, defaults=False)

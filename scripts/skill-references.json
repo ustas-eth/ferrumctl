@@ -5,6 +5,7 @@
       "targets": [
         "packages/codex-goalctl/plugins/codex-goalctl/skills/codex-goalctl/references/coordination-principles.md",
         "packages/codex-wakectl/plugins/codex-wakectl/skills/codex-wakectl/references/coordination-principles.md",
+        "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/coordination-principles.md",
         "packages/codex-readcov/plugins/codex-readcov/skills/codex-readcov/references/coordination-principles.md"
       ]
     },
@@ -13,6 +14,7 @@
       "targets": [
         "packages/codex-goalctl/plugins/codex-goalctl/skills/codex-goalctl/references/coordination-recipes.md",
         "packages/codex-wakectl/plugins/codex-wakectl/skills/codex-wakectl/references/coordination-recipes.md",
+        "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/coordination-recipes.md",
         "packages/codex-readcov/plugins/codex-readcov/skills/codex-readcov/references/coordination-recipes.md"
       ]
     },
@@ -21,6 +23,7 @@
       "targets": [
         "packages/codex-goalctl/plugins/codex-goalctl/skills/codex-goalctl/references/operational-caveats.md",
         "packages/codex-wakectl/plugins/codex-wakectl/skills/codex-wakectl/references/operational-caveats.md",
+        "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/operational-caveats.md",
         "packages/codex-readcov/plugins/codex-readcov/skills/codex-readcov/references/operational-caveats.md"
       ]
     },
@@ -52,6 +55,18 @@
       "source": "packages/codex-wakectl/docs/troubleshooting.md",
       "targets": [
         "packages/codex-wakectl/plugins/codex-wakectl/skills/codex-wakectl/references/troubleshooting.md"
+      ]
+    },
+    {
+      "source": "packages/codex-threadctl/docs/observation-semantics.md",
+      "targets": [
+        "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/observation-semantics.md"
+      ]
+    },
+    {
+      "source": "packages/codex-threadctl/docs/lifecycle-control.md",
+      "targets": [
+        "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/lifecycle-control.md"
       ]
     },
     {

@@ -1,10 +1,9 @@
 # Coordination Practices
 
-This reference describes how `codex-wakectl` fits into host scripts, Codex
-threads, and multi-thread supervision. It focuses on choosing the right
-coordination primitive.
+This reference describes how immediate input, synchronous waits, and queued
+wakes fit into Codex workflows.
 
-## Current Thread Identity
+## Identity And Endpoint
 
 Codex exposes the current thread id to shell commands through
 `CODEX_THREAD_ID`:
@@ -13,153 +12,72 @@ Codex exposes the current thread id to shell commands through
 SELF=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
 ```
 
-That value is only an identity. It does not mean the thread is wakeable through
-`codex-wakectl`. Wakeability also requires the thread to be loaded on the same
-app-server endpoint used by wakectl.
+Wakeability is scoped to one app-server endpoint. A thread loaded through one
+endpoint cannot receive input through another. Use the same `--endpoint` for
+the sessions, immediate sends, and queued jobs in one workflow.
 
-## App-Server Endpoint
+## Choosing A Channel
 
-Wakeability is scoped to one app-server endpoint. A thread started through one
-endpoint cannot be woken through another.
+Use native subagent input when the current session owns the live handle and
+needs to send an immediate message. Use native wait or poll when this turn
+should stay active and blocking for the worker is acceptable.
 
-```sh
-codex app-server --listen unix://
-codex --remote unix://
-codex-wakectl loaded
-```
+Use `codex-wakectl send` when the useful handle is a thread id or host-level
+delivery is intentional.
 
-The default `unix://` endpoint resolves under `CODEX_HOME`. If you choose a
-custom socket path, use the same `--endpoint` on every `codex-wakectl` command
-and queued job that should target that server.
+Use `codex-wakectl wait` when a script or session should block on a Codex
+condition without sending input. It exits `0` when ready and nonzero on timeout;
+it does not persist a job.
 
-## Inspect Before Control
+Use a queued wake when the current process or Codex turn should end while a
+runner watches the condition and resumes attention later.
 
-Use `inspect` when another thread's current state is not already clear:
-
-```sh
-codex-wakectl inspect THREAD_ID
-```
-
-The report distinguishes thread status, goal status, the newest turn, recent
-structured activity, and the previous turn's agent response. It does not return
-command output or modify the thread.
-
-Start with a summary when only orientation or the recent response is needed:
-
-```sh
-codex-wakectl inspect THREAD_ID --brief
-```
-
-Use the default full view when command and tool activity matters. `--items N`
-keeps its printed report short but does not reduce the turn data loaded from the
-app-server. Add `--no-previous` only when the prior turn is irrelevant or its
-response would make the report too large.
-
-## Native Handles, Wait, and Queued Wakes
-
-When a supervising agent has a native subagent input handle, that handle is the
-best immediate way to send a direct message to the subagent.
-
-Native wait or poll is useful when the supervisor should stay active and
-blocking for the worker is acceptable. It is less useful for long-running goal
-work where the supervisor should end its turn and be resumed later.
-
-`codex-wakectl wait` is useful when the coordinator has only a thread id plus
-app-server access. It blocks the invoking process until a Codex condition is
-ready, exits `0` when ready, and exits nonzero on timeout. It does not persist a
-job and does not send any input turn.
-
-Queued wakes are for durable later attention. A queued job lets the current
-process or Codex turn end while another runner keeps checking the condition and
-sends a future input turn.
-
-After a wake, retrieve a native subagent's completed response through the native
-handle. For a standalone thread, use `inspect` for its recent response and
-activity, or read a shared result artifact when the workflow defines one.
+When thread state is unclear and the `codex-threadctl` skill is available,
+inspect before choosing whether to wait, send, or intervene. A wake is input to
+its target, not a result returned to its sender. Retrieve native subagent
+results through the native handle; otherwise use thread inspection or a shared
+result artifact when those surfaces are available.
 
 ## Goal State And Idleness
 
-App-server `idle` only means no turn is running. It does not mean the target has
-no active assignment, and it does not mean the target has observed a recently
-written goal.
+App-server `idle` means no turn is running. It does not mean the target lacks an
+active goal or is free for unrelated work.
 
-A goal-backed worker with app-server `idle` and goal status `active` has
-durable work assigned, but no turn is currently acting on it. A small wake that
-tells it to call `get_goal` often starts or resumes that work. Use app-server
-status only to decide whether delivery needs `--allow-active`.
+An idle worker with an active externally assigned goal may not have observed
+that goal. A short input asking it to call `get_goal` can start or resume the
+assignment. Use app-server status to choose a delivery policy, not to infer work
+ownership.
+
+A terminal goal status and a completed turn are separate boundaries. If a
+coordinator needs the worker's final response, wait for the current turn to stop
+or inspect it after the goal predicate fires.
 
 ## Steering And Checkpoints
 
-`codex-wakectl send` starts a normal turn in the target thread. It is not a
-reply channel to the sender. If the target has an active goal, it may answer in
-its own transcript and continue working.
+Use `send --allow-active` for a correction, reminder, or constraint that can be
+handled without stopping current work. Ordinary follow-up should wait for an
+idle target.
 
-A running worker must send a handoff message before its own turn ends, so the
-receiver may wake before the worker's final response is committed. Treat that
-message as a readiness signal. If the worker is still active, wait for its turn
-to stop before depending on the final response; if it is idle, the boundary has
-already been committed.
+A running worker can send a handoff before its own final response is committed.
+Treat the handoff as readiness; use a stop condition when the receiver depends
+on the committed turn boundary.
 
-A terminal goal status is also separate from the current turn boundary. When a
-goal watch wakes a coordinator, inspect the worker or wait for its current turn
-to stop before depending on its final response.
+For a blocking checkpoint, first prevent automatic continuation. When goal
+control is available, pause an active goal. Stop the active turn through its
+native handle or through `codex-threadctl` when that skill is available. Arm a
+stop watch before sending the checkpoint question, then inspect the answer
+before resuming work.
 
-Use `send --allow-active` for non-blocking steering: a small correction,
-reminder, or new constraint that the target can apply without stopping.
-
-Sending to an idle goal-backed worker is fine when the message is meant to make
-it observe or continue the current goal. Do not treat idle as permission to
-assign unrelated work.
-
-Use a checkpoint when the answer must be inspected before work continues. For a
-goal-backed worker, pause the goal first so it will not continue automatically,
-then interrupt the active turn. Changing goal status alone does not interrupt a
-turn already in progress.
-
-After the worker is stopped, arm a stop watch before sending the checkpoint
-question. Inspect the answer when the watch wakes the coordinator, then resume
-the goal and send a short continuation message.
-
-If the coordinator will wait synchronously, `wait stop` provides the same
-durable turn-completion condition without sending a wake.
-
-## Scripting
-
-`wait` is a Unix condition primitive. It is useful in shell scripts, CI jobs, or
-host processes that need an exit code for a Codex-specific condition.
-
-Use `--json` when another program will parse `codex-wakectl` output. Text output
-is for humans and concise shell inspection.
-
-## Persisted Job Contents
+## Persisted Jobs And Messages
 
 Queued jobs persist message text, predicates, endpoints, and thread ids in the
-SQLite state database. Avoid storing secrets, large private context, or fragile
-one-time instructions in wake messages or command predicates.
+SQLite database. Avoid secrets, large private context, and fragile one-time
+instructions in that state.
 
-Command predicates store argv and cwd, but execute in the runner's environment.
-Use explicit paths and inputs when a predicate must also work under systemd.
+Queued messages may arrive late or more than once. Prefer a short event marker
+when existing thread context remains authoritative. Longer queued input is
+valid when it is deliberately the complete instruction and remains safe under
+delayed or duplicate delivery.
 
-If a workflow may need cleanup, record the job ids it creates in its own notes
-or artifacts. Do not infer ownership from proximity in `codex-wakectl list`
-output.
-
-## Wake Messages
-
-Wake messages become ordinary user messages in the target transcript. They
-continue the existing session, consume context, and may survive into compaction
-summaries.
-
-Immediate `send` input can be the instruction you intend to deliver. Queued
-wake input is different because it may fire late, retry after a failure, or be
-read after surrounding state changed.
-
-For queued wakes, prefer short messages that identify the event and next
-decision. Use longer queued input only when it is deliberately the instruction
-and remains safe if delivered late or more than once. Avoid storing evolving
-approval history, command runbooks, full plans, or project state in queued wake
-text.
-
-For peer handoffs or delegated supervision, a short ownership marker can help
-when the receiver already has context. If it does not, send or assign the
-needed instructions deliberately.
+Record job ids when a workflow will need cleanup. The default queue is shared;
+proximity in `codex-wakectl list` does not establish ownership.

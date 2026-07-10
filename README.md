@@ -6,8 +6,9 @@ Small Unix-style control tools for Codex agent workflows.
 Use the tools separately and compose them with the shell:
 
 - `codex-goalctl` reads and changes persisted Codex thread goals.
-- `codex-wakectl` inspects, controls, wakes, and schedules app-server-backed
-  Codex threads.
+- `codex-wakectl` sends and schedules app-server-backed Codex thread input.
+- `codex-threadctl` inspects thread activity and history and applies explicit
+  lifecycle controls.
 - `codex-readcov` counts file-read actions from Codex rollout transcripts.
 
 The optional Codex plugins add skills that explain when agents should use each
@@ -21,6 +22,7 @@ cd ferrumctl
 
 uv tool install ./packages/codex-goalctl
 uv tool install ./packages/codex-wakectl
+uv tool install ./packages/codex-threadctl
 cargo install --locked --path ./packages/codex-readcov
 ```
 
@@ -34,6 +36,7 @@ Install the optional skills from the root marketplace:
 codex plugin marketplace add ustas-eth/ferrumctl
 codex plugin add codex-goalctl@ferrumctl
 codex plugin add codex-wakectl@ferrumctl
+codex plugin add codex-threadctl@ferrumctl
 codex plugin add codex-readcov@ferrumctl
 ```
 
@@ -41,7 +44,8 @@ The marketplace manifest is [.agents/plugins/marketplace.json](.agents/plugins/m
 
 ## What You Can Do
 
-Assign durable work, wake the worker, then inspect its recorded read actions:
+Assign durable work, wake the worker, then inspect its state and recorded read
+actions:
 
 ```sh
 WORKER=thread-id
@@ -50,7 +54,7 @@ MAIN=main-thread-id
 codex-readcov snapshot "$WORKER" > worker.before.json
 codex-goalctl replace "$WORKER" "Review this package and mark the goal complete."
 codex-wakectl send "$WORKER" "A goal was assigned. Call get_goal and proceed."
-codex-wakectl inspect "$WORKER"
+codex-threadctl inspect "$WORKER"
 codex-readcov delta worker.before.json packages --limit 20
 ```
 
@@ -84,7 +88,7 @@ server, then run Codex through it:
 ```sh
 codex app-server --listen unix://
 codex --remote unix://
-codex-wakectl loaded
+codex-threadctl loaded
 ```
 
 For daily use, keep the Codex flags you normally use and add `--remote
@@ -107,6 +111,7 @@ More combinations are in [docs/coordination-recipes.md](docs/coordination-recipe
 packages/
   codex-goalctl/
   codex-wakectl/
+  codex-threadctl/
   codex-readcov/
 ```
 

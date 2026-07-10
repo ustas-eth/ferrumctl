@@ -168,17 +168,8 @@ async def list_thread_turns(
     return result.get("data", [])
 
 
-async def latest_turn(app: AppServer, thread_id: str) -> dict[str, Any] | None:
-    turns = await list_thread_turns(app, thread_id)
-    return turns[0] if turns else None
-
-
 def status_name(status: dict[str, Any]) -> str:
     return str(status.get("type", "unknown"))
-
-
-def thread_is_active(status: dict[str, Any]) -> bool:
-    return status_name(status) == "active"
 
 
 async def send_turn(
@@ -214,25 +205,6 @@ async def send_turn(
         },
     )
     return result["turn"]
-
-
-async def interrupt_turn(app: AppServer, thread_id: str) -> dict[str, Any]:
-    loaded = await list_loaded(app)
-    if thread_id not in loaded:
-        raise WakectlError(f"thread is not loaded on this app-server: {thread_id}")
-    status = await get_thread_status(app, thread_id)
-    if not thread_is_active(status):
-        raise WakectlError(f"thread is {status_name(status)}; no active turn to interrupt")
-
-    turn = await latest_turn(app, thread_id)
-    if turn is None or turn.get("status") != "inProgress" or not turn.get("id"):
-        raise WakectlError("active turn id is unavailable; inspect the thread and retry")
-    turn_id = turn["id"]
-    await app.request(
-        "turn/interrupt",
-        {"threadId": thread_id, "turnId": turn_id},
-    )
-    return {"id": turn_id, "status": "interrupted"}
 
 
 async def get_goal(app: AppServer, thread_id: str) -> dict[str, Any] | None:

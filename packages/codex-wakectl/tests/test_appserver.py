@@ -13,12 +13,6 @@ from codex_wakectl.errors import WakeDeferred
 
 
 class AppServerTests(unittest.IsolatedAsyncioTestCase):
-    async def test_only_active_status_is_running(self) -> None:
-        self.assertTrue(cli.thread_is_active({"type": "active"}))
-        self.assertFalse(cli.thread_is_active({"type": "idle"}))
-        self.assertFalse(cli.thread_is_active({"type": "notLoaded"}))
-        self.assertFalse(cli.thread_is_active({"type": "systemError"}))
-
     async def test_send_turn_refuses_active_thread_without_guard_bypass(self) -> None:
         class FakeApp:
             async def request(self, method: str, params=None):
@@ -86,51 +80,6 @@ class AppServerTests(unittest.IsolatedAsyncioTestCase):
                     pass
 
         self.assertTrue(ws.closed)
-
-    async def test_interrupt_uses_active_turn_id(self) -> None:
-        class FakeApp:
-            def __init__(self) -> None:
-                self.interrupt_params = None
-
-            async def request(self, method: str, params=None):
-                if method == "thread/loaded/list":
-                    return {"data": ["thread"], "nextCursor": None}
-                if method == "thread/read":
-                    return {"thread": {"status": {"type": "active", "activeFlags": []}}}
-                if method == "thread/turns/list":
-                    return {"data": [{"id": "turn-1", "status": "inProgress"}]}
-                if method == "turn/interrupt":
-                    self.interrupt_params = params
-                    return {}
-                raise AssertionError(f"unexpected method: {method}")
-
-        app = FakeApp()
-        result = await cli.interrupt_turn(app, "thread")
-
-        self.assertEqual(
-            app.interrupt_params,
-            {"threadId": "thread", "turnId": "turn-1"},
-        )
-        self.assertEqual(result["status"], "interrupted")
-
-    async def test_interrupt_does_not_fall_back_to_startup_interrupt(self) -> None:
-        class FakeApp:
-            async def request(self, method: str, params=None):
-                if method == "thread/loaded/list":
-                    return {"data": ["thread"], "nextCursor": None}
-                if method == "thread/read":
-                    return {"thread": {"status": {"type": "active"}}}
-                if method == "thread/turns/list":
-                    return {"data": [{"id": "turn-1", "status": "completed"}]}
-                if method == "turn/interrupt":
-                    raise AssertionError("startup interrupt must not be sent")
-                raise AssertionError(f"unexpected method: {method}")
-
-        with self.assertRaises(cli.WakectlError) as caught:
-            await cli.interrupt_turn(FakeApp(), "thread")
-
-        self.assertIn("active turn id is unavailable", str(caught.exception))
-
 
 if __name__ == "__main__":
     unittest.main()

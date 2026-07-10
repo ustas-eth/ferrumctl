@@ -1,0 +1,82 @@
+import io
+import unittest
+from contextlib import redirect_stdout
+from unittest import mock
+
+from codex_threadctl import commands, parser
+
+
+class FakeContext:
+    async def __aenter__(self):
+        return object()
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return None
+
+
+class ParserTests(unittest.TestCase):
+    def test_version(self):
+        with redirect_stdout(io.StringIO()) as output:
+            with self.assertRaisesRegex(SystemExit, "0"):
+                parser.build_parser().parse_args(["--version"])
+        self.assertEqual(output.getvalue(), "codex-threadctl 0.1.0\n")
+
+    def test_parses_all_commands(self):
+        cases = [
+            ["loaded"],
+            ["status", "thread"],
+            ["inspect", "thread", "--brief", "--items", "0"],
+            ["messages", "thread", "--limit", "0"],
+            ["message", "thread", "turn", "item"],
+            ["interrupt", "thread"],
+            ["compact", "thread"],
+        ]
+        for argv in cases:
+            with self.subTest(argv=argv):
+                self.assertTrue(callable(parser.build_parser().parse_args(argv).func))
+
+    def test_global_options_work_after_subcommand(self):
+        args = parser.build_parser().parse_args(
+            ["inspect", "thread", "--endpoint", "unix:///tmp/socket", "--json"]
+        )
+        self.assertEqual(args.endpoint, "unix:///tmp/socket")
+        self.assertTrue(args.json)
+
+
+class CommandTests(unittest.IsolatedAsyncioTestCase):
+    async def test_message_prints_exact_multiline_text(self):
+        args = parser.build_parser().parse_args(["message", "thread", "turn", "item"])
+        with (
+            mock.patch.object(commands, "AppServer", return_value=FakeContext()),
+            mock.patch.object(
+                commands,
+                "find_message",
+                mock.AsyncMock(return_value={"text": "first\nsecond"}),
+            ),
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            result = await commands.cmd_message(args)
+        self.assertEqual(result, 0)
+        self.assertEqual(output.getvalue(), "first\nsecond\n")
+
+    async def test_messages_plain_output_contains_composite_locator(self):
+        args = parser.build_parser().parse_args(["messages", "thread"])
+        messages = [
+            {
+                "role": "agent",
+                "turnId": "turn",
+                "itemId": "item-2",
+                "phase": "final_answer",
+                "text": "done",
+                "startedAt": 0,
+                "completedAt": 1,
+            }
+        ]
+        with (
+            mock.patch.object(commands, "AppServer", return_value=FakeContext()),
+            mock.patch.object(commands, "recent_messages", mock.AsyncMock(return_value=messages)),
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            result = await commands.cmd_messages(args)
+        self.assertEqual(result, 0)
+        self.assertIn("turn\titem-2\tfinal_answer", output.getvalue())

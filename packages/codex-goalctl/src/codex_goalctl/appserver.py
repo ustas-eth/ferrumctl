@@ -5,7 +5,7 @@ import json
 import selectors
 import subprocess
 import time
-from typing import Any
+from typing import Any, IO
 
 from .errors import GoalctlError
 
@@ -27,9 +27,16 @@ class AppServer:
             )
         except OSError as exc:
             raise GoalctlError(f"failed to start {codex_bin!r}: {exc}") from exc
+        if self.proc.stdin is None or self.proc.stdout is None or self.proc.stderr is None:
+            self.proc.kill()
+            self.proc.wait()
+            raise GoalctlError("app-server pipes are unavailable")
+        self.stdin: IO[str] = self.proc.stdin
+        self.stdout: IO[str] = self.proc.stdout
+        self.stderr: IO[str] = self.proc.stderr
         self.sel = selectors.DefaultSelector()
-        self.sel.register(self.proc.stdout, selectors.EVENT_READ, "stdout")
-        self.sel.register(self.proc.stderr, selectors.EVENT_READ, "stderr")
+        self.sel.register(self.stdout, selectors.EVENT_READ, "stdout")
+        self.sel.register(self.stderr, selectors.EVENT_READ, "stderr")
         self.stderr_tail: list[str] = []
         self.next_id = 1
 
@@ -44,10 +51,8 @@ class AppServer:
             self.proc.wait(timeout=2)
 
     def send(self, msg: dict[str, Any]) -> None:
-        if self.proc.stdin is None:
-            raise GoalctlError("app-server stdin is unavailable")
-        self.proc.stdin.write(json.dumps(msg, separators=(",", ":")) + "\n")
-        self.proc.stdin.flush()
+        self.stdin.write(json.dumps(msg, separators=(",", ":")) + "\n")
+        self.stdin.flush()
 
     def request(self, method: str, params: dict[str, Any] | None = None) -> Any:
         request_id = self.next_id
@@ -67,7 +72,8 @@ class AppServer:
             if self.proc.poll() is not None:
                 raise GoalctlError(self.format_error("app-server exited"))
             for key, _ in self.sel.select(timeout=0.2):
-                line = key.fileobj.readline()
+                stream = self.stderr if key.data == "stderr" else self.stdout
+                line = stream.readline()
                 if not line:
                     continue
                 if key.data == "stderr":

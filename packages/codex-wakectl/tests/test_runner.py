@@ -215,6 +215,39 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(pending["status"], "pending")
             self.assertEqual(pending["lastError"], "socket unavailable")
 
+    async def test_missing_turn_result_is_recorded_as_operational_error(self) -> None:
+        async def ready(*args: object, **kwargs: object):
+            return True, {}, "ready"
+
+        async def missing_turn(*args: object, **kwargs: object):
+            return None
+
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp) / "jobs.sqlite3"
+            insert_job(
+                state,
+                new_job(
+                    {"type": "time", "at": 1},
+                    "target",
+                    "message",
+                    "unix:///tmp/codex.sock",
+                ),
+            )
+            with (
+                mock.patch.object(commands, "AppServer", FakeAppServer),
+                mock.patch.object(commands, "condition_ready", ready),
+                mock.patch.object(commands, "send_turn", missing_turn),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                self.assertEqual(await commands.cmd_run(runner_args(state)), 1)
+
+            pending = list_jobs(state, include_all=True)[0]
+            self.assertEqual(pending["status"], "pending")
+            self.assertEqual(
+                pending["lastError"],
+                "condition was ready but no input turn was created",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

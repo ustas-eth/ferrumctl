@@ -60,8 +60,8 @@ history. Several completions between runner passes are coalesced into one wake.
 
 A wake sent by a running thread can arrive before that thread's final response
 is committed. A terminal goal status can also be observed before the current
-turn ends. Use thread status or a stop watch when the receiver depends on a
-confirmed turn boundary rather than a readiness signal.
+turn ends. Use a stop watch or deliberate thread inspection when the receiver
+depends on a confirmed turn boundary rather than a readiness signal.
 
 A wake carries input to its target; it does not carry another thread's response
 back. Retrieve a native subagent result through the native handle. For standalone
@@ -73,6 +73,25 @@ wakectl queue is shared; unrelated jobs may be pending in the same database.
 Treat a repeating goal wake as belonging to one goal. Replace the wake job when
 the goal is replaced when the old wake should not continue supervising the new
 assignment. Wakectl rebases its milestone cursor when it observes the new goal.
+
+## Thread Observation And Control
+
+`codex-threadctl inspect` combines several app-server requests with selected
+rollout records. A running thread can advance while the report is assembled;
+the result is orientation, not an atomic snapshot.
+
+Materialized turn history can change after rollback or compaction. Persisted
+items are lossy and do not include every transient interaction or item
+timestamp. A message locator therefore uses both its turn id and item id.
+
+Context usage is the latest recorded model exchange. It may remain unchanged
+during a long command and should be interpreted with its observation age. Goal
+token counters are cumulative and are not context-window usage.
+
+Interruption requires a loaded active turn. It stops that turn but does not
+pause a goal. Manual compaction replaces active work in native Codex, so
+threadctl refuses it unless the thread appears idle with no active goal. That
+check is not atomic with the request; avoid competing controllers.
 
 ## Read Coverage
 
@@ -93,13 +112,15 @@ The result depends on Codex rollout schema and the command parser used by
 
 ## Cross-Surface Workflows
 
-Persisted goal state, live app-server state, and rollout transcripts are
-different surfaces. They can be temporarily inconsistent.
+Persisted goal state, live app-server state, materialized turn history, rollout
+transcripts, and the wake queue are different surfaces. They can be temporarily
+inconsistent.
 
 Prefer workflows that tolerate retries:
 
 - write durable intent to the goal
 - prefer small queued wake messages that mark the event
+- inspect before interruption or manual compaction
 - snapshot before the interval being measured
 - cancel queued wakes owned by the workflow once their purpose is complete
 - use `--json` for machine parsing

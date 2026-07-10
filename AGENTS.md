@@ -10,6 +10,10 @@ Prefer boring primitives over orchestration frameworks. A command should expose
 one useful operation on one state surface; workflows belong in docs, skills, or
 the caller's script.
 
+A read-only orientation command may combine observations when that avoids
+guesswork, but it must preserve each source's label and freshness. Mutating
+commands should remain bound to one state surface.
+
 Keep the CLI layer neutral. Skills may recommend an opinionated Codex workflow,
 but the binaries should remain useful when installed and used separately.
 
@@ -19,22 +23,28 @@ runtime dependency, or common library just to make the repo look unified.
 
 ## System Boundaries
 
-The tools touch three different Codex surfaces:
+The tools touch several independent Codex surfaces:
 
 - live app-server state
 - persisted goal state
+- materialized thread and turn history
 - rollout transcript files
+- the wakectl SQLite queue
 
 Those surfaces can be out of sync. Code and docs should not imply stronger
 consistency than Codex actually provides.
 
-`codex-wakectl` is the most fragile package because it coordinates live turns,
-queued jobs, thread status, and app-server transport. Treat changes there as
-coordination changes, not simple CLI plumbing.
+`codex-wakectl` is the most stateful package because it coordinates queued jobs,
+condition cursors, delivery policy, and app-server transport. Treat changes
+there as coordination changes, not simple CLI plumbing.
+
+`codex-threadctl` depends on materialized turn pagination and selected rollout
+records. Keep message locators composite and preserve the distinction between a
+live status observation and persisted history.
 
 `codex-readcov` reports transcript-recorded read actions, not verified file
 access or an operating-system audit log. `codex-goalctl replace` is
-clear-then-set, not an atomic app-server primitive.
+clear-then-set, and `codex-threadctl compact` has a non-atomic safety check.
 
 ## Working Rules
 

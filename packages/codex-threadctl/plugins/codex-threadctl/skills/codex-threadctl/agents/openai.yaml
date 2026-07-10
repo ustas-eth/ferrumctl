@@ -1,0 +1,6 @@
+interface:
+  display_name: "Codex Threadctl"
+  short_description: "Inspect and control Codex threads"
+  default_prompt: "Use $codex-threadctl to inspect a Codex thread and choose a safe lifecycle action."
+policy:
+  allow_implicit_invocation: true

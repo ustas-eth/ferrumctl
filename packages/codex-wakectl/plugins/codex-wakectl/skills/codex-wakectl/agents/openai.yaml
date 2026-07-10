@@ -1,6 +1,6 @@
 interface:
   display_name: "Codex Wakectl"
-  short_description: "Inspect, control, and wake Codex threads"
-  default_prompt: "Use $codex-wakectl to inspect a Codex thread before choosing whether to wait, steer, interrupt, or wake it."
+  short_description: "Send and schedule Codex thread input"
+  default_prompt: "Use $codex-wakectl to send input now or when a later condition is met."
 policy:
   allow_implicit_invocation: true

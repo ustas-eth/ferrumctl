@@ -1,31 +1,8 @@
 # Troubleshooting
 
-Use this when a wake did not arrive or a queued job keeps staying pending.
+Use this when immediate input fails or a queued job remains pending.
 
-## Missed Wake Checklist
-
-Check that the target thread is loaded on the endpoint you are using:
-
-```sh
-codex-wakectl loaded
-codex-wakectl status THREAD_ID
-```
-
-Use `codex-wakectl inspect THREAD_ID` when status alone does not explain whether
-the thread is progressing, waiting, failed, or already finished.
-
-If full inspection is slow or exceeds the app-server response limit, request
-only the newest summary:
-
-```sh
-codex-wakectl inspect THREAD_ID --brief --no-previous
-```
-
-`--items N` shortens printed full output but does not reduce the full turn
-transferred from the app-server.
-
-If the app-server is not the default `unix://`, pass the same `--endpoint` used
-when the sessions were started.
+## Pending Jobs
 
 Check that a runner is processing the queue:
 
@@ -34,44 +11,40 @@ codex-wakectl run
 codex-wakectl list
 ```
 
-`run` exits nonzero for operational failures and records the newest error on the
-pending job. Text `list` shows that error; use `list --json` for full history and
-condition state.
+`run` exits nonzero for operational failures and records the newest error on
+the pending job. Text output shows that error; `list --json` includes the full
+condition and delivery state.
 
-If the target is active, wakectl refuses the wake unless the job was created
-with `--allow-active`. Usually this is the right behavior. Use `--allow-active`
-for non-blocking reminders or corrections; wait for idle when the message is a
-checkpoint.
+Confirm that the target is loaded on the same endpoint used by the job. When
+`codex-threadctl` is installed, use:
 
-If the target is idle but still has an active goal, it is wakeable and likely
-needs a small message to observe or continue that goal. Inspect goal state
-before changing direction.
+```sh
+codex-threadctl loaded
+codex-threadctl status THREAD_ID
+```
 
-For command predicates, verify the command exits `0` from the directory where
-the job was created and under the runner's environment. A predicate that works
-in an interactive shell may have a different `PATH` under systemd.
+If the target is active, wakectl defers delivery unless the job was created with
+`--allow-active`. Usually this is correct. Use that option only for input safe
+to queue behind current work.
 
-For goal predicates, verify the watched goal exists and that every predicate can
-match. `--tokens-left-lte` cannot match a goal without a token budget.
-Repeating time/token buckets rebase without firing when a runner observes
-a different goal creation time or lower counters.
+For goal predicates, verify that the goal exists and every predicate can match.
+`--tokens-left-lte` cannot match a goal without a token budget. Repeating
+buckets rebase without firing when a replacement goal or lower counters are
+observed.
 
-For stop predicates, create the job before the turn you want to observe. The job
-records the newest persisted turn as its cursor, so a turn completed before job
-creation is not replayed. Use `list --json` to inspect the stored cursor.
+For stop predicates, create the job before the turn to observe. Use
+`list --json` to inspect its stored turn cursor.
 
-## Duplicate Wake Checklist
+For command predicates, test that the command exits `0` from its stored cwd and
+under the runner's environment. Interactive `PATH` and environment variables
+may not exist under systemd.
 
-Duplicate wakes are possible. Wake messages should be idempotent because
-delivery is at-least-once.
+## Duplicate Delivery
 
-Common causes:
+Duplicate wakes can occur when a runner delivers input but crashes before
+recording success, when another runner retries an expired lease, or when the
+condition was already handled manually.
 
-- a runner sent the wake and crashed before recording the result
-- multiple runners retried after a lease expired
-- the user or another agent already handled the condition manually
-- a repeating job was left active after the supervision loop ended
-
-Use `codex-wakectl list --json` to inspect candidates, but cancel only jobs
-whose id, target thread, condition, and message match your workflow or an
-explicit user instruction.
+Use `list --json` to identify stale or repeating jobs. Cancel only a job whose
+id, target, condition, and message belong to the current workflow or an explicit
+user instruction.

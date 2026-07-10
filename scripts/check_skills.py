@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -74,6 +75,22 @@ def check_manifest(path: Path) -> None:
     skills_path = (path.parent.parent / manifest["skills"]).resolve()
     if not skills_path.is_dir():
         raise ValueError(f"{relative(path)}: skills path does not exist")
+
+    package_dir = path.parents[3]
+    metadata_path = package_dir / "pyproject.toml"
+    section = "project"
+    if not metadata_path.exists():
+        metadata_path = package_dir / "Cargo.toml"
+        section = "package"
+    metadata = tomllib.loads(metadata_path.read_text())
+    package_version = require_mapping(metadata.get(section), metadata_path, section).get(
+        "version"
+    )
+    if manifest["version"] != package_version:
+        raise ValueError(
+            f"{relative(path)}: version {manifest['version']!r} does not match "
+            f"{relative(metadata_path)} {package_version!r}"
+        )
 
 
 def main() -> None:

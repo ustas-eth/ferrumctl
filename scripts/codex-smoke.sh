@@ -80,6 +80,11 @@ wakectl() {
     "$PYTHON" -c 'import sys; from codex_wakectl.cli import main; raise SystemExit(main(sys.argv[1:]))' "$@"
 }
 
+threadctl() {
+  PYTHONPATH="$ROOT/packages/codex-threadctl/src${PYTHONPATH:+:$PYTHONPATH}" \
+    "$PYTHON" -c 'import sys; from codex_threadctl.cli import main; raise SystemExit(main(sys.argv[1:]))' "$@"
+}
+
 readcov() {
   "$CARGO" run --quiet --manifest-path "$ROOT/packages/codex-readcov/Cargo.toml" -- "$@"
 }
@@ -181,6 +186,31 @@ events = [
             "duration_ms": 2000,
         },
     },
+    {
+        "timestamp": timestamp,
+        "type": "event_msg",
+        "payload": {
+            "type": "token_count",
+            "info": {
+                "total_token_usage": {
+                    "input_tokens": 12000,
+                    "cached_input_tokens": 10000,
+                    "output_tokens": 345,
+                    "reasoning_output_tokens": 45,
+                    "total_tokens": 12345,
+                },
+                "last_token_usage": {
+                    "input_tokens": 12000,
+                    "cached_input_tokens": 10000,
+                    "output_tokens": 345,
+                    "reasoning_output_tokens": 45,
+                    "total_tokens": 12345,
+                },
+                "model_context_window": 200000,
+            },
+            "rate_limits": None,
+        },
+    },
 ]
 
 with open(rollout, "w", encoding="utf-8") as handle:
@@ -218,7 +248,7 @@ grep -Eq 'thread not found|invalid thread id' "$SMOKE_ROOT/goal-clear.err" || {
 }
 printf 'goalctl token-budget removal reached app-server\n'
 
-log "wakectl unix app-server compatibility"
+log "threadctl and wakectl unix app-server compatibility"
 if command -v setsid >/dev/null 2>&1; then
   setsid "$CODEX_BIN" app-server --listen unix:// >"$SMOKE_ROOT/app-server.out" 2>"$SMOKE_ROOT/app-server.err" &
   SERVER_PID=$!
@@ -242,25 +272,29 @@ done
   fail "app-server socket was not created: $socket"
 }
 
-wakectl --timeout 5 loaded >"$SMOKE_ROOT/loaded.out"
-printf 'wakectl reached app-server; loaded threads: %s\n' "$(wc -l <"$SMOKE_ROOT/loaded.out")"
+threadctl --timeout 5 loaded >"$SMOKE_ROOT/loaded.out"
+printf 'threadctl reached app-server; loaded threads: %s\n' "$(wc -l <"$SMOKE_ROOT/loaded.out")"
 
-wakectl --timeout 5 inspect "$inspect_thread" \
+threadctl --timeout 5 inspect "$inspect_thread" \
   --no-previous >"$SMOKE_ROOT/inspect.out"
 grep -q $'^latest\tcompleted\t'"$inspect_turn" "$SMOKE_ROOT/inspect.out" || {
   sed -n '1,40p' "$SMOKE_ROOT/inspect.out" >&2
-  fail "wakectl full inspection omitted completed turn"
+  fail "threadctl full inspection omitted completed turn"
 }
 grep -Fq $'view=full\tduration=2000ms' "$SMOKE_ROOT/inspect.out" || {
   sed -n '1,40p' "$SMOKE_ROOT/inspect.out" >&2
-  fail "wakectl full inspection omitted turn timing"
+  fail "threadctl full inspection omitted turn timing"
 }
 grep -Fqx $'agentMessage:final_answer\t"Smoke complete."' "$SMOKE_ROOT/inspect.out" || {
   sed -n '1,40p' "$SMOKE_ROOT/inspect.out" >&2
-  fail "wakectl full inspection omitted final response"
+  fail "threadctl full inspection omitted final response"
+}
+grep -q $'^context\tused=12345\twindow=200000\tleft=100%' "$SMOKE_ROOT/inspect.out" || {
+  sed -n '1,40p' "$SMOKE_ROOT/inspect.out" >&2
+  fail "threadctl inspection omitted context usage"
 }
 
-wakectl --timeout 5 --json inspect "$inspect_thread" \
+threadctl --timeout 5 --json inspect "$inspect_thread" \
   --brief --no-previous >"$SMOKE_ROOT/inspect-brief.json"
 "$PYTHON" - "$SMOKE_ROOT/inspect-brief.json" "$inspect_turn" <<'PY'
 import json
@@ -276,8 +310,33 @@ assert turn["startedAt"] == 1767323045
 assert turn["completedAt"] == 1767323047
 assert turn["durationMs"] == 2000
 assert turn["items"][-1]["text"] == "Smoke complete."
+assert inspection["context"]["usedTokens"] == 12345
+assert inspection["context"]["windowTokens"] == 200000
+assert inspection["context"]["percentLeft"] == 100
 PY
-printf 'wakectl inspected persisted full and summary turn history\n'
+printf 'threadctl inspected persisted full and summary turn history\n'
+
+threadctl --timeout 5 --json messages "$inspect_thread" \
+  --limit 2 >"$SMOKE_ROOT/messages.json"
+"$PYTHON" - "$SMOKE_ROOT/messages.json" "$SMOKE_ROOT/message-locator" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    messages = json.load(handle)["messages"]
+assert [message["text"] for message in messages] == ["Smoke request.", "Smoke complete."]
+message = messages[-1]
+with open(sys.argv[2], "w", encoding="utf-8") as handle:
+    handle.write(f"{message['turnId']}\t{message['itemId']}\n")
+PY
+IFS=$'\t' read -r message_turn message_item <"$SMOKE_ROOT/message-locator"
+threadctl --timeout 5 message "$inspect_thread" "$message_turn" "$message_item" \
+  >"$SMOKE_ROOT/message.out"
+grep -Fqx 'Smoke complete.' "$SMOKE_ROOT/message.out" || {
+  sed -n '1,20p' "$SMOKE_ROOT/message.out" >&2
+  fail "threadctl did not retrieve the selected message"
+}
+printf 'threadctl listed and retrieved materialized messages\n'
 
 if wakectl --timeout 5 add stop "$missing_thread" \
   --to "$missing_thread" "smoke" >"$SMOKE_ROOT/turns.out" 2>"$SMOKE_ROOT/turns.err"; then
@@ -289,13 +348,13 @@ grep -Eq 'thread not found|thread not loaded' "$SMOKE_ROOT/turns.err" || {
 }
 printf 'wakectl reached paged turn history and got expected temporary-thread error\n'
 
-if PYTHONPATH="$ROOT/packages/codex-wakectl/src${PYTHONPATH:+:$PYTHONPATH}" \
+if PYTHONPATH="$ROOT/packages/codex-threadctl/src${PYTHONPATH:+:$PYTHONPATH}" \
   "$PYTHON" - "$missing_thread" >"$SMOKE_ROOT/interrupt.out" 2>"$SMOKE_ROOT/interrupt.err" <<'PY'
 import asyncio
 import sys
 
-from codex_wakectl.appserver import AppServer
-from codex_wakectl.errors import WakectlError
+from codex_threadctl.appserver import AppServer
+from codex_threadctl.errors import ThreadctlError
 
 
 async def main() -> int:
@@ -305,7 +364,7 @@ async def main() -> int:
                 "turn/interrupt",
                 {"threadId": sys.argv[1], "turnId": "00000000-0000-4000-8000-000000000002"},
             )
-    except WakectlError as exc:
+    except ThreadctlError as exc:
         print(exc, file=sys.stderr)
         return 1
     return 0
@@ -320,7 +379,37 @@ grep -Eq 'thread not found|thread not loaded|invalid thread id' "$SMOKE_ROOT/int
   sed -n '1,40p' "$SMOKE_ROOT/interrupt.err" >&2
   fail "unexpected turn/interrupt error"
 }
-printf 'wakectl reached turn interruption API\n'
+printf 'threadctl reached turn interruption API\n'
+
+if PYTHONPATH="$ROOT/packages/codex-threadctl/src${PYTHONPATH:+:$PYTHONPATH}" \
+  "$PYTHON" - "$missing_thread" >"$SMOKE_ROOT/compact.out" 2>"$SMOKE_ROOT/compact.err" <<'PY'
+import asyncio
+import sys
+
+from codex_threadctl.appserver import AppServer
+from codex_threadctl.errors import ThreadctlError
+
+
+async def main() -> int:
+    try:
+        async with AppServer("unix://", 5) as app:
+            await app.request("thread/compact/start", {"threadId": sys.argv[1]})
+    except ThreadctlError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    return 0
+
+
+raise SystemExit(asyncio.run(main()))
+PY
+then
+  fail "expected missing compact thread to fail"
+fi
+grep -Eq 'thread not found|thread not loaded|invalid thread id' "$SMOKE_ROOT/compact.err" || {
+  sed -n '1,40p' "$SMOKE_ROOT/compact.err" >&2
+  fail "unexpected thread/compact/start error"
+}
+printf 'threadctl reached thread compaction API\n'
 
 log "readcov rollout parser compatibility"
 project="$SMOKE_ROOT/project"

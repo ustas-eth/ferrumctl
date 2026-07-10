@@ -15,6 +15,12 @@ from codex_wakectl import commands
 
 
 class ParseTests(unittest.TestCase):
+    def test_version(self) -> None:
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            with self.assertRaisesRegex(SystemExit, "0"):
+                cli.build_parser().parse_args(["--version"])
+        self.assertEqual(output.getvalue(), "codex-wakectl 0.3.0\n")
+
     def test_parse_duration(self) -> None:
         self.assertEqual(cli.parse_duration("10s"), 10)
         self.assertEqual(cli.parse_duration("5m"), 300)
@@ -125,23 +131,6 @@ class ParseTests(unittest.TestCase):
         args = cli.build_parser().parse_args(["systemd", "install", "--interval", "5m"])
         self.assertEqual(args.interval, 300)
         self.assertIs(args.func, cli.cmd_systemd_install)
-
-    def test_inspect_and_interrupt_commands(self) -> None:
-        inspect = cli.build_parser().parse_args(
-            ["inspect", "thread", "--items", "0", "--brief", "--no-previous"]
-        )
-        interrupt = cli.build_parser().parse_args(["interrupt", "thread"])
-
-        self.assertEqual(inspect.items, 0)
-        self.assertTrue(inspect.brief)
-        self.assertTrue(inspect.no_previous)
-        self.assertIs(inspect.func, cli.cmd_inspect)
-        self.assertIs(interrupt.func, cli.cmd_interrupt)
-
-        with contextlib.redirect_stderr(io.StringIO()):
-            with self.assertRaises(SystemExit):
-                cli.build_parser().parse_args(["inspect", "thread", "--items", "-1"])
-
 
 class ConditionTests(unittest.TestCase):
     def test_goal_condition_requires_predicate(self) -> None:
