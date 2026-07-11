@@ -42,6 +42,20 @@ codex plugin add codex-readcov@ferrumctl
 
 The marketplace manifest is [.agents/plugins/marketplace.json](.agents/plugins/marketplace.json).
 
+## App Server
+
+`codex-threadctl` and `codex-wakectl` use sessions connected to a shared
+app-server:
+
+```sh
+codex app-server --listen unix://
+codex --remote unix://
+codex-threadctl loaded
+```
+
+For daily use, keep the Codex flags you normally use and add `--remote
+unix://` to that shortcut, for example `alias x='codex --remote unix://'`.
+
 ## What You Can Do
 
 Find recent sessions or retained subagent threads:
@@ -89,18 +103,6 @@ find packages -type f | sort > all.txt
 codex-readcov delta worker.before.json packages --paths-only --limit 0 | sort > read.txt
 comm -23 all.txt read.txt
 ```
-
-`codex-wakectl` needs Codex sessions loaded on a shared app-server. Start one
-server, then run Codex through it:
-
-```sh
-codex app-server --listen unix://
-codex --remote unix://
-codex-threadctl loaded
-```
-
-For daily use, keep the Codex flags you normally use and add `--remote
-unix://` to that shortcut, for example `alias x='codex --remote unix://'`.
 
 Process queued wakes with `codex-wakectl run`, or install the user timer:
 

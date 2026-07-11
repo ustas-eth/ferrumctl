@@ -1,6 +1,6 @@
 ---
 name: codex-threadctl
-description: "Use when you need the host codex-threadctl command to discover, inspect, or immediately control a Codex CLI thread through app-server: find persisted sessions or spawned descendants, check active or idle state, inspect recent activity and context, list or retrieve conversation messages, start input on an idle thread, steer one expected active turn, resume a persisted thread, or interrupt one exact turn. Do not use for future or conditional wakes, goal editing, file-read coverage, terminal injection, or agent spawning."
+description: "Use when the useful handle is a Codex thread id or persisted thread state is needed: use the host codex-threadctl command through app-server to discover stored sessions or spawned threads unavailable through native handles, inspect activity, context, or retained messages, start input on an idle thread, steer one expected active turn, resume a persisted thread, or interrupt one exact turn. Do not use for ordinary native subagent messaging, waiting, or result retrieval while this session owns the live handle; future or conditional wakes; goal editing; file-read coverage; terminal injection; or agent spawning."
 ---
 
 # Codex Threadctl
@@ -18,9 +18,10 @@ read coverage, or spawn agents.
 
 ## Choosing The Control Surface
 
-Use native subagent input and result retrieval when this session owns the live
-native handle. Use threadctl when the useful handle is a thread id or host-level
-control is intentional.
+Use native subagent tools for ordinary messaging, waiting, and result retrieval
+when this session owns the live handle. Use threadctl when only a thread id
+remains, host-level control is intentional, or persisted context or history is
+needed beyond the native result.
 
 Use `start` for a new turn on a target that appears idle. Use `steer` only with
 the exact active turn id. Use wakectl instead when delivery must survive this
@@ -94,11 +95,11 @@ codex-threadctl inspect "$SELF"
 ## Conventions
 
 - Inspect unfamiliar work before steering or interrupting it.
-- Prefer native subagent tools while this session owns the live handles. Use
-  `list --parent` or `list --ancestor` for persisted spawn
-  relationships, including closed agents whose native handles are unavailable.
+- Treat `list --parent` and `list --ancestor` as persisted spawn relationships.
+  They can include closed agents whose native handles are unavailable.
 - Read `server=` in `list` output as state on the selected app-server, not as a
-  native agent status. `notLoaded` does not mean the persisted thread is absent.
+  native agent status. `notLoaded` says neither that work completed nor that the
+  thread is not loaded on another server.
 - Treat `idle` as no running turn, not permission for unrelated work. An idle
   thread can retain an active goal.
 - Read the result of `start`. Its idle check is not atomic; if another turn
@@ -120,9 +121,9 @@ codex-threadctl inspect "$SELF"
 
 ## References
 
-- Read `references/observation-semantics.md` when materialized history,
-  timestamps, message lookup, context freshness, or snapshot consistency
-  matters.
+- Read `references/observation-semantics.md` when persisted discovery,
+  app-server status, materialized history, timestamps, message lookup, context
+  freshness, or snapshot consistency matters.
 - Read `references/lifecycle-control.md` before relying on start, steering,
   resume, or interruption behavior.
 - Read `references/coordination-principles.md` when composing immediate control

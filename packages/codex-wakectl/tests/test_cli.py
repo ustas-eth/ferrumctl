@@ -27,7 +27,7 @@ class ParseTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 parser.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-wakectl 0.3.0\n")
+        self.assertEqual(output.getvalue(), "codex-wakectl 0.3.1\n")
 
     def test_parse_duration(self) -> None:
         self.assertEqual(parsing.parse_duration("10s"), 10)

@@ -30,6 +30,6 @@
       "Turn-scoped interruption",
       "Persisted thread resume"
     ],
-    "defaultPrompt": "Use $codex-threadctl to inspect a Codex thread and choose a safe lifecycle action."
+    "defaultPrompt": "Use $codex-threadctl to discover, inspect, or immediately control a Codex thread."
   }
 }
