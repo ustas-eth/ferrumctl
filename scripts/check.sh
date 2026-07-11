@@ -67,7 +67,7 @@ run git diff --check
   run "$bin_dir/codex-threadctl" --version
   run "$bin_dir/codex-wakectl" --version
   test "$("$bin_dir/codex-goalctl" --version)" = "codex-goalctl 0.1.1"
-  test "$("$bin_dir/codex-threadctl" --version)" = "codex-threadctl 0.1.0"
+  test "$("$bin_dir/codex-threadctl" --version)" = "codex-threadctl 0.2.0"
   test "$("$bin_dir/codex-wakectl" --version)" = "codex-wakectl 0.3.0"
 )
 

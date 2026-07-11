@@ -1,4 +1,5 @@
 import io
+import json
 import unittest
 from contextlib import redirect_stdout
 from unittest import mock
@@ -19,11 +20,12 @@ class ParserTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 parser.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-threadctl 0.1.0\n")
+        self.assertEqual(output.getvalue(), "codex-threadctl 0.2.0\n")
 
     def test_parses_all_commands(self):
         cases = [
             ["loaded"],
+            ["list", "--parent", "thread", "--limit", "0", "--sort", "created"],
             ["status", "thread"],
             ["inspect", "thread", "--brief", "--items", "0"],
             ["messages", "thread", "--limit", "0"],
@@ -36,6 +38,12 @@ class ParserTests(unittest.TestCase):
         for argv in cases:
             with self.subTest(argv=argv):
                 self.assertTrue(callable(parser.build_parser().parse_args(argv).func))
+
+    def test_list_relationship_filters_are_mutually_exclusive(self):
+        with self.assertRaises(SystemExit):
+            parser.build_parser().parse_args(
+                ["list", "--parent", "parent", "--ancestor", "ancestor"]
+            )
 
     def test_global_options_work_after_subcommand(self):
         args = parser.build_parser().parse_args(
@@ -62,6 +70,75 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
             result = await commands.cmd_loaded(args)
         self.assertEqual(result, 0)
         self.assertEqual(output.getvalue(), "")
+
+    async def test_list_passes_filters_and_prints_id_first(self):
+        args = parser.build_parser().parse_args(
+            ["list", "--parent", "parent", "--limit", "2", "--sort", "created"]
+        )
+        threads = [
+            {
+                "id": "child",
+                "status": {"type": "notLoaded"},
+                "createdAt": 1,
+                "updatedAt": 2,
+                "recencyAt": 2,
+                "agentNickname": "Ada",
+                "agentRole": "explorer",
+                "parentThreadId": "parent",
+                "cwd": "/work",
+                "preview": "Review the code",
+            }
+        ]
+        with (
+            mock.patch.object(commands, "AppServer", return_value=FakeContext()),
+            mock.patch.object(
+                commands,
+                "list_threads",
+                mock.AsyncMock(return_value=threads),
+            ) as list_threads,
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            result = await commands.cmd_list(args)
+        self.assertEqual(result, 0)
+        list_threads.assert_awaited_once_with(
+            mock.ANY,
+            parent_thread_id="parent",
+            ancestor_thread_id=None,
+            limit=2,
+            sort_key="created_at",
+        )
+        self.assertTrue(output.getvalue().startswith("child\tserver=notLoaded\t"))
+        self.assertIn('nickname="Ada"', output.getvalue())
+
+    async def test_list_json_has_stable_selected_fields(self):
+        args = parser.build_parser().parse_args(["list", "--json"])
+        thread = {
+            "id": "thread",
+            "status": {"type": "idle"},
+            "createdAt": 1,
+            "extra": "not exposed",
+        }
+        with (
+            mock.patch.object(commands, "AppServer", return_value=FakeContext()),
+            mock.patch.object(
+                commands,
+                "list_threads",
+                mock.AsyncMock(return_value=[thread]),
+            ) as list_threads,
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            result = await commands.cmd_list(args)
+        self.assertEqual(result, 0)
+        list_threads.assert_awaited_once_with(
+            mock.ANY,
+            parent_thread_id=None,
+            ancestor_thread_id=None,
+            limit=20,
+            sort_key="recency_at",
+        )
+        result = json.loads(output.getvalue())
+        self.assertEqual(result["threads"][0]["id"], "thread")
+        self.assertNotIn("extra", result["threads"][0])
 
     async def test_message_prints_exact_multiline_text(self):
         args = parser.build_parser().parse_args(["message", "thread", "turn", "item"])

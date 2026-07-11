@@ -6,7 +6,8 @@ Small Unix-style control tools for Codex agent workflows.
 Use the tools separately and compose them with the shell:
 
 - `codex-goalctl` reads and changes persisted Codex thread goals.
-- `codex-threadctl` inspects threads and applies immediate, turn-scoped control.
+- `codex-threadctl` discovers and inspects threads and applies immediate,
+  turn-scoped control.
 - `codex-wakectl` waits for conditions and schedules durable thread input.
 - `codex-readcov` counts file-read actions from Codex rollout transcripts.
 
@@ -42,6 +43,14 @@ codex plugin add codex-readcov@ferrumctl
 The marketplace manifest is [.agents/plugins/marketplace.json](.agents/plugins/marketplace.json).
 
 ## What You Can Do
+
+Find recent sessions or retained subagent threads:
+
+```sh
+SELF=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
+codex-threadctl list --limit 10
+codex-threadctl list --parent "$SELF" --limit 5
+```
 
 Assign durable work, wake the worker, then inspect its state and recorded read
 actions:

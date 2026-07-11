@@ -190,6 +190,64 @@ async def list_loaded(app: AppServer) -> list[str]:
         cursor = next_cursor
 
 
+async def list_threads(
+    app: AppServer,
+    *,
+    parent_thread_id: str | None = None,
+    ancestor_thread_id: str | None = None,
+    limit: int = 20,
+    sort_key: str = "recency_at",
+) -> list[dict[str, Any]]:
+    if parent_thread_id is not None and ancestor_thread_id is not None:
+        raise ThreadctlError("parent and ancestor filters are mutually exclusive")
+    if limit < 0:
+        raise ThreadctlError("thread list limit must be zero or greater")
+
+    threads: list[dict[str, Any]] = []
+    cursor: str | None = None
+    seen_cursors: set[str] = set()
+    while limit == 0 or len(threads) < limit:
+        remaining = limit - len(threads) if limit else 100
+        params: dict[str, Any] = {
+            "limit": min(remaining, 100),
+            "sortKey": sort_key,
+            "sortDirection": "desc",
+            "modelProviders": [],
+        }
+        if cursor is not None:
+            params["cursor"] = cursor
+        if parent_thread_id is not None:
+            params["parentThreadId"] = parent_thread_id
+        if ancestor_thread_id is not None:
+            params["ancestorThreadId"] = ancestor_thread_id
+
+        result = require_object(
+            await app.request("thread/list", params),
+            "thread/list result",
+        )
+        data = result.get("data")
+        if not isinstance(data, list) or not all(
+            isinstance(thread, dict)
+            and isinstance(thread.get("id"), str)
+            and isinstance(thread.get("status"), dict)
+            for thread in data
+        ):
+            raise ThreadctlError("app-server returned invalid thread list data")
+        if limit:
+            data = data[: limit - len(threads)]
+        threads.extend(data)
+
+        next_cursor = result.get("nextCursor")
+        if next_cursor is None or (limit and len(threads) >= limit):
+            return threads
+        if not isinstance(next_cursor, str) or next_cursor in seen_cursors:
+            raise ThreadctlError("app-server returned an invalid thread-list cursor")
+        seen_cursors.add(next_cursor)
+        cursor = next_cursor
+
+    return threads
+
+
 async def read_thread(app: AppServer, thread_id: str) -> dict[str, Any]:
     result = require_object(
         await app.request(

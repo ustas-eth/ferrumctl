@@ -9,6 +9,7 @@ from .appserver import (
     get_goal,
     interrupt_thread,
     list_loaded,
+    list_threads,
     list_turn_page,
     read_thread,
     resume_thread,
@@ -17,8 +18,33 @@ from .appserver import (
 )
 from .context import read_context_state
 from .errors import ThreadctlError
-from .formatting import format_inspection, format_messages
+from .formatting import format_inspection, format_messages, format_thread_list
 from .turns import build_inspection, find_message, recent_messages
+
+
+THREAD_LIST_FIELDS = (
+    "id",
+    "status",
+    "createdAt",
+    "updatedAt",
+    "recencyAt",
+    "name",
+    "agentNickname",
+    "agentRole",
+    "parentThreadId",
+    "forkedFromId",
+    "cwd",
+    "modelProvider",
+    "cliVersion",
+    "source",
+    "preview",
+)
+
+THREAD_SORT_KEYS = {
+    "created": "created_at",
+    "recency": "recency_at",
+    "updated": "updated_at",
+}
 
 
 async def cmd_loaded(args: argparse.Namespace) -> int:
@@ -28,6 +54,28 @@ async def cmd_loaded(args: argparse.Namespace) -> int:
         print(json.dumps({"threadIds": thread_ids}, indent=2))
     elif thread_ids:
         print("\n".join(thread_ids))
+    return 0
+
+
+async def cmd_list(args: argparse.Namespace) -> int:
+    async with AppServer(args.endpoint, args.timeout) as app:
+        threads = await list_threads(
+            app,
+            parent_thread_id=args.parent,
+            ancestor_thread_id=args.ancestor,
+            limit=args.limit,
+            sort_key=THREAD_SORT_KEYS[args.sort],
+        )
+    records = [
+        {field: thread.get(field) for field in THREAD_LIST_FIELDS}
+        for thread in threads
+    ]
+    if args.json:
+        print(json.dumps({"threads": records}, indent=2))
+    else:
+        output = format_thread_list(records)
+        if output:
+            print(output)
     return 0
 
 

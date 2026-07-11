@@ -62,3 +62,27 @@ class FormattingTests(unittest.TestCase):
         self.assertNotIn("\n", preview)
         self.assertEqual(len(preview), 160)
         self.assertTrue(preview.endswith("..."))
+
+    def test_thread_list_is_id_first_and_labels_server_state(self):
+        output = formatting.format_thread_list(
+            [
+                {
+                    "id": "child",
+                    "status": {"type": "active", "activeFlags": ["waiting"]},
+                    "recencyAt": 2,
+                    "updatedAt": 3,
+                    "createdAt": 1,
+                    "parentThreadId": "parent",
+                    "agentNickname": "Ada",
+                    "agentRole": "explorer",
+                    "cwd": "/work",
+                    "preview": "first\nsecond",
+                }
+            ]
+        )
+        self.assertTrue(output.startswith("child\tserver=active\t"))
+        self.assertIn("updated=1970-01-01T00:00:03Z", output)
+        self.assertIn("flags=waiting", output)
+        self.assertIn('parent="parent"', output)
+        self.assertIn('nickname="Ada"', output)
+        self.assertIn('preview="first second"', output)

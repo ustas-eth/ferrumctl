@@ -173,6 +173,109 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(ThreadctlError, "cursor"):
             await appserver.list_loaded(PagedApp())
 
+    async def test_list_threads_passes_relationship_sort_and_limit(self):
+        calls = []
+
+        class ListApp:
+            async def request(self, method, params):
+                calls.append((method, params))
+                return {
+                    "data": [
+                        {"id": "child", "status": {"type": "notLoaded"}},
+                    ],
+                    "nextCursor": None,
+                }
+
+        result = await appserver.list_threads(
+            ListApp(),
+            parent_thread_id="parent",
+            limit=5,
+            sort_key="created_at",
+        )
+        self.assertEqual([thread["id"] for thread in result], ["child"])
+        self.assertEqual(
+            calls,
+            [
+                (
+                    "thread/list",
+                    {
+                        "limit": 5,
+                        "sortKey": "created_at",
+                        "sortDirection": "desc",
+                        "modelProviders": [],
+                        "parentThreadId": "parent",
+                    },
+                )
+            ],
+        )
+
+    async def test_list_threads_follows_pagination_and_honors_limit(self):
+        class PagedApp:
+            async def request(self, method, params):
+                if params.get("cursor") == "next":
+                    return {
+                        "data": [
+                            {"id": "c", "status": {"type": "idle"}},
+                            {"id": "d", "status": {"type": "idle"}},
+                        ],
+                        "nextCursor": "unused",
+                    }
+                return {
+                    "data": [
+                        {"id": "a", "status": {"type": "active"}},
+                        {"id": "b", "status": {"type": "notLoaded"}},
+                    ],
+                    "nextCursor": "next",
+                }
+
+        result = await appserver.list_threads(PagedApp(), limit=3)
+        self.assertEqual([thread["id"] for thread in result], ["a", "b", "c"])
+
+    async def test_list_threads_zero_limit_reads_all_pages(self):
+        calls = []
+
+        class PagedApp:
+            async def request(self, method, params):
+                calls.append(params)
+                if params.get("cursor") == "next":
+                    return {
+                        "data": [{"id": "b", "status": {"type": "idle"}}],
+                        "nextCursor": None,
+                    }
+                return {
+                    "data": [{"id": "a", "status": {"type": "idle"}}],
+                    "nextCursor": "next",
+                }
+
+        result = await appserver.list_threads(
+            PagedApp(), ancestor_thread_id="root", limit=0
+        )
+        self.assertEqual([thread["id"] for thread in result], ["a", "b"])
+        self.assertEqual(calls[1]["cursor"], "next")
+        self.assertTrue(all(call["ancestorThreadId"] == "root" for call in calls))
+
+    async def test_list_threads_rejects_invalid_data_and_filters(self):
+        class InvalidApp:
+            async def request(self, method, params):
+                return {"data": [{"id": "thread"}], "nextCursor": None}
+
+        with self.assertRaisesRegex(ThreadctlError, "thread list data"):
+            await appserver.list_threads(InvalidApp())
+        with self.assertRaisesRegex(ThreadctlError, "mutually exclusive"):
+            await appserver.list_threads(
+                InvalidApp(),
+                parent_thread_id="parent",
+                ancestor_thread_id="ancestor",
+            )
+
+    async def test_list_threads_rejects_repeated_cursor(self):
+        class PagedApp:
+            async def request(self, method, params):
+                return {"data": [], "nextCursor": "same"}
+
+        with self.assertRaisesRegex(ThreadctlError, "cursor"):
+            await appserver.list_threads(PagedApp(), limit=0)
+
     async def test_start_confirms_new_turn(self):
         result = await appserver.start_turn(FakeApp(), "thread", "message")
         self.assertEqual(result["delivery"], "started")

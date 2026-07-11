@@ -1,11 +1,12 @@
 # codex-threadctl
 
-`codex-threadctl` inspects and controls Codex threads through a shared
+`codex-threadctl` discovers, inspects, and controls Codex threads through a shared
 `codex app-server`.
 
-Use it to inspect recent work, retrieve conversation messages, start or steer
-input, resume a persisted thread, or interrupt one known turn. It does not edit
-goals, schedule future work, or measure file-read coverage.
+Use it to find stored sessions and spawned threads, inspect recent work,
+retrieve conversation messages, start or steer input, resume a persisted
+thread, or interrupt one known turn. It does not edit goals, schedule future
+work, or measure file-read coverage.
 
 ## Install
 
@@ -32,6 +33,14 @@ codex-threadctl loaded
 ```
 
 ## Examples
+
+Find recently used sessions or threads spawned by a known parent:
+
+```sh
+codex-threadctl list --limit 10
+codex-threadctl list --parent THREAD_ID --sort created --limit 5
+codex-threadctl list --ancestor THREAD_ID
+```
 
 Inspect the current state and recent activity of a thread:
 

@@ -3,6 +3,21 @@
 This reference describes what `codex-threadctl` observes and where that view can
 be incomplete or stale.
 
+## Thread Discovery
+
+`list` reads Codex's persisted thread index. Without a relationship filter it
+returns non-archived interactive sessions across model providers. `--parent`
+selects threads spawned directly by one thread; `--ancestor` includes spawned
+descendants at any depth. Relationship results come from Codex's persisted
+spawn graph, so closing a native agent handle does not remove them. Review and
+Guardian threads do not participate in that graph.
+
+Results default to newest turn recency and can instead be ordered by creation
+or update time. The reported `server` value is thread state on the selected
+app-server. It is not the native agent manager's lifecycle status, and
+`notLoaded` does not distinguish a completed agent from any other stored thread.
+Use `inspect` to read retained turn state and responses.
+
 ## Thread State
 
 The selected app-server endpoint defines live state. A loaded thread can be

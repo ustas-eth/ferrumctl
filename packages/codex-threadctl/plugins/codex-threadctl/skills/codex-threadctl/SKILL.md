@@ -1,6 +1,6 @@
 ---
 name: codex-threadctl
-description: "Use when you need the host codex-threadctl command to inspect or immediately control a Codex CLI thread through app-server: discover loaded threads, check active or idle state, inspect recent activity and context, list or retrieve conversation messages, start input on an idle thread, steer one expected active turn, resume a persisted thread, or interrupt one exact turn. Do not use for future or conditional wakes, goal editing, file-read coverage, terminal injection, or agent spawning."
+description: "Use when you need the host codex-threadctl command to discover, inspect, or immediately control a Codex CLI thread through app-server: find persisted sessions or spawned descendants, check active or idle state, inspect recent activity and context, list or retrieve conversation messages, start input on an idle thread, steer one expected active turn, resume a persisted thread, or interrupt one exact turn. Do not use for future or conditional wakes, goal editing, file-read coverage, terminal injection, or agent spawning."
 ---
 
 # Codex Threadctl
@@ -10,11 +10,11 @@ description: "Use when you need the host codex-threadctl command to inspect or i
 Use this skill when this session needs visibility into a Codex thread or must
 apply an immediate thread operation through its thread id.
 
-Assume `codex-threadctl` is installed. It reads app-server state and
-materialized turn history, supplements local inspection with timestamped
-rollout context, and exposes native start, steer, resume, and interruption
-operations. It does not schedule future input, edit goals, measure read
-coverage, or spawn agents.
+Assume `codex-threadctl` is installed. It reads persisted thread relationships,
+app-server state, and materialized turn history, supplements local inspection
+with timestamped rollout context, and exposes native start, steer, resume, and
+interruption operations. It does not schedule future input, edit goals, measure
+read coverage, or spawn agents.
 
 ## Choosing The Control Surface
 
@@ -28,7 +28,15 @@ turn or wait for a later condition and its skill is available.
 
 ## Patterns
 
-Discover threads loaded on the selected endpoint:
+Discover recent sessions or retained spawn relationships without loading them:
+
+```sh
+codex-threadctl list --limit 10
+codex-threadctl list --parent THREAD_ID --sort created --limit 5
+codex-threadctl list --ancestor THREAD_ID
+```
+
+List thread ids currently loaded on the selected endpoint:
 
 ```sh
 codex-threadctl loaded
@@ -86,6 +94,11 @@ codex-threadctl inspect "$SELF"
 ## Conventions
 
 - Inspect unfamiliar work before steering or interrupting it.
+- Prefer native subagent tools while this session owns the live handles. Use
+  `list --parent` or `list --ancestor` for persisted spawn
+  relationships, including closed agents whose native handles are unavailable.
+- Read `server=` in `list` output as state on the selected app-server, not as a
+  native agent status. `notLoaded` does not mean the persisted thread is absent.
 - Treat `idle` as no running turn, not permission for unrelated work. An idle
   thread can retain an active goal.
 - Read the result of `start`. Its idle check is not atomic; if another turn

@@ -218,3 +218,35 @@ def format_messages(messages: list[dict[str, Any]]) -> str:
             )
         )
     return "\n".join(lines)
+
+
+def format_thread_list(threads: list[dict[str, Any]]) -> str:
+    lines = []
+    for thread in threads:
+        status = thread.get("status")
+        if not isinstance(status, dict):
+            status = {"type": "unknown"}
+        fields = [
+            str(thread.get("id") or "-"),
+            f"server={status_name(status)}",
+            f"recency={format_time(thread.get('recencyAt'))}",
+            f"updated={format_time(thread.get('updatedAt'))}",
+            f"created={format_time(thread.get('createdAt'))}",
+        ]
+        flags = status.get("activeFlags") or []
+        if flags:
+            fields.append("flags=" + ",".join(str(flag) for flag in flags))
+        for key, label in (
+            ("parentThreadId", "parent"),
+            ("forkedFromId", "forked"),
+            ("name", "name"),
+            ("agentNickname", "nickname"),
+            ("agentRole", "role"),
+            ("cwd", "cwd"),
+        ):
+            if thread.get(key) is not None:
+                fields.append(f"{label}={quoted(thread[key])}")
+        if thread.get("preview") is not None:
+            fields.append(f"preview={quoted(message_preview(thread['preview']))}")
+        lines.append("\t".join(fields))
+    return "\n".join(lines)

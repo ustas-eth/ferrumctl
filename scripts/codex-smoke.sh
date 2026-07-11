@@ -275,6 +275,22 @@ done
 threadctl --timeout 5 loaded >"$SMOKE_ROOT/loaded.out"
 printf 'threadctl reached app-server; loaded threads: %s\n' "$(wc -l <"$SMOKE_ROOT/loaded.out")"
 
+threadctl --timeout 5 --json list --limit 1 >"$SMOKE_ROOT/thread-list.json"
+threadctl --timeout 5 --json list --parent "$inspect_thread" --limit 1 \
+  >"$SMOKE_ROOT/child-list.json"
+"$PYTHON" - "$SMOKE_ROOT/thread-list.json" "$SMOKE_ROOT/child-list.json" "$inspect_thread" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    threads = json.load(handle)["threads"]
+with open(sys.argv[2], encoding="utf-8") as handle:
+    children = json.load(handle)["threads"]
+assert [thread["id"] for thread in threads] == [sys.argv[3]]
+assert children == []
+PY
+printf 'threadctl listed persisted threads and accepted spawn-relation filters\n'
+
 threadctl --timeout 5 inspect "$inspect_thread" \
   --no-previous >"$SMOKE_ROOT/inspect.out"
 grep -q $'^latest\tcompleted\t'"$inspect_turn" "$SMOKE_ROOT/inspect.out" || {

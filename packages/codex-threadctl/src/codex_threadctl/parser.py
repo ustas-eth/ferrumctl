@@ -6,6 +6,7 @@ import math
 from .commands import (
     cmd_inspect,
     cmd_interrupt,
+    cmd_list,
     cmd_loaded,
     cmd_message,
     cmd_messages,
@@ -68,6 +69,33 @@ def build_parser() -> argparse.ArgumentParser:
     loaded = sub.add_parser("loaded", help="list loaded thread ids")
     add_global_options(loaded, defaults=False)
     loaded.set_defaults(func=cmd_loaded)
+
+    list_parser = sub.add_parser("list", help="list persisted threads")
+    relation = list_parser.add_mutually_exclusive_group()
+    relation.add_argument(
+        "--parent",
+        metavar="THREAD_ID",
+        help="list threads spawned directly by this thread",
+    )
+    relation.add_argument(
+        "--ancestor",
+        metavar="THREAD_ID",
+        help="list spawned descendants at any depth",
+    )
+    list_parser.add_argument(
+        "--limit",
+        type=nonnegative_int,
+        default=20,
+        help="threads to return; 0 reads all matching threads",
+    )
+    list_parser.add_argument(
+        "--sort",
+        choices=("created", "recency", "updated"),
+        default="recency",
+        help="newest-first ordering (default: recency)",
+    )
+    add_global_options(list_parser, defaults=False)
+    list_parser.set_defaults(func=cmd_list)
 
     status = sub.add_parser("status", help="show loaded state and thread status")
     status.add_argument("thread_id")
