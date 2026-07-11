@@ -1,6 +1,6 @@
 {
   "name": "codex-readcov",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Codex skill for inspecting transcript-recorded file-read actions.",
   "author": {
     "name": "ustas-eth"

@@ -66,12 +66,12 @@ run git diff --check
   run "$bin_dir/codex-goalctl" --version
   run "$bin_dir/codex-threadctl" --version
   run "$bin_dir/codex-wakectl" --version
-  test "$("$bin_dir/codex-goalctl" --version)" = "codex-goalctl 0.1.0"
+  test "$("$bin_dir/codex-goalctl" --version)" = "codex-goalctl 0.1.1"
   test "$("$bin_dir/codex-threadctl" --version)" = "codex-threadctl 0.1.0"
   test "$("$bin_dir/codex-wakectl" --version)" = "codex-wakectl 0.3.0"
 )
 
 run packages/codex-readcov/target/debug/codex-readcov --version
-test "$(packages/codex-readcov/target/debug/codex-readcov --version)" = "codex-readcov 0.1.0"
+test "$(packages/codex-readcov/target/debug/codex-readcov --version)" = "codex-readcov 0.1.1"
 
 printf '\nchecks passed\n'
