@@ -291,6 +291,19 @@ assert children == []
 PY
 printf 'threadctl listed persisted threads and accepted spawn-relation filters\n'
 
+threadctl --timeout 5 --json search "Smoke complete" --limit 1 \
+  >"$SMOKE_ROOT/thread-search.json"
+"$PYTHON" - "$SMOKE_ROOT/thread-search.json" "$inspect_thread" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    threads = json.load(handle)["threads"]
+assert [thread["id"] for thread in threads] == [sys.argv[2]]
+assert "Smoke complete" in threads[0]["snippet"]
+PY
+printf 'threadctl searched persisted thread content and returned a snippet\n'
+
 threadctl --timeout 5 inspect "$inspect_thread" \
   --no-previous >"$SMOKE_ROOT/inspect.out"
 grep -q $'^latest\tcompleted\t'"$inspect_turn" "$SMOKE_ROOT/inspect.out" || {
@@ -354,6 +367,18 @@ grep -Fqx 'Smoke complete.' "$SMOKE_ROOT/message.out" || {
 }
 printf 'threadctl listed and retrieved materialized messages\n'
 
+goalctl replace "$inspect_thread" "Smoke-test guarded resume." \
+  >"$SMOKE_ROOT/resume-goal.out"
+if threadctl --timeout 5 resume "$inspect_thread" \
+  >"$SMOKE_ROOT/resume-guard.out" 2>"$SMOKE_ROOT/resume-guard.err"; then
+  fail "expected resume with an active goal to require explicit continuation"
+fi
+grep -Fq -- '--continue-goal' "$SMOKE_ROOT/resume-guard.err" || {
+  sed -n '1,40p' "$SMOKE_ROOT/resume-guard.err" >&2
+  fail "threadctl did not explain guarded goal continuation"
+}
+goalctl clear "$inspect_thread" >"$SMOKE_ROOT/resume-goal-clear.out"
+
 threadctl --timeout 5 --json resume "$inspect_thread" >"$SMOKE_ROOT/resume.json"
 "$PYTHON" - "$SMOKE_ROOT/resume.json" "$inspect_thread" <<'PY'
 import json
@@ -363,8 +388,30 @@ with open(sys.argv[1], encoding="utf-8") as handle:
     result = json.load(handle)
 assert result["threadId"] == sys.argv[2]
 assert result["status"]["type"] == "idle"
+assert result["goalContinuationAllowed"] is False
 PY
-printf 'threadctl resumed persisted state without starting a turn\n'
+printf 'threadctl guarded active-goal continuation and resumed goal-free state\n'
+
+threadctl --timeout 5 --json terminals "$inspect_thread" \
+  >"$SMOKE_ROOT/terminals.json"
+"$PYTHON" - "$SMOKE_ROOT/terminals.json" "$inspect_thread" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    result = json.load(handle)
+assert result["threadId"] == sys.argv[2]
+assert result["terminals"] == []
+PY
+if threadctl --timeout 5 terminate-terminal "$inspect_thread" 999999 \
+  >"$SMOKE_ROOT/terminate.out" 2>"$SMOKE_ROOT/terminate.err"; then
+  fail "expected missing terminal process to fail"
+fi
+grep -Fq 'background terminal not found: 999999' "$SMOKE_ROOT/terminate.err" || {
+  sed -n '1,40p' "$SMOKE_ROOT/terminate.err" >&2
+  fail "unexpected terminal termination error"
+}
+printf 'threadctl listed terminals and reached exact process termination API\n'
 
 if wakectl --timeout 5 add stop "$missing_thread" \
   --to "$missing_thread" "smoke" >"$SMOKE_ROOT/turns.out" 2>"$SMOKE_ROOT/turns.err"; then

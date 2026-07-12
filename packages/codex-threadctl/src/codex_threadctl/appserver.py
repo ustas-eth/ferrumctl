@@ -248,6 +248,62 @@ async def list_threads(
     return threads
 
 
+async def search_threads(
+    app: AppServer,
+    search_term: str,
+    *,
+    limit: int = 20,
+    sort_key: str = "recency_at",
+) -> list[dict[str, Any]]:
+    if not search_term.strip():
+        raise ThreadctlError("thread search term must not be empty")
+    if limit < 0:
+        raise ThreadctlError("thread search limit must be zero or greater")
+
+    matches: list[dict[str, Any]] = []
+    cursor: str | None = None
+    seen_cursors: set[str] = set()
+    while limit == 0 or len(matches) < limit:
+        remaining = limit - len(matches) if limit else 100
+        params: dict[str, Any] = {
+            "searchTerm": search_term,
+            "limit": min(remaining, 100),
+            "sortKey": sort_key,
+            "sortDirection": "desc",
+            "sourceKinds": [],
+        }
+        if cursor is not None:
+            params["cursor"] = cursor
+
+        result = require_object(
+            await app.request("thread/search", params),
+            "thread/search result",
+        )
+        data = result.get("data")
+        if not isinstance(data, list) or not all(
+            isinstance(match, dict)
+            and isinstance(match.get("snippet"), str)
+            and isinstance(match.get("thread"), dict)
+            and isinstance(match["thread"].get("id"), str)
+            and isinstance(match["thread"].get("status"), dict)
+            for match in data
+        ):
+            raise ThreadctlError("app-server returned invalid thread search data")
+        if limit:
+            data = data[: limit - len(matches)]
+        matches.extend(data)
+
+        next_cursor = result.get("nextCursor")
+        if next_cursor is None or (limit and len(matches) >= limit):
+            return matches
+        if not isinstance(next_cursor, str) or next_cursor in seen_cursors:
+            raise ThreadctlError("app-server returned an invalid thread-search cursor")
+        seen_cursors.add(next_cursor)
+        cursor = next_cursor
+
+    return matches
+
+
 async def read_thread(app: AppServer, thread_id: str) -> dict[str, Any]:
     result = require_object(
         await app.request(
@@ -330,6 +386,78 @@ async def get_thread_status(app: AppServer, thread_id: str) -> dict[str, Any]:
 async def require_loaded(app: AppServer, thread_id: str) -> None:
     if thread_id not in await list_loaded(app):
         raise ThreadNotLoaded(f"thread is not loaded on this app-server: {thread_id}")
+
+
+async def list_background_terminals(
+    app: AppServer,
+    thread_id: str,
+    *,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    if limit < 0:
+        raise ThreadctlError("terminal list limit must be zero or greater")
+    await require_loaded(app, thread_id)
+
+    terminals: list[dict[str, Any]] = []
+    cursor: str | None = None
+    seen_cursors: set[str] = set()
+    while limit == 0 or len(terminals) < limit:
+        remaining = limit - len(terminals) if limit else 100
+        params: dict[str, Any] = {
+            "threadId": thread_id,
+            "limit": min(remaining, 100),
+        }
+        if cursor is not None:
+            params["cursor"] = cursor
+
+        result = require_object(
+            await app.request("thread/backgroundTerminals/list", params),
+            "thread/backgroundTerminals/list result",
+        )
+        data = result.get("data")
+        if not isinstance(data, list) or not all(
+            isinstance(terminal, dict)
+            and isinstance(terminal.get("processId"), str)
+            and isinstance(terminal.get("itemId"), str)
+            and isinstance(terminal.get("command"), str)
+            and isinstance(terminal.get("cwd"), str)
+            for terminal in data
+        ):
+            raise ThreadctlError("app-server returned invalid background-terminal data")
+        if limit:
+            data = data[: limit - len(terminals)]
+        terminals.extend(data)
+
+        next_cursor = result.get("nextCursor")
+        if next_cursor is None or (limit and len(terminals) >= limit):
+            return terminals
+        if not isinstance(next_cursor, str) or next_cursor in seen_cursors:
+            raise ThreadctlError("app-server returned an invalid terminal-list cursor")
+        seen_cursors.add(next_cursor)
+        cursor = next_cursor
+
+    return terminals
+
+
+async def terminate_background_terminal(
+    app: AppServer,
+    thread_id: str,
+    process_id: str,
+) -> bool:
+    await require_loaded(app, thread_id)
+    result = require_object(
+        await app.request(
+            "thread/backgroundTerminals/terminate",
+            {"threadId": thread_id, "processId": process_id},
+        ),
+        "thread/backgroundTerminals/terminate result",
+    )
+    terminated = result.get("terminated")
+    if not isinstance(terminated, bool):
+        raise ThreadctlError(
+            "app-server returned invalid background-terminal termination data"
+        )
+    return terminated
 
 
 async def current_active_turn(app: AppServer, thread_id: str) -> dict[str, Any]:
@@ -566,7 +694,25 @@ async def interrupt_thread(
     return result
 
 
-async def resume_thread(app: AppServer, thread_id: str) -> dict[str, Any]:
+async def resume_thread(
+    app: AppServer,
+    thread_id: str,
+    *,
+    continue_goal: bool = False,
+) -> dict[str, Any]:
+    if not continue_goal:
+        try:
+            goal = await get_goal(app, thread_id)
+        except AppServerResponseError as exc:
+            if "goals feature is disabled" not in str(exc):
+                raise
+            goal = None
+        if goal is not None and goal.get("status") == "active":
+            raise ThreadStateError(
+                "thread goal is active; resume can continue it without input; "
+                "pass --continue-goal to allow this"
+            )
+
     result = require_object(
         await app.request(
             "thread/resume",

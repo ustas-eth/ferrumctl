@@ -23,11 +23,13 @@ class FakeApp:
         status="idle",
         actual_turn_id="submission",
         turn_status="inProgress",
+        goal_status=None,
     ):
         self.loaded = loaded
         self.status = status
         self.actual_turn_id = actual_turn_id
         self.turn_status = turn_status
+        self.goal_status = goal_status
         self.client_message_id = None
         self.timeout = 1
         self.calls = []
@@ -38,6 +40,13 @@ class FakeApp:
             return {"data": ["thread"] if self.loaded else [], "nextCursor": None}
         if method == "thread/read":
             return {"thread": {"id": "thread", "status": {"type": self.status}}}
+        if method == "thread/goal/get":
+            goal = (
+                {"status": self.goal_status, "objective": "test"}
+                if self.goal_status is not None
+                else None
+            )
+            return {"goal": goal}
         if method == "thread/turns/list":
             item = (
                 {
@@ -276,6 +285,163 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(ThreadctlError, "cursor"):
             await appserver.list_threads(PagedApp(), limit=0)
 
+    async def test_search_threads_passes_query_sort_and_limit(self):
+        calls = []
+
+        class SearchApp:
+            async def request(self, method, params):
+                calls.append((method, params))
+                return {
+                    "data": [
+                        {
+                            "thread": {"id": "thread", "status": {"type": "idle"}},
+                            "snippet": "matching text",
+                        }
+                    ],
+                    "nextCursor": None,
+                }
+
+        result = await appserver.search_threads(
+            SearchApp(),
+            "matching",
+            limit=5,
+            sort_key="updated_at",
+        )
+        self.assertEqual(result[0]["snippet"], "matching text")
+        self.assertEqual(
+            calls,
+            [
+                (
+                    "thread/search",
+                    {
+                        "searchTerm": "matching",
+                        "limit": 5,
+                        "sortKey": "updated_at",
+                        "sortDirection": "desc",
+                        "sourceKinds": [],
+                    },
+                )
+            ],
+        )
+
+    async def test_search_threads_pages_and_validates_results(self):
+        class PagedApp:
+            async def request(self, method, params):
+                if params.get("cursor") == "next":
+                    return {
+                        "data": [
+                            {
+                                "thread": {"id": "b", "status": {"type": "idle"}},
+                                "snippet": "second",
+                            }
+                        ],
+                        "nextCursor": None,
+                    }
+                return {
+                    "data": [
+                        {
+                            "thread": {"id": "a", "status": {"type": "idle"}},
+                            "snippet": "first",
+                        }
+                    ],
+                    "nextCursor": "next",
+                }
+
+        result = await appserver.search_threads(PagedApp(), "text", limit=0)
+        self.assertEqual([match["thread"]["id"] for match in result], ["a", "b"])
+
+        class InvalidApp:
+            async def request(self, method, params):
+                return {"data": [{"thread": {"id": "a"}}], "nextCursor": None}
+
+        with self.assertRaisesRegex(ThreadctlError, "thread search data"):
+            await appserver.search_threads(InvalidApp(), "text")
+        with self.assertRaisesRegex(ThreadctlError, "must not be empty"):
+            await appserver.search_threads(InvalidApp(), "  ")
+
+    async def test_search_threads_rejects_repeated_cursor(self):
+        class PagedApp:
+            async def request(self, method, params):
+                return {"data": [], "nextCursor": "same"}
+
+        with self.assertRaisesRegex(ThreadctlError, "cursor"):
+            await appserver.search_threads(PagedApp(), "text", limit=0)
+
+    async def test_background_terminals_page_and_terminate_exact_process(self):
+        calls = []
+
+        class TerminalApp(FakeApp):
+            async def request(self, method, params=None):
+                calls.append((method, params))
+                if method == "thread/backgroundTerminals/list":
+                    if params.get("cursor") == "next":
+                        return {
+                            "data": [
+                                {
+                                    "processId": "43",
+                                    "itemId": "item-b",
+                                    "command": "sleep 2",
+                                    "cwd": "/work",
+                                }
+                            ],
+                            "nextCursor": None,
+                        }
+                    return {
+                        "data": [
+                            {
+                                "processId": "42",
+                                "itemId": "item-a",
+                                "command": "sleep 1",
+                                "cwd": "/work",
+                            }
+                        ],
+                        "nextCursor": "next",
+                    }
+                if method == "thread/backgroundTerminals/terminate":
+                    return {"terminated": params["processId"] == "42"}
+                return await super().request(method, params)
+
+        app = TerminalApp()
+        terminals = await appserver.list_background_terminals(app, "thread", limit=0)
+        self.assertEqual(
+            [terminal["processId"] for terminal in terminals],
+            ["42", "43"],
+        )
+        self.assertTrue(
+            await appserver.terminate_background_terminal(app, "thread", "42")
+        )
+        self.assertFalse(
+            await appserver.terminate_background_terminal(app, "thread", "999999")
+        )
+        self.assertIn(
+            (
+                "thread/backgroundTerminals/terminate",
+                {"threadId": "thread", "processId": "42"},
+            ),
+            calls,
+        )
+
+    async def test_background_terminals_validate_data_and_cursor(self):
+        class InvalidApp(FakeApp):
+            async def request(self, method, params=None):
+                if method == "thread/backgroundTerminals/list":
+                    return {"data": [{"processId": "42"}], "nextCursor": None}
+                return await super().request(method, params)
+
+        with self.assertRaisesRegex(ThreadctlError, "background-terminal data"):
+            await appserver.list_background_terminals(InvalidApp(), "thread")
+
+        class RepeatedCursorApp(FakeApp):
+            async def request(self, method, params=None):
+                if method == "thread/backgroundTerminals/list":
+                    return {"data": [], "nextCursor": "same"}
+                return await super().request(method, params)
+
+        with self.assertRaisesRegex(ThreadctlError, "cursor"):
+            await appserver.list_background_terminals(
+                RepeatedCursorApp(), "thread", limit=0
+            )
+
     async def test_start_confirms_new_turn(self):
         result = await appserver.start_turn(FakeApp(), "thread", "message")
         self.assertEqual(result["delivery"], "started")
@@ -389,6 +555,33 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
             app.calls[-1],
             ("thread/resume", {"threadId": "thread", "excludeTurns": True}),
         )
+
+    async def test_resume_refuses_active_goal_without_explicit_continuation(self):
+        app = FakeApp(loaded=False, goal_status="active")
+        with self.assertRaisesRegex(ThreadStateError, "--continue-goal"):
+            await appserver.resume_thread(app, "thread")
+        self.assertFalse(any(method == "thread/resume" for method, _ in app.calls))
+
+    async def test_resume_allows_active_goal_when_requested(self):
+        app = FakeApp(loaded=False, goal_status="active")
+        await appserver.resume_thread(app, "thread", continue_goal=True)
+        self.assertEqual(
+            app.calls[-1],
+            ("thread/resume", {"threadId": "thread", "excludeTurns": True}),
+        )
+
+    async def test_resume_works_when_goals_are_disabled(self):
+        class GoalsDisabledApp(FakeApp):
+            async def request(self, method, params=None):
+                if method == "thread/goal/get":
+                    raise AppServerResponseError(
+                        {"message": "goals feature is disabled"}
+                    )
+                return await super().request(method, params)
+
+        app = GoalsDisabledApp(loaded=False)
+        await appserver.resume_thread(app, "thread")
+        self.assertEqual(app.calls[-1][0], "thread/resume")
 
     async def test_live_operations_require_selected_server_to_have_thread(self):
         with self.assertRaises(ThreadNotLoaded):

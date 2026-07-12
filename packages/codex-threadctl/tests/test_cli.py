@@ -20,12 +20,13 @@ class ParserTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 parser.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-threadctl 0.2.0\n")
+        self.assertEqual(output.getvalue(), "codex-threadctl 0.3.0\n")
 
     def test_parses_all_commands(self):
         cases = [
             ["loaded"],
             ["list", "--parent", "thread", "--limit", "0", "--sort", "created"],
+            ["search", "decision text", "--limit", "0", "--sort", "updated"],
             ["status", "thread"],
             ["inspect", "thread", "--brief", "--items", "0"],
             ["messages", "thread", "--limit", "0"],
@@ -33,7 +34,9 @@ class ParserTests(unittest.TestCase):
             ["start", "thread", "message"],
             ["steer", "thread", "turn", "message"],
             ["interrupt", "thread", "turn", "--wait"],
-            ["resume", "thread"],
+            ["terminals", "thread", "--limit", "0"],
+            ["terminate-terminal", "thread", "42"],
+            ["resume", "thread", "--continue-goal"],
         ]
         for argv in cases:
             with self.subTest(argv=argv):
@@ -44,6 +47,10 @@ class ParserTests(unittest.TestCase):
             parser.build_parser().parse_args(
                 ["list", "--parent", "parent", "--ancestor", "ancestor"]
             )
+
+    def test_search_rejects_empty_text(self):
+        with self.assertRaises(SystemExit):
+            parser.build_parser().parse_args(["search", "  "])
 
     def test_global_options_work_after_subcommand(self):
         args = parser.build_parser().parse_args(
@@ -139,6 +146,110 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
         result = json.loads(output.getvalue())
         self.assertEqual(result["threads"][0]["id"], "thread")
         self.assertNotIn("extra", result["threads"][0])
+
+    async def test_search_prints_match_snippet_and_stable_json(self):
+        args = parser.build_parser().parse_args(
+            ["search", "decision", "--limit", "2", "--sort", "updated", "--json"]
+        )
+        matches = [
+            {
+                "thread": {
+                    "id": "thread",
+                    "status": {"type": "notLoaded"},
+                    "updatedAt": 2,
+                    "preview": "unrelated preview",
+                    "extra": "not exposed",
+                },
+                "snippet": "the matching decision",
+            }
+        ]
+        with (
+            mock.patch.object(commands, "AppServer", return_value=FakeContext()),
+            mock.patch.object(
+                commands,
+                "search_threads",
+                mock.AsyncMock(return_value=matches),
+            ) as search_threads,
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            result = await commands.cmd_search(args)
+        self.assertEqual(result, 0)
+        search_threads.assert_awaited_once_with(
+            mock.ANY,
+            "decision",
+            limit=2,
+            sort_key="updated_at",
+        )
+        record = json.loads(output.getvalue())["threads"][0]
+        self.assertEqual(record["snippet"], "the matching decision")
+        self.assertNotIn("preview", record)
+        self.assertNotIn("extra", record)
+
+    async def test_terminals_prints_process_id_first(self):
+        args = parser.build_parser().parse_args(["terminals", "thread"])
+        terminals = [
+            {
+                "processId": "42",
+                "itemId": "item",
+                "osPid": 123,
+                "cpuPercent": 2.5,
+                "rssKb": 4096,
+                "cwd": "/work",
+                "command": "sleep 10",
+            }
+        ]
+        with (
+            mock.patch.object(commands, "AppServer", return_value=FakeContext()),
+            mock.patch.object(
+                commands,
+                "list_background_terminals",
+                mock.AsyncMock(return_value=terminals),
+            ) as list_terminals,
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            result = await commands.cmd_terminals(args)
+        self.assertEqual(result, 0)
+        list_terminals.assert_awaited_once_with(mock.ANY, "thread", limit=20)
+        self.assertTrue(output.getvalue().startswith("42\titem=item\tpid=123\t"))
+        self.assertIn('command="sleep 10"', output.getvalue())
+
+    async def test_terminate_terminal_requires_native_confirmation(self):
+        args = parser.build_parser().parse_args(
+            ["terminate-terminal", "thread", "42"]
+        )
+        with (
+            mock.patch.object(commands, "AppServer", return_value=FakeContext()),
+            mock.patch.object(
+                commands,
+                "terminate_background_terminal",
+                mock.AsyncMock(return_value=False),
+            ),
+        ):
+            with self.assertRaisesRegex(commands.ThreadctlError, "not found"):
+                await commands.cmd_terminate_terminal(args)
+
+    async def test_resume_passes_goal_continuation_intent(self):
+        args = parser.build_parser().parse_args(
+            ["resume", "thread", "--continue-goal", "--json"]
+        )
+        thread = {"id": "thread", "status": {"type": "idle"}}
+        with (
+            mock.patch.object(commands, "AppServer", return_value=FakeContext()),
+            mock.patch.object(
+                commands,
+                "resume_thread",
+                mock.AsyncMock(return_value=thread),
+            ) as resume_thread,
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            result = await commands.cmd_resume(args)
+        self.assertEqual(result, 0)
+        resume_thread.assert_awaited_once_with(
+            mock.ANY,
+            "thread",
+            continue_goal=True,
+        )
+        self.assertTrue(json.loads(output.getvalue())["goalContinuationAllowed"])
 
     async def test_message_prints_exact_multiline_text(self):
         args = parser.build_parser().parse_args(["message", "thread", "turn", "item"])

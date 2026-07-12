@@ -248,5 +248,23 @@ def format_thread_list(threads: list[dict[str, Any]]) -> str:
                 fields.append(f"{label}={quoted(thread[key])}")
         if thread.get("preview") is not None:
             fields.append(f"preview={quoted(message_preview(thread['preview']))}")
+        if thread.get("snippet") is not None:
+            fields.append(f"snippet={quoted(message_preview(thread['snippet']))}")
+        lines.append("\t".join(fields))
+    return "\n".join(lines)
+
+
+def format_terminals(terminals: list[dict[str, Any]]) -> str:
+    lines = []
+    for terminal in terminals:
+        fields = [
+            str(terminal.get("processId") or "-"),
+            f"item={terminal.get('itemId') or '-'}",
+            f"pid={terminal.get('osPid') if terminal.get('osPid') is not None else '-'}",
+            f"cpu={terminal.get('cpuPercent') if terminal.get('cpuPercent') is not None else '-'}",
+            f"rss_kb={terminal.get('rssKb') if terminal.get('rssKb') is not None else '-'}",
+            f"cwd={quoted(terminal.get('cwd') or '')}",
+            f"command={quoted(message_preview(terminal.get('command') or '', 240))}",
+        ]
         lines.append("\t".join(fields))
     return "\n".join(lines)

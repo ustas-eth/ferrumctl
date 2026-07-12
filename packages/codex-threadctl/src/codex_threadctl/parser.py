@@ -11,9 +11,12 @@ from .commands import (
     cmd_message,
     cmd_messages,
     cmd_resume,
+    cmd_search,
     cmd_start,
     cmd_status,
     cmd_steer,
+    cmd_terminals,
+    cmd_terminate_terminal,
 )
 from .constants import CLIENT_VERSION, DEFAULT_TIMEOUT
 
@@ -33,6 +36,12 @@ def nonnegative_int(value: str) -> int:
     if parsed < 0:
         raise argparse.ArgumentTypeError("must be zero or greater")
     return parsed
+
+
+def nonempty_text(value: str) -> str:
+    if not value.strip():
+        raise argparse.ArgumentTypeError("must not be empty")
+    return value
 
 
 def add_global_options(parser: argparse.ArgumentParser, *, defaults: bool) -> None:
@@ -96,6 +105,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add_global_options(list_parser, defaults=False)
     list_parser.set_defaults(func=cmd_list)
+
+    search = sub.add_parser("search", help="search persisted thread content")
+    search.add_argument("search_term", type=nonempty_text)
+    search.add_argument(
+        "--limit",
+        type=nonnegative_int,
+        default=20,
+        help="threads to return; 0 reads all matching threads",
+    )
+    search.add_argument(
+        "--sort",
+        choices=("created", "recency", "updated"),
+        default="recency",
+        help="newest-first ordering (default: recency)",
+    )
+    add_global_options(search, defaults=False)
+    search.set_defaults(func=cmd_search)
 
     status = sub.add_parser("status", help="show loaded state and thread status")
     status.add_argument("thread_id")
@@ -165,8 +191,36 @@ def build_parser() -> argparse.ArgumentParser:
     add_global_options(interrupt, defaults=False)
     interrupt.set_defaults(func=cmd_interrupt)
 
+    terminals = sub.add_parser(
+        "terminals",
+        help="list running terminal processes for a loaded thread",
+    )
+    terminals.add_argument("thread_id")
+    terminals.add_argument(
+        "--limit",
+        type=nonnegative_int,
+        default=20,
+        help="terminals to return; 0 reads all",
+    )
+    add_global_options(terminals, defaults=False)
+    terminals.set_defaults(func=cmd_terminals)
+
+    terminate_terminal = sub.add_parser(
+        "terminate-terminal",
+        help="terminate one running terminal by process id",
+    )
+    terminate_terminal.add_argument("thread_id")
+    terminate_terminal.add_argument("process_id")
+    add_global_options(terminate_terminal, defaults=False)
+    terminate_terminal.set_defaults(func=cmd_terminate_terminal)
+
     resume = sub.add_parser("resume", help="load a persisted thread on app-server")
     resume.add_argument("thread_id")
+    resume.add_argument(
+        "--continue-goal",
+        action="store_true",
+        help="allow Codex to continue an active goal after resume",
+    )
     add_global_options(resume, defaults=False)
     resume.set_defaults(func=cmd_resume)
 
