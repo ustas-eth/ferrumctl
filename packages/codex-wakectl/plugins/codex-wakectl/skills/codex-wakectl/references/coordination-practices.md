@@ -39,6 +39,43 @@ A wake is input to its target, not a result returned to its sender. Native
 subagent results, materialized thread history, and shared artifacts are separate
 result channels.
 
+## Long Host Waits
+
+An `add cmd` command is evaluated from scratch on every runner pass. It is best
+suited to a level-triggered probe: a cheap, side-effect-free check that returns
+`0` for as long as the resulting wake remains useful. A file-exists check is a
+typical predicate. A planning run, state transition, or polling loop is not.
+
+When detection needs state, backoff, diagnostics, or expensive work, use a
+separate watcher. The watcher can persist a ready result atomically, while the
+wakectl job tests only that durable state. Keeping detection separate from
+delivery makes the predicate easy to rerun and leaves wakectl responsible for
+idle handling and delivery records.
+
+A custom watcher needs an explicit host lifecycle that outlives the initiating
+Codex turn. Its process or service identity should be retained for inspection
+and cleanup, and diagnostics should be written somewhere the resumed session
+can read.
+
+The watcher can instead deliver directly with `codex-threadctl start` once the
+target is idle; an equivalent app-server client is the lower-level alternative.
+This avoids the second polling step, but the watcher then owns target
+availability, retries, uncertain outcomes, and duplicate suppression as well as
+its process lifecycle. Use this form when those controls already belong in the
+custom process, not merely because the readiness check needs more than one shell
+command.
+
+Long unattended waits benefit from a separate time wake at a reasonable review
+deadline. Both paths should normally wake the session that owns and can repair
+the wait. If the primary condition has not fired, that session can inspect the
+job, validate the watcher and predicate, and repair or re-arm them. Record both
+job ids and cancel the pending counterpart after either path is handled.
+
+A deadline in the same wakectl queue protects against predicate and watcher
+mistakes, not against a stopped runner. Workflows that must recover from runner
+failure need an independent host supervisor. That additional failure domain is
+usually unnecessary when occasional user recovery is acceptable.
+
 ## Goal State And Idleness
 
 App-server `idle` means no turn is running. It does not mean the target lacks an

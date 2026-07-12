@@ -37,8 +37,10 @@ Queued wakes require a runner. A queued job will not fire unless
 `codex-wakectl run`, systemd, or another scheduler checks the queue.
 
 Command predicates run with the runner's environment and must remain true until
-a runner observes them. The built-in systemd units process one selected state
-database; installing them again for another `--state` replaces that selection.
+a runner observes them. They are repeated probes, and their output is discarded;
+keep stateful work and diagnostics outside the predicate. The built-in systemd
+units process one selected state database; installing them again for another
+`--state` replaces that selection.
 
 Delivery is best treated as at-least-once. A queued wake may arrive late,
 duplicate after a runner crash, or become redundant after manual handling.

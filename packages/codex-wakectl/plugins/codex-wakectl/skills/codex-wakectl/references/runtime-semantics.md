@@ -53,8 +53,10 @@ compaction, or another history change removes that cursor, the job becomes
 
 Command conditions retain argv and creation cwd, but execute in the runner's
 environment. The wakectl timeout also bounds the command. Predicates may run
-many times, so keep them cheap and repeatable. A transient success between
-runner passes is not observed; keep the condition true until handled.
+many times. Standard input reads from `/dev/null`, standard output and standard
+error are discarded, and only exit status or timeout is retained. A transient
+success between runner passes is not observed; keep the condition true until
+handled.
 
 ## Repeats
 

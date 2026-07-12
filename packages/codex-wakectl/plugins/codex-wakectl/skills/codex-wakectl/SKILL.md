@@ -83,6 +83,14 @@ Wake on a host predicate:
 codex-wakectl add cmd --to PEER "Input is ready." -- sh -c 'test -f done.txt'
 ```
 
+For a long self-managed wait, target both the condition and its recovery check
+at the session that owns the wait:
+
+```sh
+codex-wakectl add cmd --to "$SELF" "Input is ready." -- test -f done.txt
+codex-wakectl add time --after 2h --to "$SELF" "Wake watch health check."
+```
+
 Block without sending input:
 
 ```sh
@@ -126,8 +134,19 @@ codex-wakectl cancel JOB_ID
 - Keep queued messages short unless delayed duplicate delivery is deliberately
   the instruction. Do not store evolving approvals or project state in wake
   text.
-- Keep command predicates cheap and repeatable. They retain argv and cwd but
-  run in the runner's environment.
+- Treat an `add cmd` command as a level-triggered probe, not as the work being
+  scheduled. It may run many times with discarded output. Keep it cheap and
+  side-effect free, and return `0` while the wake remains actionable.
+- Use a separate watcher when detection needs state, backoff, diagnostics, or
+  expensive work. Give that host process an explicit lifecycle and cleanup
+  owner. Prefer to persist readiness, then make the wakectl predicate a simple
+  test of that state.
+- Before leaving a long command watch unattended, exercise both predicate
+  outcomes when practical and inspect the job after its configured runner has
+  evaluated it once. Do not run the shared queue solely to test one job.
+- When a missed condition would otherwise require user intervention, add a time
+  wake for the session that owns and can repair the wait. Record both job ids
+  and cancel the pending counterpart after either path is handled.
 - A not-loaded target remains pending. Resume it deliberately through its
   normal owner or through threadctl when that skill is available.
 - Do not use v2 subagents as wake targets; Codex requires their native parent
@@ -140,8 +159,8 @@ codex-wakectl cancel JOB_ID
 - Read `references/runtime-semantics.md` when condition matching, goal identity,
   stop cursors, delivery outcomes, leases, or SQLite behavior matters.
 - Read `references/coordination-practices.md` when choosing native wait,
-  blocking wait, scheduled wakes, active steering, checkpoints, or result
-  retrieval.
+  blocking wait, scheduled wakes, long host watchers, recovery deadlines,
+  active steering, checkpoints, or result retrieval.
 - Read `references/troubleshooting.md` when delivery fails, a job remains
   pending, or a job becomes failed or uncertain.
 - Read `references/coordination-principles.md` when composing wakes with native

@@ -36,9 +36,23 @@ For stop predicates, create the job before the turn to observe. Use
 `list --json` to inspect its stored turn cursor. A `failed` cursor means that
 materialized history no longer contains the boundary and the wake was not sent.
 
-For command predicates, test that the command exits `0` from its stored cwd and
-under the runner's environment. Interactive `PATH` and environment variables
-may not exist under systemd.
+For command predicates, inspect `lastReason` as well as `lastError`. A reason
+such as `command exited 1` only says that the predicate was not ready; wakectl
+discards command output and cannot distinguish an expected false result from a
+script defect.
+
+Run the stored argv from its stored cwd and exercise both the ready and
+not-ready cases when practical. Check permissions, interpreters, absolute
+dependencies, and inputs that differ under the runner's environment;
+interactive `PATH` and environment variables may not exist under systemd.
+Predicates that need logs, mutable state, retries, or expensive calculation are
+better split into a diagnostic watcher and a simple durable-state test.
+
+For a long wait, inspect the job after its configured runner has evaluated it
+once. Do not invoke `run` solely to test one job in the shared queue. A separate
+time wake can provide a recovery turn if the condition remains false because
+the watcher or predicate is wrong. It does not protect against the wakectl
+runner itself being stopped.
 
 An `uncertain` job submitted native start or steer input but could not confirm
 the outcome. It is not retried automatically. Inspect the target and compare
