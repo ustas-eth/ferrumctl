@@ -23,13 +23,11 @@ class FakeApp:
         status="idle",
         actual_turn_id="submission",
         turn_status="inProgress",
-        goal_status=None,
     ):
         self.loaded = loaded
         self.status = status
         self.actual_turn_id = actual_turn_id
         self.turn_status = turn_status
-        self.goal_status = goal_status
         self.client_message_id = None
         self.timeout = 1
         self.calls = []
@@ -40,13 +38,6 @@ class FakeApp:
             return {"data": ["thread"] if self.loaded else [], "nextCursor": None}
         if method == "thread/read":
             return {"thread": {"id": "thread", "status": {"type": self.status}}}
-        if method == "thread/goal/get":
-            goal = (
-                {"status": self.goal_status, "objective": "test"}
-                if self.goal_status is not None
-                else None
-            )
-            return {"goal": goal}
         if method == "thread/turns/list":
             item = (
                 {
@@ -408,11 +399,23 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
             ["42", "43"],
         )
         self.assertTrue(
-            await appserver.terminate_background_terminal(app, "thread", "42")
+            await appserver.terminate_background_terminal(
+                app, "thread", "42", "item-a"
+            )
         )
         self.assertFalse(
-            await appserver.terminate_background_terminal(app, "thread", "999999")
+            await appserver.terminate_background_terminal(
+                app, "thread", "43", "item-b"
+            )
         )
+        with self.assertRaisesRegex(ThreadStateError, "not found"):
+            await appserver.terminate_background_terminal(
+                app, "thread", "999999", "missing-item"
+            )
+        with self.assertRaisesRegex(ThreadStateError, "identity changed"):
+            await appserver.terminate_background_terminal(
+                app, "thread", "42", "stale-item"
+            )
         self.assertIn(
             (
                 "thread/backgroundTerminals/terminate",
@@ -549,39 +552,18 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_resume_loads_persisted_thread_without_turns(self):
         app = FakeApp(loaded=False)
-        thread = await appserver.resume_thread(app, "thread")
+        thread = await appserver.resume_thread(app, "thread", continue_goal=True)
         self.assertEqual(thread["id"], "thread")
         self.assertEqual(
             app.calls[-1],
             ("thread/resume", {"threadId": "thread", "excludeTurns": True}),
         )
 
-    async def test_resume_refuses_active_goal_without_explicit_continuation(self):
-        app = FakeApp(loaded=False, goal_status="active")
+    async def test_resume_requires_explicit_goal_continuation(self):
+        app = FakeApp(loaded=False)
         with self.assertRaisesRegex(ThreadStateError, "--continue-goal"):
             await appserver.resume_thread(app, "thread")
         self.assertFalse(any(method == "thread/resume" for method, _ in app.calls))
-
-    async def test_resume_allows_active_goal_when_requested(self):
-        app = FakeApp(loaded=False, goal_status="active")
-        await appserver.resume_thread(app, "thread", continue_goal=True)
-        self.assertEqual(
-            app.calls[-1],
-            ("thread/resume", {"threadId": "thread", "excludeTurns": True}),
-        )
-
-    async def test_resume_works_when_goals_are_disabled(self):
-        class GoalsDisabledApp(FakeApp):
-            async def request(self, method, params=None):
-                if method == "thread/goal/get":
-                    raise AppServerResponseError(
-                        {"message": "goals feature is disabled"}
-                    )
-                return await super().request(method, params)
-
-        app = GoalsDisabledApp(loaded=False)
-        await appserver.resume_thread(app, "thread")
-        self.assertEqual(app.calls[-1][0], "thread/resume")
 
     async def test_live_operations_require_selected_server_to_have_thread(self):
         with self.assertRaises(ThreadNotLoaded):

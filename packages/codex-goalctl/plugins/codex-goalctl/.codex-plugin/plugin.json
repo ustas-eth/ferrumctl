@@ -1,6 +1,6 @@
 {
   "name": "codex-goalctl",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Codex skill for coordinating Codex thread goals with codex-goalctl.",
   "author": {
     "name": "ustas-eth"

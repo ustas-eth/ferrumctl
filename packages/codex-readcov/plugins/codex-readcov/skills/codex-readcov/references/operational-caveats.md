@@ -108,9 +108,14 @@ it does not pause a goal or terminate background terminals. `terminals` and
 `terminate-terminal` expose those processes separately.
 
 `resume` does not add a user message, but Codex can continue an active goal
-after loading it. Threadctl requires `--continue-goal` when it observes one.
-That goal check is not atomic with resume, and resume does not coordinate
+after loading it. App-server cannot atomically exclude goal continuation, so
+threadctl requires `--continue-goal` for every resume. Resume does not coordinate
 another server that may own the same thread.
+
+Codex can reuse background-terminal process ids. `terminate-terminal` requires
+the current originating item id and checks it before acting, but the check and
+native process-id termination are not atomic. A false termination result means
+the process was not confirmed terminated; it does not prove absence.
 
 ## Read Coverage
 

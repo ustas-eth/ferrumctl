@@ -303,18 +303,25 @@ async def cmd_terminate_terminal(args: argparse.Namespace) -> int:
             app,
             args.thread_id,
             args.process_id,
+            args.item_id,
         )
     if not terminated:
-        raise ThreadctlError(f"background terminal not found: {args.process_id}")
+        raise ThreadctlError(
+            f"background terminal was not terminated: {args.process_id}"
+        )
     result = {
         "threadId": args.thread_id,
         "processId": args.process_id,
+        "itemId": args.item_id,
         "terminated": True,
     }
     if args.json:
         print(json.dumps(result, indent=2))
     else:
-        print(f"terminated\t{args.thread_id}\t{args.process_id}")
+        print(
+            f"terminated\t{args.thread_id}\t{args.process_id}"
+            f"\titem={args.item_id}"
+        )
     return 0
 
 

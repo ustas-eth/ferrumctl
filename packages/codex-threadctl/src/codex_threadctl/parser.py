@@ -211,6 +211,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     terminate_terminal.add_argument("thread_id")
     terminate_terminal.add_argument("process_id")
+    terminate_terminal.add_argument(
+        "--item",
+        dest="item_id",
+        required=True,
+        help="expected item id from the current terminals listing",
+    )
     add_global_options(terminate_terminal, defaults=False)
     terminate_terminal.set_defaults(func=cmd_terminate_terminal)
 
@@ -219,7 +225,8 @@ def build_parser() -> argparse.ArgumentParser:
     resume.add_argument(
         "--continue-goal",
         action="store_true",
-        help="allow Codex to continue an active goal after resume",
+        required=True,
+        help="acknowledge that resume can continue an active goal",
     )
     add_global_options(resume, defaults=False)
     resume.set_defaults(func=cmd_resume)

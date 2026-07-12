@@ -264,7 +264,7 @@ def format_terminals(terminals: list[dict[str, Any]]) -> str:
             f"cpu={terminal.get('cpuPercent') if terminal.get('cpuPercent') is not None else '-'}",
             f"rss_kb={terminal.get('rssKb') if terminal.get('rssKb') is not None else '-'}",
             f"cwd={quoted(terminal.get('cwd') or '')}",
-            f"command={quoted(message_preview(terminal.get('command') or '', 240))}",
+            f"command={quoted(terminal.get('command') or '')}",
         ]
         lines.append("\t".join(fields))
     return "\n".join(lines)

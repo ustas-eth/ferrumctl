@@ -16,10 +16,10 @@ currently owns live execution.
 message. Codex emits the thread's goal snapshot after the resume response and
 can immediately continue an active goal when the resumed thread is idle.
 
-Threadctl reads goal state first and refuses an observed active goal unless
-`--continue-goal` makes that continuation intentional. The check and native
-resume request are not atomic; another controller can activate the goal between
-them. Resume also does not detect or coordinate another app-server that may
+App-server does not provide an atomic "resume only if no goal is active"
+operation. Threadctl therefore requires `--continue-goal` for every resume. The
+flag acknowledges possible continuation; it does not activate or change the
+goal. Resume also does not detect or coordinate another app-server that may
 have loaded the same thread.
 
 Codex rejects direct app-server input to v2 subagents. Control those subagents
@@ -69,8 +69,14 @@ terminals.
 record includes the native process id used by app-server, its originating item,
 command, and working directory, with OS resource fields when available.
 
-`terminate-terminal` sends the exact thread and process ids to Codex and
-succeeds only when app-server confirms that process was terminated. It does not
-interrupt the model turn or change goal state. When a thread inspects itself,
-the command performing the inspection can appear in the result while it is
-still running.
+Codex can reuse process ids after a terminal exits. `terminate-terminal`
+therefore requires both the process id and originating item id from a current
+`terminals` listing. Threadctl re-lists the thread and rejects a missing process
+or changed item before sending the native termination request.
+
+The identity check and native request are not atomic because app-server accepts
+only the process id. Use a fresh listing and act promptly. Success means
+app-server confirmed termination; failure does not by itself prove the process
+was absent. Termination does not interrupt the model turn or change goal state.
+When a thread inspects itself, the inspection command can appear in the result
+while it is still running.

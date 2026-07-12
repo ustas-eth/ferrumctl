@@ -66,7 +66,7 @@ active or one exact process should be stopped:
 
 ```sh
 codex-threadctl terminals THREAD_ID
-codex-threadctl terminate-terminal THREAD_ID PROCESS_ID
+codex-threadctl terminate-terminal THREAD_ID PROCESS_ID --item ITEM_ID
 ```
 
 Start input on an idle thread:
@@ -81,11 +81,10 @@ Steer one known active turn:
 codex-threadctl steer THREAD_ID TURN_ID "Focus on the failing test first."
 ```
 
-Resume a persisted thread without adding a user message. Permit active-goal
-continuation only when that is the intended effect:
+Resume a persisted thread without adding a user message. The required flag
+acknowledges that Codex can continue an active goal:
 
 ```sh
-codex-threadctl resume THREAD_ID
 codex-threadctl resume THREAD_ID --continue-goal
 ```
 
@@ -123,10 +122,12 @@ codex-threadctl inspect "$SELF"
 - Interruption without `--wait` reports `requested`, not completion. It does
   not pause an active goal or terminate background terminals.
 - `resume` does not add a user message, but Codex can continue an active goal.
-  Threadctl requires `--continue-goal` when it observes one; the goal check and
-  resume request can still race.
-- Use the process id returned by `terminals` for `terminate-terminal`.
-  Self-inspection can include the command performing the inspection.
+  App-server cannot exclude that behavior atomically, so every resume requires
+  `--continue-goal` as an acknowledgement.
+- Use the process and item ids from the same current `terminals` listing for
+  `terminate-terminal`. Threadctl checks that pair before acting, but the check
+  and native process-id termination are not atomic. Self-inspection can include
+  the command performing the inspection.
 - Codex rejects direct app-server input to v2 subagents. Use their native
   parent handle instead of `start` or `steer`.
 - Treat context percentage and age as orientation. Remote endpoints omit local

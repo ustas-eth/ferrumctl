@@ -67,7 +67,7 @@ run git diff --check
   run "$bin_dir/codex-threadctl" --version
   run "$bin_dir/codex-wakectl" --version
   run "$UV" pip check --python "$tool_dir/codex-wakectl/bin/python"
-  test "$("$bin_dir/codex-goalctl" --version)" = "codex-goalctl 0.1.1"
+  test "$("$bin_dir/codex-goalctl" --version)" = "codex-goalctl 0.1.2"
   test "$("$bin_dir/codex-threadctl" --version)" = "codex-threadctl 0.3.0"
   test "$("$bin_dir/codex-wakectl" --version)" = "codex-wakectl 0.3.2"
 )

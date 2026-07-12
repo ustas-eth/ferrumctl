@@ -35,7 +35,7 @@ class ParserTests(unittest.TestCase):
             ["steer", "thread", "turn", "message"],
             ["interrupt", "thread", "turn", "--wait"],
             ["terminals", "thread", "--limit", "0"],
-            ["terminate-terminal", "thread", "42"],
+            ["terminate-terminal", "thread", "42", "--item", "item"],
             ["resume", "thread", "--continue-goal"],
         ]
         for argv in cases:
@@ -51,6 +51,14 @@ class ParserTests(unittest.TestCase):
     def test_search_rejects_empty_text(self):
         with self.assertRaises(SystemExit):
             parser.build_parser().parse_args(["search", "  "])
+
+    def test_destructive_controls_require_explicit_identity_and_intent(self):
+        with self.assertRaises(SystemExit):
+            parser.build_parser().parse_args(
+                ["terminate-terminal", "thread", "42"]
+            )
+        with self.assertRaises(SystemExit):
+            parser.build_parser().parse_args(["resume", "thread"])
 
     def test_global_options_work_after_subcommand(self):
         args = parser.build_parser().parse_args(
@@ -195,7 +203,7 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
                 "cpuPercent": 2.5,
                 "rssKb": 4096,
                 "cwd": "/work",
-                "command": "sleep 10",
+                "command": "printf 'a  b'\nsleep 10 " + "x" * 240,
             }
         ]
         with (
@@ -211,11 +219,14 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, 0)
         list_terminals.assert_awaited_once_with(mock.ANY, "thread", limit=20)
         self.assertTrue(output.getvalue().startswith("42\titem=item\tpid=123\t"))
-        self.assertIn('command="sleep 10"', output.getvalue())
+        self.assertIn(
+            'command="printf \'a  b\'\\nsleep 10 ' + "x" * 240 + '"',
+            output.getvalue(),
+        )
 
     async def test_terminate_terminal_requires_native_confirmation(self):
         args = parser.build_parser().parse_args(
-            ["terminate-terminal", "thread", "42"]
+            ["terminate-terminal", "thread", "42", "--item", "item"]
         )
         with (
             mock.patch.object(commands, "AppServer", return_value=FakeContext()),
@@ -223,10 +234,48 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
                 commands,
                 "terminate_background_terminal",
                 mock.AsyncMock(return_value=False),
-            ),
+            ) as terminate_terminal,
         ):
-            with self.assertRaisesRegex(commands.ThreadctlError, "not found"):
+            with self.assertRaisesRegex(commands.ThreadctlError, "was not terminated"):
                 await commands.cmd_terminate_terminal(args)
+        terminate_terminal.assert_awaited_once_with(
+            mock.ANY,
+            "thread",
+            "42",
+            "item",
+        )
+
+    async def test_terminate_terminal_reports_confirmed_identity(self):
+        args = parser.build_parser().parse_args(
+            [
+                "terminate-terminal",
+                "thread",
+                "42",
+                "--item",
+                "item",
+                "--json",
+            ]
+        )
+        with (
+            mock.patch.object(commands, "AppServer", return_value=FakeContext()),
+            mock.patch.object(
+                commands,
+                "terminate_background_terminal",
+                mock.AsyncMock(return_value=True),
+            ),
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            result = await commands.cmd_terminate_terminal(args)
+        self.assertEqual(result, 0)
+        self.assertEqual(
+            json.loads(output.getvalue()),
+            {
+                "threadId": "thread",
+                "processId": "42",
+                "itemId": "item",
+                "terminated": True,
+            },
+        )
 
     async def test_resume_passes_goal_continuation_intent(self):
         args = parser.build_parser().parse_args(

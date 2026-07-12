@@ -70,20 +70,22 @@ codex-threadctl steer THREAD_ID TURN_ID "Focus on the failing test first."
 Resume a stored thread or request interruption of one exact turn:
 
 ```sh
-codex-threadctl resume THREAD_ID
 codex-threadctl resume THREAD_ID --continue-goal
 codex-threadctl interrupt THREAD_ID TURN_ID --wait
 ```
 
 Resume does not add a user message. Because Codex can continue an active goal
-after resume, threadctl requires `--continue-goal` when it observes one.
+after resume and app-server cannot exclude that behavior atomically, every
+resume requires `--continue-goal` as an explicit acknowledgement.
 
 List running terminal processes or terminate one exact process:
 
 ```sh
 codex-threadctl terminals THREAD_ID
-codex-threadctl terminate-terminal THREAD_ID PROCESS_ID
+codex-threadctl terminate-terminal THREAD_ID PROCESS_ID --item ITEM_ID
 ```
+
+Use the process and item ids from the same current `terminals` listing.
 
 Use `--json` when another program will parse output.
 

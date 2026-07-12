@@ -443,8 +443,22 @@ async def terminate_background_terminal(
     app: AppServer,
     thread_id: str,
     process_id: str,
+    item_id: str,
 ) -> bool:
-    await require_loaded(app, thread_id)
+    terminals = await list_background_terminals(app, thread_id, limit=0)
+    terminal = next(
+        (terminal for terminal in terminals if terminal["processId"] == process_id),
+        None,
+    )
+    if terminal is None:
+        raise ThreadStateError(f"background terminal not found: {process_id}")
+    actual_item_id = terminal["itemId"]
+    if actual_item_id != item_id:
+        raise ThreadStateError(
+            f"background terminal identity changed for process {process_id}: "
+            f"expected item {item_id}, found {actual_item_id}"
+        )
+
     result = require_object(
         await app.request(
             "thread/backgroundTerminals/terminate",
@@ -701,17 +715,10 @@ async def resume_thread(
     continue_goal: bool = False,
 ) -> dict[str, Any]:
     if not continue_goal:
-        try:
-            goal = await get_goal(app, thread_id)
-        except AppServerResponseError as exc:
-            if "goals feature is disabled" not in str(exc):
-                raise
-            goal = None
-        if goal is not None and goal.get("status") == "active":
-            raise ThreadStateError(
-                "thread goal is active; resume can continue it without input; "
-                "pass --continue-goal to allow this"
-            )
+        raise ThreadStateError(
+            "resume can continue an active goal without input; "
+            "pass --continue-goal to acknowledge this"
+        )
 
     result = require_object(
         await app.request(

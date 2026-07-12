@@ -379,7 +379,8 @@ grep -Fq -- '--continue-goal' "$SMOKE_ROOT/resume-guard.err" || {
 }
 goalctl clear "$inspect_thread" >"$SMOKE_ROOT/resume-goal-clear.out"
 
-threadctl --timeout 5 --json resume "$inspect_thread" >"$SMOKE_ROOT/resume.json"
+threadctl --timeout 5 --json resume "$inspect_thread" --continue-goal \
+  >"$SMOKE_ROOT/resume.json"
 "$PYTHON" - "$SMOKE_ROOT/resume.json" "$inspect_thread" <<'PY'
 import json
 import sys
@@ -388,9 +389,9 @@ with open(sys.argv[1], encoding="utf-8") as handle:
     result = json.load(handle)
 assert result["threadId"] == sys.argv[2]
 assert result["status"]["type"] == "idle"
-assert result["goalContinuationAllowed"] is False
+assert result["goalContinuationAllowed"] is True
 PY
-printf 'threadctl guarded active-goal continuation and resumed goal-free state\n'
+printf 'threadctl required explicit goal-continuation acknowledgement for resume\n'
 
 threadctl --timeout 5 --json terminals "$inspect_thread" \
   >"$SMOKE_ROOT/terminals.json"
@@ -403,15 +404,37 @@ with open(sys.argv[1], encoding="utf-8") as handle:
 assert result["threadId"] == sys.argv[2]
 assert result["terminals"] == []
 PY
+
 if threadctl --timeout 5 terminate-terminal "$inspect_thread" 999999 \
-  >"$SMOKE_ROOT/terminate.out" 2>"$SMOKE_ROOT/terminate.err"; then
+  --item missing-item >"$SMOKE_ROOT/terminate.out" \
+  2>"$SMOKE_ROOT/terminate.err"; then
   fail "expected missing terminal process to fail"
 fi
 grep -Fq 'background terminal not found: 999999' "$SMOKE_ROOT/terminate.err" || {
   sed -n '1,40p' "$SMOKE_ROOT/terminate.err" >&2
-  fail "unexpected terminal termination error"
+  fail "unexpected terminal identity error"
 }
-printf 'threadctl listed terminals and reached exact process termination API\n'
+
+PYTHONPATH="$ROOT/packages/codex-threadctl/src${PYTHONPATH:+:$PYTHONPATH}" \
+  "$PYTHON" - "$inspect_thread" <<'PY'
+import asyncio
+import sys
+
+from codex_threadctl.appserver import AppServer
+
+
+async def main():
+    async with AppServer("unix://", 5) as app:
+        result = await app.request(
+            "thread/backgroundTerminals/terminate",
+            {"threadId": sys.argv[1], "processId": "999999"},
+        )
+    assert result == {"terminated": False}
+
+
+asyncio.run(main())
+PY
+printf 'threadctl checked terminal identity and reached native termination API\n'
 
 if wakectl --timeout 5 add stop "$missing_thread" \
   --to "$missing_thread" "smoke" >"$SMOKE_ROOT/turns.out" 2>"$SMOKE_ROOT/turns.err"; then
