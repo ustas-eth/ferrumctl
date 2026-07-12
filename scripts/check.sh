@@ -73,6 +73,6 @@ run git diff --check
 )
 
 run packages/codex-readcov/target/debug/codex-readcov --version
-test "$(packages/codex-readcov/target/debug/codex-readcov --version)" = "codex-readcov 0.1.1"
+test "$(packages/codex-readcov/target/debug/codex-readcov --version)" = "codex-readcov 0.1.2"
 
 printf '\nchecks passed\n'
