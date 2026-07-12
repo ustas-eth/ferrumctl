@@ -22,7 +22,25 @@ STATUSES = {
 MAX_OBJECTIVE_CHARS = 4000
 
 
+def require_object(value: Any, label: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise GoalctlError(f"app-server returned invalid {label}")
+    return value
+
+
+def require_goal(value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    goal = require_object(value, "goal data")
+    if not isinstance(goal.get("status"), str) or not isinstance(
+        goal.get("objective"), str
+    ):
+        raise GoalctlError("app-server returned invalid goal data")
+    return goal
+
+
 def print_goal(goal: dict[str, Any] | None, as_json: bool) -> int:
+    goal = require_goal(goal)
     if as_json:
         print(json.dumps({"goal": goal}, indent=2))
         return 0
@@ -65,7 +83,10 @@ def positive_float(value: str) -> float:
 
 
 def cmd_get(args: argparse.Namespace) -> int:
-    result = appserver_request(args, "thread/goal/get", {"threadId": args.thread_id})
+    result = require_object(
+        appserver_request(args, "thread/goal/get", {"threadId": args.thread_id}),
+        "thread/goal/get result",
+    )
     return print_goal(result.get("goal"), args.json)
 
 
@@ -85,8 +106,14 @@ def set_goal(
         params["status"] = status
     if set_token_budget:
         params["tokenBudget"] = token_budget
-    result = app.request("thread/goal/set", params)
-    return result.get("goal")
+    result = require_object(
+        app.request("thread/goal/set", params),
+        "thread/goal/set result",
+    )
+    goal = require_goal(result.get("goal"))
+    if goal is None:
+        raise GoalctlError("app-server returned no goal after update")
+    return goal
 
 
 def cmd_update(args: argparse.Namespace) -> int:
@@ -132,7 +159,12 @@ def cmd_replace(args: argparse.Namespace) -> int:
 
 
 def cmd_clear(args: argparse.Namespace) -> int:
-    result = appserver_request(args, "thread/goal/clear", {"threadId": args.thread_id})
+    result = require_object(
+        appserver_request(args, "thread/goal/clear", {"threadId": args.thread_id}),
+        "thread/goal/clear result",
+    )
+    if not isinstance(result.get("cleared"), bool):
+        raise GoalctlError("app-server returned invalid goal-clear data")
     if args.json:
         print(json.dumps(result, indent=2))
     else:

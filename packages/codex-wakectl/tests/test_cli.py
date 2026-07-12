@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import contextlib
 import io
+import os
 import sqlite3
 import sys
 import tempfile
@@ -27,7 +28,7 @@ class ParseTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 parser.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-wakectl 0.3.2\n")
+        self.assertEqual(output.getvalue(), "codex-wakectl 0.3.3\n")
 
     def test_parse_duration(self) -> None:
         self.assertEqual(parsing.parse_duration("10s"), 10)
@@ -788,6 +789,38 @@ class ConditionTests(unittest.TestCase):
             self.assertEqual(jobs[0]["id"], "oldjob")
             self.assertFalse(jobs[0]["allowActive"])
             self.assertNotIn("timeout", jobs[0])
+
+    def test_default_state_permissions_are_private(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            state_root = Path(tmp) / "state"
+            state_dir = state_root / "codex-wakectl"
+            state_dir.mkdir(parents=True)
+            state_dir.chmod(0o775)
+            path = state_dir / "jobs.sqlite3"
+            path.touch()
+            path.chmod(0o644)
+
+            with mock.patch.dict(os.environ, {"XDG_STATE_HOME": str(state_root)}):
+                conn = state.open_state(state.default_state_path())
+                conn.close()
+
+            self.assertEqual(state_dir.stat().st_mode & 0o777, 0o700)
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+
+    def test_existing_custom_state_permissions_are_preserved(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            state_dir = Path(tmp) / "shared"
+            state_dir.mkdir()
+            state_dir.chmod(0o755)
+            path = state_dir / "jobs.sqlite3"
+            path.touch()
+            path.chmod(0o640)
+
+            conn = state.open_state(path)
+            conn.close()
+
+            self.assertEqual(state_dir.stat().st_mode & 0o777, 0o755)
+            self.assertEqual(path.stat().st_mode & 0o777, 0o640)
 
     def test_claimed_jobs_are_released_explicitly(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

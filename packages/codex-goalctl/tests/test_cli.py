@@ -51,7 +51,7 @@ class ParseTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 cli.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-goalctl 0.1.2\n")
+        self.assertEqual(output.getvalue(), "codex-goalctl 0.1.3\n")
 
 
 class FakeApp:
@@ -213,6 +213,16 @@ class GoalCommandTests(unittest.TestCase):
             {"threadId": "00000000-0000-4000-8000-000000000001"},
         )
         self.assertIn('"cleared": true', stdout.getvalue())
+
+    def test_get_rejects_invalid_result(self) -> None:
+        args = argparse.Namespace(
+            thread_id="00000000-0000-4000-8000-000000000001",
+            json=False,
+        )
+
+        with mock.patch.object(cli, "appserver_request", return_value=[]):
+            with self.assertRaisesRegex(cli.GoalctlError, "invalid thread/goal/get"):
+                cli.cmd_get(args)
 
 
 if __name__ == "__main__":

@@ -111,6 +111,11 @@ $XDG_STATE_HOME/codex-wakectl/jobs.sqlite3
 or `~/.local/state/codex-wakectl/jobs.sqlite3` when `XDG_STATE_HOME` is unset.
 Override it with `--state PATH`.
 
+The default state directory is mode `0700` and the database is mode `0600`.
+Existing default state is tightened when opened. A custom `--state` file is
+created as `0600`, but wakectl does not change permissions on an existing
+custom file or directory.
+
 The default database is shared by all workflows using the same host user and
 state path. `run` claims pending jobs and renews each claim before condition
 evaluation and delivery. Expired claims can be retried after a crashed process;

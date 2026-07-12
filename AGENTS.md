@@ -74,3 +74,6 @@ is clear-then-set.
   helper functions that calculate each step.
 - Keep delegated review focused: use at most two reviewers at `xhigh` effort,
   and do not use `max`.
+- Use `scripts/update-local.py` after changing locally installed commands or
+  plugins. `codex plugin add` updates files on disk, but does not invalidate a
+  separate persistent app-server's plugin cache.

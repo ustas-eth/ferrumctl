@@ -152,9 +152,12 @@ python3 scripts/sync-skill-references.py --check
 ```sh
 scripts/check.sh
 scripts/codex-smoke.sh
+uv run scripts/update-local.py
 ```
 
 `scripts/check.sh` is the normal pre-commit check. `scripts/codex-smoke.sh` is
 the local compatibility probe to run after Codex upgrades; it uses a temporary
 `CODEX_HOME` and `XDG_STATE_HOME`, starts only its own app-server, and cleans up
-after itself.
+after itself. `scripts/update-local.py` reinstalls the commands from this
+checkout and refreshes the plugins in an existing app-server without restarting
+the server or its sessions.

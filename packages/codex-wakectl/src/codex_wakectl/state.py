@@ -58,8 +58,20 @@ def default_state_path() -> Path:
     return root / "codex-wakectl" / "jobs.sqlite3"
 
 
+def prepare_state_path(path: Path) -> None:
+    is_default = path == default_state_path()
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if is_default:
+        path.parent.chmod(0o700)
+
+    fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
+    os.close(fd)
+    if is_default:
+        path.chmod(0o600)
+
+
 def open_state(path: Path) -> sqlite3.Connection:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    prepare_state_path(path)
     conn = sqlite3.connect(path, timeout=5.0, isolation_level=None)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout = 5000")
