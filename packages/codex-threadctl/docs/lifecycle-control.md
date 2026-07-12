@@ -1,17 +1,26 @@
 # Immediate Thread Control
 
 This reference describes the native operations behind thread start, steering,
-resume, and interruption.
+resume, interruption, and terminal-process control.
 
 ## Endpoint Ownership
 
-Immediate control requires the target to be loaded on the selected app-server.
-A thread id identifies persisted state under a Codex home, but it does not
-identify which server currently owns live execution.
+Starting, steering, interruption, and terminal-process control require the
+target to be loaded on the selected app-server. A thread id identifies
+persisted state under a Codex home, but it does not identify which server
+currently owns live execution.
 
-`resume` loads persisted state on the selected server without starting a turn.
-It does not detect or coordinate another app-server that may have loaded the
-same thread.
+## Resuming
+
+`resume` loads persisted state on the selected server without adding a user
+message. Codex emits the thread's goal snapshot after the resume response and
+can immediately continue an active goal when the resumed thread is idle.
+
+Threadctl reads goal state first and refuses an observed active goal unless
+`--continue-goal` makes that continuation intentional. The check and native
+resume request are not atomic; another controller can activate the goal between
+them. Resume also does not detect or coordinate another app-server that may
+have loaded the same thread.
 
 Codex rejects direct app-server input to v2 subagents. Control those subagents
 through their native parent handle; threadctl start and steer apply to threads
@@ -53,3 +62,15 @@ The immediate result is an interruption request, not terminal completion. With
 `--wait`, threadctl follows that exact turn until materialized history reports a
 terminal status. Interruption does not pause a goal or terminate background
 terminals.
+
+## Terminal Processes
+
+`terminals` lists processes that Codex still tracks for one loaded thread. Each
+record includes the native process id used by app-server, its originating item,
+command, and working directory, with OS resource fields when available.
+
+`terminate-terminal` sends the exact thread and process ids to Codex and
+succeeds only when app-server confirms that process was terminated. It does not
+interrupt the model turn or change goal state. When a thread inspects itself,
+the command performing the inspection can appear in the result while it is
+still running.

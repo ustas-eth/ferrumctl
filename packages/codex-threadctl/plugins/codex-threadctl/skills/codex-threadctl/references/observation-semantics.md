@@ -20,6 +20,12 @@ app-server. It is not the native agent manager's lifecycle status, and
 `notLoaded` does not distinguish a completed agent from any other stored thread.
 Use `inspect` to read retained turn state and responses.
 
+`search` queries persisted thread content and returns the matching thread with
+a server-selected snippet. It uses the same non-archived interactive thread
+scope as unfiltered discovery. A snippet helps locate a thread; it is not an
+exact message locator. Use `messages` and `message` when the retained exchange
+itself matters.
+
 ## Thread State
 
 The selected app-server endpoint defines live state. A loaded thread can be

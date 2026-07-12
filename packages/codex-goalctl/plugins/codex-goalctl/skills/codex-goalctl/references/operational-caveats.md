@@ -104,9 +104,13 @@ token counters are cumulative and are not context-window usage.
 Immediate input and interruption require a loaded target. `start` confirms the
 actual delivery mode, while `steer` and `interrupt` require an expected turn id.
 Interruption reports `requested` unless the caller waits for terminal status;
-it does not pause a goal or terminate background terminals. `resume` loads
-persisted state but does not coordinate another server that may own the same
-thread.
+it does not pause a goal or terminate background terminals. `terminals` and
+`terminate-terminal` expose those processes separately.
+
+`resume` does not add a user message, but Codex can continue an active goal
+after loading it. Threadctl requires `--continue-goal` when it observes one.
+That goal check is not atomic with resume, and resume does not coordinate
+another server that may own the same thread.
 
 ## Read Coverage
 

@@ -1,6 +1,6 @@
 ---
 name: codex-threadctl
-description: "Use when the useful handle is a Codex thread id or persisted thread state is needed: use the host codex-threadctl command through app-server to discover stored sessions or spawned threads unavailable through native handles, inspect activity, context, or retained messages, start input on an idle thread, steer one expected active turn, resume a persisted thread, or interrupt one exact turn. Do not use for ordinary native subagent messaging, waiting, or result retrieval while this session owns the live handle; future or conditional wakes; goal editing; file-read coverage; terminal injection; or agent spawning."
+description: "Use when the useful handle is a Codex thread id or persisted thread state is needed: use the host codex-threadctl command through app-server to discover or search stored sessions and spawned threads unavailable through native handles, inspect activity, context, retained messages, or running terminal processes, start input on an idle thread, steer one expected active turn, resume a persisted thread, interrupt one exact turn, or terminate one exact terminal process. Do not use for ordinary native subagent messaging, waiting, or result retrieval while this session owns the live handle; future or conditional wakes; goal editing; file-read coverage; terminal keystroke injection; or agent spawning."
 ---
 
 # Codex Threadctl
@@ -10,10 +10,11 @@ description: "Use when the useful handle is a Codex thread id or persisted threa
 Use this skill when this session needs visibility into a Codex thread or must
 apply an immediate thread operation through its thread id.
 
-Assume `codex-threadctl` is installed. It reads persisted thread relationships,
-app-server state, and materialized turn history, supplements local inspection
-with timestamped rollout context, and exposes native start, steer, resume, and
-interruption operations. It does not schedule future input, edit goals, measure
+Assume `codex-threadctl` is installed. It reads persisted thread relationships
+and search results, app-server state, materialized turn history, and running
+terminal processes. It supplements local inspection with timestamped rollout
+context and exposes native start, steer, resume, interruption, and exact
+terminal termination. It does not schedule future input, edit goals, measure
 read coverage, or spawn agents.
 
 ## Choosing The Control Surface
@@ -35,6 +36,7 @@ Discover recent sessions or retained spawn relationships without loading them:
 codex-threadctl list --limit 10
 codex-threadctl list --parent THREAD_ID --sort created --limit 5
 codex-threadctl list --ancestor THREAD_ID
+codex-threadctl search "decision text" --limit 10
 ```
 
 List thread ids currently loaded on the selected endpoint:
@@ -59,6 +61,14 @@ codex-threadctl messages THREAD_ID --limit 10
 codex-threadctl message THREAD_ID TURN_ID ITEM_ID
 ```
 
+List running terminal processes before deciding whether a command is still
+active or one exact process should be stopped:
+
+```sh
+codex-threadctl terminals THREAD_ID
+codex-threadctl terminate-terminal THREAD_ID PROCESS_ID
+```
+
 Start input on an idle thread:
 
 ```sh
@@ -71,10 +81,12 @@ Steer one known active turn:
 codex-threadctl steer THREAD_ID TURN_ID "Focus on the failing test first."
 ```
 
-Resume a persisted thread without sending input:
+Resume a persisted thread without adding a user message. Permit active-goal
+continuation only when that is the intended effect:
 
 ```sh
 codex-threadctl resume THREAD_ID
+codex-threadctl resume THREAD_ID --continue-goal
 ```
 
 Request interruption of one exact turn. Add `--wait` when the next action
@@ -100,6 +112,8 @@ codex-threadctl inspect "$SELF"
 - Read `server=` in `list` output as state on the selected app-server, not as a
   native agent status. `notLoaded` says neither that work completed nor that the
   thread is not loaded on another server.
+- Treat search snippets as orientation. Use `messages` and `message` to recover
+  an exact retained exchange.
 - Treat `idle` as no running turn, not permission for unrelated work. An idle
   thread can retain an active goal.
 - Read the result of `start`. Its idle check is not atomic; if another turn
@@ -108,8 +122,11 @@ codex-threadctl inspect "$SELF"
   `interrupt`. Native expected-turn checks reject stale ids.
 - Interruption without `--wait` reports `requested`, not completion. It does
   not pause an active goal or terminate background terminals.
-- `resume` loads persisted state on the selected server. It does not start a
-  turn or prove that another server is not controlling the same thread.
+- `resume` does not add a user message, but Codex can continue an active goal.
+  Threadctl requires `--continue-goal` when it observes one; the goal check and
+  resume request can still race.
+- Use the process id returned by `terminals` for `terminate-terminal`.
+  Self-inspection can include the command performing the inspection.
 - Codex rejects direct app-server input to v2 subagents. Use their native
   parent handle instead of `start` or `steer`.
 - Treat context percentage and age as orientation. Remote endpoints omit local
@@ -121,11 +138,11 @@ codex-threadctl inspect "$SELF"
 
 ## References
 
-- Read `references/observation-semantics.md` when persisted discovery,
+- Read `references/observation-semantics.md` when persisted discovery or search,
   app-server status, materialized history, timestamps, message lookup, context
   freshness, or snapshot consistency matters.
 - Read `references/lifecycle-control.md` before relying on start, steering,
-  resume, or interruption behavior.
+  resume, interruption, or terminal-process behavior.
 - Read `references/coordination-principles.md` when composing immediate control
   with native handles, goals, scheduled wakes, coverage, or partial skill
   availability.

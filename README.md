@@ -64,6 +64,7 @@ Find recent sessions or retained subagent threads:
 SELF=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
 codex-threadctl list --limit 10
 codex-threadctl list --parent "$SELF" --limit 5
+codex-threadctl search "decision text" --limit 10
 ```
 
 Assign durable work, wake the worker, then inspect its state and recorded read

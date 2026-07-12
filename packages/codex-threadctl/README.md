@@ -3,10 +3,10 @@
 `codex-threadctl` discovers, inspects, and controls Codex threads through a shared
 `codex app-server`.
 
-Use it to find stored sessions and spawned threads, inspect recent work,
-retrieve conversation messages, start or steer input, resume a persisted
-thread, or interrupt one known turn. It does not edit goals, schedule future
-work, or measure file-read coverage.
+Use it to find or search stored sessions and spawned threads, inspect recent
+work, retrieve conversation messages, inspect running terminal processes,
+start or steer input, resume a persisted thread, or interrupt one known turn.
+It does not edit goals, schedule future work, or measure file-read coverage.
 
 ## Install
 
@@ -40,6 +40,7 @@ Find recently used sessions or threads spawned by a known parent:
 codex-threadctl list --limit 10
 codex-threadctl list --parent THREAD_ID --sort created --limit 5
 codex-threadctl list --ancestor THREAD_ID
+codex-threadctl search "decision text" --limit 10
 ```
 
 Inspect the current state and recent activity of a thread:
@@ -70,7 +71,18 @@ Resume a stored thread or request interruption of one exact turn:
 
 ```sh
 codex-threadctl resume THREAD_ID
+codex-threadctl resume THREAD_ID --continue-goal
 codex-threadctl interrupt THREAD_ID TURN_ID --wait
+```
+
+Resume does not add a user message. Because Codex can continue an active goal
+after resume, threadctl requires `--continue-goal` when it observes one.
+
+List running terminal processes or terminate one exact process:
+
+```sh
+codex-threadctl terminals THREAD_ID
+codex-threadctl terminate-terminal THREAD_ID PROCESS_ID
 ```
 
 Use `--json` when another program will parse output.

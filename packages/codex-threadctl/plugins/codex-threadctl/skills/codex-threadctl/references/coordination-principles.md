@@ -17,10 +17,11 @@ and counters, but does not start a turn or deliver input.
 `codex-wakectl` waits for conditions and persists jobs that deliver normal input
 later. Its SQLite queue is shared state separate from Codex.
 
-`codex-threadctl` observes thread status, materialized turns, goal state, and
-context records. It also starts or steers immediate input, resumes persisted
-threads, and interrupts exact turns. Its inspection is a read-only aggregate,
-not an atomic snapshot.
+`codex-threadctl` discovers and searches persisted threads and observes thread
+status, materialized turns, goal state, context records, and running terminal
+processes. It also starts or steers immediate input, resumes persisted threads,
+interrupts exact turns, and terminates exact terminal processes. Its inspection
+is a read-only aggregate, not an atomic snapshot.
 
 `codex-readcov` reads rollout transcripts and reports recorded file-read
 actions. It provides transcript evidence, not verified operating-system access.
