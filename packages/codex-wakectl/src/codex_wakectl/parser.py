@@ -35,7 +35,12 @@ from .parsing import (
 from .state import default_state_path
 
 
-def add_global_options(parser: argparse.ArgumentParser, *, defaults: bool) -> None:
+def add_global_options(
+    parser: argparse.ArgumentParser,
+    *,
+    defaults: bool,
+    include_state: bool = True,
+) -> None:
     parser.add_argument(
         "--endpoint",
         default="unix://" if defaults else argparse.SUPPRESS,
@@ -47,12 +52,13 @@ def add_global_options(parser: argparse.ArgumentParser, *, defaults: bool) -> No
         default=DEFAULT_TIMEOUT if defaults else argparse.SUPPRESS,
         help="app-server request and command predicate timeout in seconds",
     )
-    parser.add_argument(
-        "--state",
-        type=Path,
-        default=default_state_path() if defaults else argparse.SUPPRESS,
-        help="wake job state database",
-    )
+    if include_state:
+        parser.add_argument(
+            "--state",
+            type=Path,
+            default=default_state_path() if defaults else argparse.SUPPRESS,
+            help="wake job state database",
+        )
     parser.add_argument(
         "--json",
         action="store_true",
@@ -179,48 +185,55 @@ def add_wait_options(parser: argparse.ArgumentParser, *, defaults: bool) -> None
 def add_wait_time_condition_parser(
     sub: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
-    parser = sub.add_parser("time", help="wait for time")
+    parser = sub.add_parser("time", help="block this process until a time")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--after", type=parse_duration)
     group.add_argument("--at", type=parse_at)
     parser.set_defaults(condition_builder=build_time_condition)
     add_wait_options(parser, defaults=False)
-    add_global_options(parser, defaults=False)
+    add_global_options(parser, defaults=False, include_state=False)
 
 
 def add_wait_goal_condition_parser(
     sub: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
-    parser = sub.add_parser("goal", help="wait for goal")
+    parser = sub.add_parser("goal", help="block this process on goal state")
     add_goal_condition_options(parser, allow_max_fires=False)
     add_wait_options(parser, defaults=False)
-    add_global_options(parser, defaults=False)
+    add_global_options(parser, defaults=False, include_state=False)
 
 
 def add_wait_cmd_condition_parser(
     sub: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
-    parser = sub.add_parser("cmd", help="wait for command predicate")
+    parser = sub.add_parser(
+        "cmd",
+        help="poll a command predicate in this process",
+        description=(
+            "Poll a command predicate in this process. This does not monitor an "
+            "existing process or create a wake job."
+        ),
+    )
     parser.add_argument("argv", nargs=argparse.REMAINDER, help="command after --")
     parser.set_defaults(condition_builder=build_cmd_condition)
     add_wait_options(parser, defaults=False)
-    add_global_options(parser, defaults=False)
+    add_global_options(parser, defaults=False, include_state=False)
 
 
 def add_wait_stop_condition_parser(
     sub: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
-    parser = sub.add_parser("stop", help="wait for a later turn to end")
+    parser = sub.add_parser("stop", help="block this process until a later turn ends")
     parser.add_argument("thread_id", help="thread to watch")
     parser.set_defaults(condition_builder=build_stop_condition)
     add_wait_options(parser, defaults=False)
-    add_global_options(parser, defaults=False)
+    add_global_options(parser, defaults=False, include_state=False)
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="codex-wakectl",
-        description="Wait for conditions and schedule input for Codex threads.",
+        description="Schedule conditional input and synchronously poll conditions.",
     )
     parser.add_argument(
         "--version", action="version", version=f"%(prog)s {CLIENT_VERSION}"
@@ -242,7 +255,7 @@ def build_parser() -> argparse.ArgumentParser:
         moved.set_defaults(func=cmd_moved, moved_to=replacement)
         sub._choices_actions.pop()
 
-    add = sub.add_parser("add", help="persist a wake job")
+    add = sub.add_parser("add", help="persist a wake job for runner delivery")
     add_global_options(add, defaults=False)
     add_sub = add.add_subparsers(dest="condition", required=True)
     add_time_condition_parser(add_sub)
@@ -251,9 +264,16 @@ def build_parser() -> argparse.ArgumentParser:
     add_stop_condition_parser(add_sub)
     add.set_defaults(func=cmd_add)
 
-    wait = sub.add_parser("wait", help="block until a condition is ready")
+    wait = sub.add_parser(
+        "wait",
+        help="poll synchronously without scheduling input",
+        description=(
+            "Poll a condition in this process. This sends no input and does not "
+            "persist a wake job."
+        ),
+    )
     add_wait_options(wait, defaults=True)
-    add_global_options(wait, defaults=False)
+    add_global_options(wait, defaults=False, include_state=False)
     wait_sub = wait.add_subparsers(dest="condition", required=True)
     add_wait_time_condition_parser(wait_sub)
     add_wait_goal_condition_parser(wait_sub)

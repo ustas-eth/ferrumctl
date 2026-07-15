@@ -95,6 +95,28 @@ class ParseTests(unittest.TestCase):
         self.assertNotIn("    send", output)
         self.assertIn("{add,wait,run,list,cancel,systemd}", output)
 
+    def test_wait_help_distinguishes_synchronous_polling_from_jobs(self) -> None:
+        root = parser.build_parser()
+        commands = next(
+            action
+            for action in root._actions
+            if isinstance(action, argparse._SubParsersAction)
+        )
+        wait = commands.choices["wait"]
+        output = " ".join(wait.format_help().split())
+        self.assertIn("Poll a condition in this process", output)
+        self.assertIn("does not persist a wake job", output)
+        self.assertNotIn("--state", output)
+
+        conditions = next(
+            action
+            for action in wait._actions
+            if isinstance(action, argparse._SubParsersAction)
+        )
+        command_output = " ".join(conditions.choices["cmd"].format_help().split())
+        self.assertIn("does not monitor an existing process", command_output)
+        self.assertIn("create a wake job", command_output)
+
     def test_parse_statuses(self) -> None:
         self.assertEqual(
             parsing.parse_statuses("complete,budgetLimited"),

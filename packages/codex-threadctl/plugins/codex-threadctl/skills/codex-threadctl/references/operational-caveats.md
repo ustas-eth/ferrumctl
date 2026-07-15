@@ -153,6 +153,7 @@ Prefer workflows that tolerate retries:
 - cancel queued wakes owned by the workflow once their purpose is complete
 - use `--json` for machine parsing
 
-When a native subagent handle is available, native input is usually the cleanest
-immediate message channel. Native wait or poll is useful only when blocking the
-coordinator is acceptable; queued wakes are better for durable later attention.
+When a native subagent or terminal handle is available, native input or process
+control is usually the cleanest immediate channel. Synchronous waiting is useful
+only when blocking the coordinator is acceptable; queued wakes are better for
+durable later attention.

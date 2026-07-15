@@ -21,15 +21,17 @@ the sessions and queued jobs in one workflow.
 ## Choosing A Channel
 
 Use native subagent input when the current session owns the live handle and
-needs to send an immediate message. Use native wait or poll when this turn
-should stay active and blocking for the worker is acceptable.
+needs to send an immediate message. Use native wait or poll when the current
+turn owns the live subagent or terminal handle and should stay active.
 
 `codex-threadctl start` and `steer` provide immediate thread-id control when no
 native handle is available.
 
-Use `codex-wakectl wait` when a script or session should block on a Codex
-condition without sending input. It exits `0` when ready and nonzero on timeout;
-it does not persist a job.
+Use `codex-wakectl wait` when a script or thread-id-only controller needs an
+exit status from a Codex condition. It polls in the invoking process, exits `0`
+when ready and nonzero on timeout, sends no input, and persists no job. If a
+shell tool moves that process to the background, its caller must still observe
+the process finishing; completion does not start a Codex turn.
 
 Use a queued wake when the current process or Codex turn should end while a
 runner watches the condition and resumes attention later.
@@ -40,6 +42,9 @@ subagent results, materialized thread history, and shared artifacts are separate
 result channels.
 
 ## Long Host Waits
+
+The practices in this section concern queued `add cmd` jobs. A synchronous
+`wait cmd` only moves the predicate loop into another process.
 
 An `add cmd` command is evaluated from scratch on every runner pass. It is best
 suited to a level-triggered probe: a cheap, side-effect-free check that returns

@@ -1,14 +1,18 @@
 ---
 name: codex-wakectl
-description: "Use when you need the host codex-wakectl command to wait for a Codex or host condition, schedule a normal input turn for later delivery through app-server, or manage durable wake jobs. Covers time, goal, turn-completion and command conditions, self-wakes, supervisor wakes, peer handoffs, queue runners, and repeating milestones. Do not use for immediate input, thread inspection or interruption, goal editing, read coverage, terminal injection, agent spawning, or jobs you do not own."
+description: "Use when input must be delivered to a Codex thread after a later time, goal, turn-completion, or host condition, or when durable wake jobs and runners must be managed. Also covers synchronous goal or turn waits for scripts and thread-id-only controllers. Do not use to monitor a terminal process this turn already owns; use native process polling. Do not use for immediate input, thread inspection or interruption, goal editing, read coverage, terminal injection, agent spawning, or jobs you do not own."
 ---
 
 # Codex Wakectl
 
 ## Purpose
 
-Use this skill when this session must block on a condition or arrange input that
-survives the current turn.
+Use this skill to arrange input that survives the current turn. `add` persists a
+condition and message for later runner delivery.
+
+`wait` is a secondary synchronous interface for scripts and thread-id-only
+controllers. It blocks only its invoking process, sends no input, creates no
+job, and does not start or resume a Codex turn when it finishes.
 
 Assume `codex-wakectl` is installed. It evaluates time, goal, turn-completion,
 and command predicates and stores conditional input jobs for a runner. It does
@@ -21,10 +25,11 @@ usually better than a copied plan.
 
 ## Choosing The Primitive
 
-Use native wait or poll when this turn should stay active and blocking is
-acceptable. Use `wait` when a script or thread-id-only controller needs a
-blocking condition and an exit status. Use `add` when this turn should end and
-a runner should deliver input after a later condition.
+Choose by what should happen to the caller. Use native wait or poll when this
+turn owns the live subagent or terminal handle and should stay active. Use
+`wait goal` or `wait stop` when a script or thread-id-only controller needs an
+exit status from Codex state. Use `add` when this turn should end and a runner
+should deliver input after a later condition.
 
 Use native subagent input for immediate messages when the live handle is
 available. If only a thread id is available and the `codex-threadctl` skill is
@@ -91,7 +96,7 @@ codex-wakectl add cmd --to "$SELF" "Input is ready." -- test -f done.txt
 codex-wakectl add time --after 2h --to "$SELF" "Wake watch health check."
 ```
 
-Block without sending input:
+Synchronously gate a script or thread-id-only controller:
 
 ```sh
 codex-wakectl wait goal WORKER --status complete,blocked --max-wait 30m
@@ -131,6 +136,9 @@ codex-wakectl cancel JOB_ID
   the old watch.
 - Goal completion and turn completion are separate. Observe the later turn
   boundary when the final response matters.
+- Do not wrap a running terminal owned by this turn with `wait cmd`; poll the
+  original terminal directly. `wait cmd` only adds another polling process and
+  does not schedule later input.
 - Keep queued messages short unless delayed duplicate delivery is deliberately
   the instruction. Do not store evolving approvals or project state in wake
   text.

@@ -19,10 +19,23 @@ queued jobs remain pending.
 Codex rejects direct app-server input to v2 subagents. Schedule those through
 their native parent instead of using them as wake targets.
 
+## Synchronous Waiting
+
+`wait` evaluates a condition in the invoking process. It keeps any condition
+cursor only in memory and does not create a SQLite job, involve the runner, or
+send input. Its completion is an ordinary process result, not a callback into a
+Codex thread.
+
+This mode is useful when a script needs an exit status from Codex goal or turn
+state. A caller that already owns a live subagent or terminal handle can wait on
+that handle directly. Wrapping an existing process with `wait cmd` only adds a
+second polling process.
+
 ## Conditions
 
-Queued conditions are polling-backed. Time conditions fire when a runner first
-observes that their time has passed; they are not exact timers.
+Synchronous waits and queued conditions are polling-backed. Queued time
+conditions fire when a runner first observes that their time has passed; they
+are not exact timers.
 
 Goal predicates use AND semantics. A job fires only when every specified
 status, token, and time predicate matches. `--tokens-left-lte` requires a goal

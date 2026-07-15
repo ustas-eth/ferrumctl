@@ -8,7 +8,7 @@ Use the tools separately and compose them with the shell:
 - `codex-goalctl` reads and changes persisted Codex thread goals.
 - `codex-threadctl` discovers and inspects threads and applies immediate,
   turn-scoped control.
-- `codex-wakectl` waits for conditions and schedules durable thread input.
+- `codex-wakectl` schedules durable thread input after later conditions.
 - `codex-readcov` counts file-read actions from Codex rollout transcripts.
 
 The optional Codex plugins add skills that explain when agents should use each

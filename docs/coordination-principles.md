@@ -12,8 +12,9 @@ process.
 `codex-goalctl` reads and edits persisted goal state. It provides durable intent
 and counters, but does not start a turn or deliver input.
 
-`codex-wakectl` waits for conditions and persists jobs that deliver normal input
-later. Its SQLite queue is shared state separate from Codex.
+`codex-wakectl` persists jobs that deliver normal input after later conditions.
+It also offers synchronous condition polling for scripts; those waits do not
+use the queue or deliver input.
 
 `codex-threadctl` discovers and searches persisted threads and observes thread
 status, materialized turns, goal state, context records, and running terminal
@@ -38,9 +39,11 @@ Use native subagent input when the current session owns the live handle and
 needs to send an immediate message. Use native result retrieval for that
 subagent's completed response.
 
-Native wait or poll is appropriate when the current turn should stay active and
-blocking is acceptable. A queued wake is more suitable when the coordinator
-should end its turn and resume after a later condition.
+Native wait or poll is appropriate when the current turn owns the live
+subagent or terminal handle and should stay active. A synchronous wakectl wait
+is useful when a script or thread-id-only controller needs an exit status from
+a Codex condition. A queued wake is more suitable when the coordinator should
+end its turn and resume after a later condition.
 
 Use ferrumctl when the useful handle is a thread id, when a host process is
 coordinating, or when durable goal, queue, history, context, or transcript state
@@ -72,8 +75,8 @@ context, unless the user explicitly requests another installed command.
 Common subsets:
 
 - `goalctl`: external goal assignment and status checks.
-- `wakectl`: later attention, blocking conditions, stop watches, and host
-  predicates.
+- `wakectl`: later attention, stop watches, host predicates, and synchronous
+  Codex conditions for scripts.
 - `threadctl`: current activity, conversation retrieval, immediate input,
   resume, and turn-scoped interruption.
 - `readcov`: read counts, interval deltas, overlap, and gaps.

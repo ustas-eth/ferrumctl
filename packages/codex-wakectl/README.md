@@ -1,11 +1,12 @@
 # codex-wakectl
 
-`codex-wakectl` waits for conditions and schedules durable input for Codex
-threads through a shared `codex app-server`.
+`codex-wakectl` schedules durable input for Codex threads after later conditions
+through a shared `codex app-server`.
 
-Use it to block on a Codex condition or persist a wake that a runner will
-deliver later. Immediate input, inspection, and interruption belong to
-`codex-threadctl`.
+Use `add` to persist a wake that a runner will deliver later. The secondary
+`wait` interface polls synchronously for scripts: it blocks only its invoking
+process, sends no input, and persists no job. Immediate input, inspection, and
+interruption belong to `codex-threadctl`.
 
 Wakectl 0.3 moves its former `loaded`, `status`, `inspect`, and `interrupt`
 commands, along with immediate `send`, to that package.
@@ -58,7 +59,7 @@ Wake when a host-visible condition becomes true:
 codex-wakectl add cmd --to THREAD_ID "Input is ready." -- sh -c 'test -f done.txt'
 ```
 
-Block until a condition without sending input:
+Synchronously gate a script on a Codex condition:
 
 ```sh
 codex-wakectl wait stop WORKER --max-wait 30m
