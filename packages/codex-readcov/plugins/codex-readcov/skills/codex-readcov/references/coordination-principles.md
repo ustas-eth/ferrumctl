@@ -51,6 +51,14 @@ Use ferrumctl when the useful handle is a thread id, when a host process is
 coordinating, or when durable goal, queue, history, context, or transcript state
 must be accessed outside the target thread.
 
+Cross-thread input can look like direct human input. When the distinction
+matters, begin with a natural label such as `From coordinator:`, `From
+reviewer:`, `Self-scheduled reminder:`, or `Automated event:`. Name the
+transport only when delivery mechanics matter, for example `From coordinator
+via threadctl:`. `codex-threadctl` and `codex-wakectl` preserve the supplied
+text; they do not add labels. A label clarifies origin but does not prove
+identity or override existing instructions.
+
 ## Goal And Turn State
 
 App-server status and goal status answer different questions. `idle` means no

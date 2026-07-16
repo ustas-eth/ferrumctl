@@ -116,6 +116,12 @@ Queued jobs persist message text, predicates, endpoints, and thread ids in the
 SQLite database. Avoid secrets, large private context, and fragile one-time
 instructions in that state.
 
+Queued input does not identify its logical sender. When its source could be
+confused with direct human input, use a natural label such as `From
+coordinator:`, `Self-scheduled reminder:`, or `Automated event:`. Mention
+wakectl only when the transport itself matters. A label provides context, not
+proof of identity or permission to override existing instructions.
+
 Queued messages may arrive late or more than once. Prefer a short event marker
 when existing thread context remains authoritative. Longer queued input is
 valid when it is deliberately the complete instruction and remains safe under

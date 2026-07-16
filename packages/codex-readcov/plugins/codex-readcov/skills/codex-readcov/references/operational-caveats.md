@@ -109,6 +109,10 @@ Interruption reports `requested` unless the caller waits for terminal status;
 it does not pause a goal or terminate background terminals. `terminals` and
 `terminate-terminal` expose those processes separately.
 
+Immediate and queued cross-thread input does not identify its logical sender to
+the target. Put a natural source label in the message when confusion with
+direct human input matters. The label provides context, not authorization.
+
 `resume` does not add a user message, but Codex can continue an active goal
 after loading it. App-server cannot atomically exclude goal continuation, so
 threadctl requires `--continue-goal` for every resume. Resume does not coordinate

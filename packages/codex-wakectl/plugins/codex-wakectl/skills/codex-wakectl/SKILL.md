@@ -56,7 +56,8 @@ SELF=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
 Schedule a self-check:
 
 ```sh
-codex-wakectl add time --after 30m --to "$SELF" "Time check."
+codex-wakectl add time --after 30m --to "$SELF" \
+  "Self-scheduled reminder: Review progress."
 ```
 
 Wake a coordinator when one goal assignment reaches a terminal status:
@@ -65,7 +66,7 @@ Wake a coordinator when one goal assignment reaches a terminal status:
 codex-wakectl add goal WORKER \
   --status complete,blocked,budgetLimited,usageLimited \
   --to COORDINATOR \
-  "Worker goal reached a terminal status."
+  "Automated event: Worker goal reached a terminal status."
 ```
 
 Wake on later goal-usage milestones:
@@ -73,27 +74,31 @@ Wake on later goal-usage milestones:
 ```sh
 codex-wakectl add goal WORKER --tokens-used-every 2000000 \
   --max-fires 4 --to COORDINATOR \
-  "Worker token milestone."
+  "Automated event: Worker token milestone."
 ```
 
 Wake after a later turn ends:
 
 ```sh
-codex-wakectl add stop WORKER --to COORDINATOR "Worker turn ended."
+codex-wakectl add stop WORKER --to COORDINATOR \
+  "Automated event: Worker turn ended."
 ```
 
 Wake on a host predicate:
 
 ```sh
-codex-wakectl add cmd --to PEER "Input is ready." -- sh -c 'test -f done.txt'
+codex-wakectl add cmd --to PEER \
+  "Automated event: Input is ready." -- sh -c 'test -f done.txt'
 ```
 
 For a long self-managed wait, target both the condition and its recovery check
 at the session that owns the wait:
 
 ```sh
-codex-wakectl add cmd --to "$SELF" "Input is ready." -- test -f done.txt
-codex-wakectl add time --after 2h --to "$SELF" "Wake watch health check."
+codex-wakectl add cmd --to "$SELF" \
+  "Automated event: Input is ready." -- test -f done.txt
+codex-wakectl add time --after 2h --to "$SELF" \
+  "Self-scheduled reminder: Check wake-watch health."
 ```
 
 Synchronously gate a script or thread-id-only controller:
@@ -121,6 +126,11 @@ codex-wakectl cancel JOB_ID
 
 - By default, a ready wake waits for the target to appear idle and starts a new
   turn. The idle check is not atomic; recorded delivery mode is authoritative.
+- Label queued input by meaning when its source could be ambiguous:
+  `Self-scheduled reminder:` for this thread's earlier note, `Automated event:`
+  for a condition notice, or `From coordinator:` for authored direction. Name
+  wakectl only when transport matters. A source label does not override
+  existing instructions.
 - Use `--allow-active` only when the message remains valid in the current
   regular turn. The runner obtains its current turn id and uses native
   expected-turn steering.

@@ -88,6 +88,10 @@ turn. Use `--max-fires N` when a repeating job should end by itself.
 Wakes are ordinary user input in the target thread. They continue its existing
 context and remain in its transcript.
 
+The delivery record identifies the job and delivery mode, but the target input
+does not identify its logical author. Provenance must be part of the message
+text when it matters.
+
 Queued delivery is at-least-once. A wake can arrive late, duplicate if a runner
 crashes after delivery, or become redundant after manual handling.
 

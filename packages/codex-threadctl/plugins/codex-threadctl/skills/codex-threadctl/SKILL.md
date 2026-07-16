@@ -72,13 +72,15 @@ codex-threadctl terminate-terminal THREAD_ID PROCESS_ID --item ITEM_ID
 Start input on an idle thread:
 
 ```sh
-codex-threadctl start THREAD_ID "A goal was assigned. Call get_goal and proceed."
+codex-threadctl start THREAD_ID \
+  "From coordinator: A goal was assigned. Call get_goal and proceed."
 ```
 
 Steer one known active turn:
 
 ```sh
-codex-threadctl steer THREAD_ID TURN_ID "Focus on the failing test first."
+codex-threadctl steer THREAD_ID TURN_ID \
+  "From coordinator: Focus on the failing test first."
 ```
 
 Resume a persisted thread without adding a user message. The required flag
@@ -106,6 +108,11 @@ codex-threadctl inspect "$SELF"
 ## Conventions
 
 - Inspect unfamiliar work before steering or interrupting it.
+- Cross-thread input does not identify its logical sender. When the target
+  could mistake it for direct human input, begin the message with a natural
+  label such as `From coordinator:` or `From reviewer:`. Add `via
+  threadctl` only when transport matters. A source label does not override
+  existing instructions.
 - Treat `list --parent` and `list --ancestor` as persisted spawn relationships.
   They can include closed agents whose native handles are unavailable.
 - Read `server=` in `list` output as state on the selected app-server, not as a

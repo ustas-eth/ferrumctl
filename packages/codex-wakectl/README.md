@@ -43,21 +43,29 @@ Wake this thread later:
 
 ```sh
 SELF=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
-codex-wakectl add time --after 10m --to "$SELF" "Time check."
+codex-wakectl add time --after 10m --to "$SELF" \
+  "Self-scheduled reminder: Review progress."
 ```
 
 Wake a coordinator when a goal or later turn ends:
 
 ```sh
-codex-wakectl add goal WORKER --status complete,blocked,budgetLimited,usageLimited --to ORCH "Worker goal reached a terminal status."
-codex-wakectl add stop WORKER --to ORCH "Worker turn ended."
+codex-wakectl add goal WORKER --status complete,blocked,budgetLimited,usageLimited \
+  --to ORCH "Automated event: Worker goal reached a terminal status."
+codex-wakectl add stop WORKER --to ORCH \
+  "Automated event: Worker turn ended."
 ```
 
 Wake when a host-visible condition becomes true:
 
 ```sh
-codex-wakectl add cmd --to THREAD_ID "Input is ready." -- sh -c 'test -f done.txt'
+codex-wakectl add cmd --to THREAD_ID \
+  "Automated event: Input is ready." -- sh -c 'test -f done.txt'
 ```
+
+Messages arrive as ordinary thread input. Natural labels distinguish a
+self-reminder, condition notice, or coordinator message when the source would
+otherwise be ambiguous.
 
 Synchronously gate a script on a Codex condition:
 

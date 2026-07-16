@@ -47,7 +47,7 @@ installed, `codex-threadctl start` can deliver the follow-up to an
 app-server-backed worker when only the thread id is available:
 
 ```text
-A goal was assigned. Call get_goal and proceed.
+From coordinator: A goal was assigned. Call get_goal and proceed.
 ```
 
 Use `--json` when another program will parse output.

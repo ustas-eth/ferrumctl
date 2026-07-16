@@ -50,10 +50,12 @@ After assigning work, send a small normal message when the worker should act
 immediately:
 
 ```text
-A goal was assigned. Call get_goal and proceed.
+From coordinator: A goal was assigned. Call get_goal and proceed.
 ```
 
 Use native subagent input when a native subagent handle is available. Use
 `codex-threadctl start` when immediate thread-id control is available and the
 worker is loaded on the selected shared app-server. Conditional or delayed
-delivery remains a separate scheduler concern.
+delivery remains a separate scheduler concern. The source label distinguishes
+the follow-up from direct human input; it does not prove identity or override
+existing instructions.

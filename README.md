@@ -76,7 +76,7 @@ MAIN=main-thread-id
 
 codex-readcov snapshot "$WORKER" > worker.before.json
 codex-goalctl replace "$WORKER" "Review this package and mark the goal complete."
-codex-threadctl start "$WORKER" "A goal was assigned. Call get_goal and proceed."
+codex-threadctl start "$WORKER" "From coordinator: A goal was assigned. Call get_goal and proceed."
 codex-threadctl inspect "$WORKER"
 codex-readcov delta worker.before.json packages --limit 20
 ```
@@ -87,14 +87,15 @@ Resume a main thread when a worker goal reaches a terminal status:
 codex-wakectl add goal "$WORKER" \
   --status complete,blocked,budgetLimited,usageLimited \
   --to "$MAIN" \
-  "Worker goal reached a terminal status. Inspect it."
+  "Automated event: Worker goal reached a terminal status. Inspect it."
 ```
 
 Schedule a self-reminder from a loaded Codex session:
 
 ```sh
 SELF=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
-codex-wakectl add time --after 30m --to "$SELF" "Time check. Review progress."
+codex-wakectl add time --after 30m --to "$SELF" \
+  "Self-scheduled reminder: Review progress."
 ```
 
 Find expected files not present in a read list:

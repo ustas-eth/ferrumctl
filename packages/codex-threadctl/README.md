@@ -63,9 +63,14 @@ turn.
 Start a new turn on an idle thread, or steer one known active turn:
 
 ```sh
-codex-threadctl start THREAD_ID "Check your goal and continue."
-codex-threadctl steer THREAD_ID TURN_ID "Focus on the failing test first."
+codex-threadctl start THREAD_ID \
+  "From coordinator: Check your goal and continue."
+codex-threadctl steer THREAD_ID TURN_ID \
+  "From coordinator: Focus on the failing test first."
 ```
+
+The target sees the message as ordinary input. Name the logical sender when it
+could be mistaken for direct human input.
 
 Resume a stored thread or request interruption of one exact turn:
 

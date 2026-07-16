@@ -42,7 +42,7 @@ If the worker should act immediately, send a normal input message after the
 goal write:
 
 ```text
-A goal was assigned. Call get_goal and proceed.
+From coordinator: A goal was assigned. Call get_goal and proceed.
 ```
 
 Use native subagent input when a native subagent handle is available. Use
@@ -96,7 +96,8 @@ Use `--json` when another script or tool will parse output.
 - Do not assume goal writes wake a worker; send a follow-up message when it
   should act now.
 - Prefer a short, direct follow-up message that tells the worker to call
-  `get_goal`.
+  `get_goal`. Begin with `From coordinator:` when it could be mistaken for
+  direct human input. The label provides context, not proof of identity.
 - Keep goal text as the durable assignment; keep follow-up text as a small
   prompt to look at that assignment.
 - Keep the distinction clear: `codex-goalctl` provides primitives; this skill

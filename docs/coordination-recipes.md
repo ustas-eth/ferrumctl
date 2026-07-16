@@ -22,11 +22,11 @@ codex-threadctl status "$SELF"
 
 codex-wakectl add time --after 30m \
   --to "$SELF" \
-  "Time check. Review progress and decide the next step."
+  "Self-scheduled reminder: Review progress and decide the next step."
 
 codex-wakectl add goal "$SELF" --tokens-left-lte 300000 \
   --to "$SELF" \
-  "Budget is low. Summarize, stop, or request more budget."
+  "Automated event: Goal budget is low. Summarize, stop, or request more budget."
 ```
 
 Self read coverage is optional but useful for meta-review:
@@ -58,10 +58,10 @@ codex-goalctl replace "$WORKER" \
 codex-wakectl add goal "$WORKER" \
   --status complete,blocked,budgetLimited,usageLimited \
   --to "$MAIN" \
-  "Worker goal reached a terminal status. Inspect it."
+  "Automated event: Worker goal reached a terminal status. Inspect it."
 
 codex-threadctl start "$WORKER" \
-  "A goal was assigned. Call get_goal and proceed."
+  "From coordinator: A goal was assigned. Call get_goal and proceed."
 ```
 
 When main is resumed:
@@ -95,14 +95,14 @@ codex-wakectl add goal "$WORKER" \
   --tokens-used-every 2000000 \
   --max-fires 4 \
   --to "$MAIN" \
-  "Worker token milestone. Reassess."
+  "Automated event: Worker token milestone. Reassess."
 ```
 
 Use non-blocking steering when the worker may keep going:
 
 ```sh
 codex-threadctl steer "$WORKER" "$TURN" \
-  "Apply this ranking check to the next cycle and keep going."
+  "From coordinator: Apply this ranking check to the next cycle and keep going."
 ```
 
 If the coordinator has a native subagent input handle, use that handle for the
@@ -118,15 +118,15 @@ codex-goalctl update "$WORKER" --status paused
 codex-threadctl interrupt "$WORKER" "$TURN" --wait
 
 codex-wakectl add stop "$WORKER" --to "$MAIN" \
-  "Worker answered checkpoint."
+  "Automated event: Worker answered checkpoint."
 codex-threadctl start "$WORKER" \
-  "Answer this checkpoint question briefly, update the relevant files if needed, and do not continue until resumed."
+  "From coordinator: Answer this checkpoint question briefly, update the relevant files if needed, and do not continue until resumed."
 
 # after inspection
 codex-threadctl inspect "$WORKER"
 codex-goalctl update "$WORKER" --status active
 codex-threadctl start "$WORKER" \
-  "Resume the goal. Call get_goal and continue."
+  "From coordinator: Resume the goal. Call get_goal and continue."
 ```
 
 Pausing changes durable goal state; interruption is what stops the active turn.
@@ -155,15 +155,15 @@ codex-goalctl replace "$REVIEWER" \
 codex-wakectl add goal "$WORKER" \
   --status complete,blocked,budgetLimited,usageLimited \
   --to "$REVIEWER" \
-  "Worker goal reached a terminal status. Inspect it and review from your goal."
+  "Automated event: Worker goal reached a terminal status. Inspect it and review from your goal."
 
 codex-wakectl add goal "$REVIEWER" \
   --status complete,blocked,budgetLimited,usageLimited \
   --to "$MAIN" \
-  "Reviewer goal reached a terminal status. Inspect it."
+  "Automated event: Reviewer goal reached a terminal status. Inspect it."
 
 codex-threadctl start "$WORKER" \
-  "A goal was assigned. Call get_goal and proceed."
+  "From coordinator: A goal was assigned. Call get_goal and proceed."
 ```
 
 The reviewer can inspect coverage before reporting:
@@ -195,10 +195,10 @@ codex-goalctl replace "$WORKER" \
 
 codex-wakectl add stop "$WORKER" \
   --to "$MAIN" \
-  "Worker turn ended. Inspect it."
+  "Automated event: Worker turn ended. Inspect it."
 
 codex-threadctl start "$WORKER" \
-  "A goal was assigned. Call get_goal and proceed."
+  "From coordinator: A goal was assigned. Call get_goal and proceed."
 ```
 
 The stop watch records the newest turn at creation, so it still observes a
@@ -218,7 +218,7 @@ durable assignment.
 NEXT=next-thread-id
 
 codex-wakectl add cmd --to "$NEXT" \
-  "Input is ready." \
+  "Automated event: Input is ready." \
   -- sh -c 'test -f done.txt'
 ```
 
@@ -269,7 +269,7 @@ codex-threadctl --endpoint "$ENDPOINT" loaded
 codex-threadctl --endpoint "$ENDPOINT" inspect "$WORKER"
 codex-goalctl replace "$WORKER" "Work from this external assignment."
 codex-threadctl --endpoint "$ENDPOINT" start "$WORKER" \
-  "A goal was assigned. Call get_goal and proceed."
+  "From coordinator: A goal was assigned. Call get_goal and proceed."
 codex-readcov snapshot "$WORKER" > worker.before.json
 ```
 
