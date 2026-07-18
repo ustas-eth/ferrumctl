@@ -84,6 +84,14 @@ codex-wakectl add stop WORKER --to COORDINATOR \
   "Automated event: Worker turn ended."
 ```
 
+Bind a wake to one turn when its id is known or watch creation may race its
+completion:
+
+```sh
+codex-wakectl add stop WORKER --turn TURN_ID --to COORDINATOR \
+  "Automated event: Worker turn ended."
+```
+
 Wake on a host predicate:
 
 ```sh
@@ -139,8 +147,12 @@ codex-wakectl cancel JOB_ID
 - A wake is input to its target, not a result returned to its sender. Retrieve
   results through a native handle, thread inspection, or a shared artifact when
   the corresponding surface is available.
-- Create a stop watch before the turn it should observe. Missing or rewritten
-  cursor history fails the job rather than replaying an older completion.
+- An unqualified stop watch records a boundary. Create it before the turn it
+  should observe.
+- Use `--turn TURN_ID` to observe that exact turn even if it has already ended.
+  Use `--turn latest` only when the newest existing turn is deliberately the
+  target. Missing or rewritten turn history fails the job rather than replaying
+  an older completion.
 - A goal watch binds to the assignment visible when it is created, or to the
   first assignment observed if none exists yet. A replacement goal supersedes
   the old watch.

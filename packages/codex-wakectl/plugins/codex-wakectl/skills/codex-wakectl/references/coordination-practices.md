@@ -95,6 +95,14 @@ A terminal goal status and a completed turn are separate boundaries. If a
 coordinator needs the worker's final response, wait for the current turn to stop
 or inspect it after the goal predicate fires.
 
+## Turn Completion
+
+An unqualified stop watch observes a terminal turn after the boundary recorded
+at creation. Arm it before starting the turn. If creation can race a known
+turn's completion, bind the watch with `--turn TURN_ID`; the exact turn still
+matches when it is already terminal. Use `--turn latest` only when the newest
+existing turn is deliberately the target.
+
 ## Steering And Checkpoints
 
 For queued delivery, `--allow-active` permits native expected-turn steering for
@@ -108,7 +116,7 @@ on the committed turn boundary.
 For a blocking checkpoint, first prevent automatic continuation by pausing any
 active goal. Interrupt the exact active turn and wait for terminal completion.
 If a later wake should follow the checkpoint response, arm its stop watch before
-starting the checkpoint turn.
+starting the checkpoint turn, or bind it to the checkpoint turn id.
 
 ## Persisted Jobs And Messages
 

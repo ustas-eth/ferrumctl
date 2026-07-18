@@ -28,7 +28,7 @@ class ParseTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 parser.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-wakectl 0.3.3\n")
+        self.assertEqual(output.getvalue(), "codex-wakectl 0.3.4\n")
 
     def test_parse_duration(self) -> None:
         self.assertEqual(parsing.parse_duration("10s"), 10)
@@ -192,6 +192,26 @@ class ParseTests(unittest.TestCase):
         self.assertTrue(condition["repeat"])
         self.assertEqual(condition["maxFires"], 3)
 
+    def test_stop_accepts_exact_or_latest_turn(self) -> None:
+        add_args = parser.build_parser().parse_args(
+            [
+                "add",
+                "stop",
+                "worker",
+                "--turn",
+                "latest",
+                "--to",
+                "orchestrator",
+                "worker stopped",
+            ]
+        )
+        wait_args = parser.build_parser().parse_args(
+            ["wait", "stop", "worker", "--turn", "turn-1"]
+        )
+
+        self.assertEqual(conditions.build_stop_condition(add_args)["turnId"], "latest")
+        self.assertEqual(conditions.build_stop_condition(wait_args)["turnId"], "turn-1")
+
     def test_run_replaces_tick(self) -> None:
         args = parser.build_parser().parse_args(["run", "--limit", "1"])
         self.assertEqual(args.limit, 1)
@@ -353,6 +373,71 @@ class ConditionTests(unittest.TestCase):
         self.assertEqual(updates["condition"]["cursorTurnStatus"], "completed")
         self.assertEqual(reason, "turn turn-1 completed")
 
+    def test_exact_stop_condition_accepts_an_already_terminal_turn(self) -> None:
+        class App:
+            async def request(self, method, params):
+                return {
+                    "data": [{"id": "turn-1", "status": "completed"}],
+                    "nextCursor": None,
+                }
+
+        condition = asyncio.run(
+            conditions.seed_stop_condition(
+                App(),
+                {"type": "stop", "threadId": "t", "turnId": "latest"},
+            )
+        )
+        ready, updates, reason = asyncio.run(
+            conditions.stop_condition_ready(App(), condition)
+        )
+
+        self.assertEqual(condition["turnId"], "turn-1")
+        self.assertNotIn("cursorTurnId", condition)
+        self.assertTrue(ready)
+        self.assertEqual(updates, {})
+        self.assertEqual(reason, "turn turn-1 completed")
+
+    def test_exact_stop_condition_waits_for_its_turn(self) -> None:
+        class App:
+            def __init__(self, status: str):
+                self.status = status
+
+            async def request(self, method, params):
+                return {
+                    "data": [{"id": "turn-1", "status": self.status}],
+                    "nextCursor": None,
+                }
+
+        condition = {"type": "stop", "threadId": "t", "turnId": "turn-1"}
+        ready, updates, reason = asyncio.run(
+            conditions.stop_condition_ready(App("inProgress"), condition)
+        )
+        self.assertFalse(ready)
+        self.assertEqual(updates, {})
+        self.assertEqual(reason, "turn turn-1 is inProgress")
+
+        ready, _, reason = asyncio.run(
+            conditions.stop_condition_ready(App("interrupted"), condition)
+        )
+        self.assertTrue(ready)
+        self.assertEqual(reason, "turn turn-1 interrupted")
+
+    def test_exact_stop_seed_rejects_unknown_turn(self) -> None:
+        class App:
+            async def request(self, method, params):
+                return {
+                    "data": [{"id": "other", "status": "completed"}],
+                    "nextCursor": None,
+                }
+
+        with self.assertRaisesRegex(WakectlError, "turn not found: missing"):
+            asyncio.run(
+                conditions.seed_stop_condition(
+                    App(),
+                    {"type": "stop", "threadId": "t", "turnId": "missing"},
+                )
+            )
+
     def test_stop_condition_detects_turn_completed_between_polls(self) -> None:
         class App:
             def __init__(self, turns: list[dict[str, str]]):
@@ -422,6 +507,15 @@ class ConditionTests(unittest.TestCase):
         self.assertEqual(reason, "waiting for turn completion")
         self.assertEqual(updates["condition"]["cursorTurnId"], "turn-1")
 
+        ready, _, reason = asyncio.run(
+            conditions.stop_condition_ready(App(), updates["condition"])
+        )
+        self.assertFalse(ready)
+        self.assertEqual(
+            reason,
+            "waiting for a later turn; cursor turn is completed",
+        )
+
     def test_stop_condition_fires_for_first_turn_after_empty_seed(self) -> None:
         class App:
             def __init__(self, turns: list[dict[str, str]]):
@@ -473,6 +567,16 @@ class ConditionTests(unittest.TestCase):
     def test_stop_max_fires_requires_repeat(self) -> None:
         args = argparse.Namespace(thread_id="thread", repeat=False, max_fires=2)
         with self.assertRaises(WakectlError):
+            conditions.build_stop_condition(args)
+
+    def test_exact_stop_rejects_repeat(self) -> None:
+        args = argparse.Namespace(
+            thread_id="thread",
+            turn="turn-1",
+            repeat=True,
+            max_fires=None,
+        )
+        with self.assertRaisesRegex(WakectlError, "--turn cannot be combined"):
             conditions.build_stop_condition(args)
 
     def test_max_fires_reached(self) -> None:
@@ -665,6 +769,49 @@ class ConditionTests(unittest.TestCase):
             condition = state.list_jobs(path)[0]["condition"]
             self.assertEqual(condition["cursorTurnId"], "turn-1")
             self.assertEqual(condition["cursorTurnStatus"], "inProgress")
+
+    def test_cmd_add_stop_resolves_latest_exact_turn(self) -> None:
+        class FakeAppServer:
+            def __init__(self, endpoint: str, timeout: float, **kwargs: object) -> None:
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args: object) -> None:
+                return None
+
+            async def request(self, method: str, params=None):
+                if method == "thread/turns/list":
+                    return {"data": [{"id": "turn-1", "status": "completed"}]}
+                raise AssertionError(f"unexpected method: {method}")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "jobs.sqlite3"
+            args = parser.build_parser().parse_args(
+                [
+                    "add",
+                    "stop",
+                    "worker",
+                    "--turn",
+                    "latest",
+                    "--to",
+                    "main",
+                    "worker stopped",
+                    "--state",
+                    str(path),
+                ]
+            )
+
+            with (
+                mock.patch.object(commands, "AppServer", FakeAppServer),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                self.assertEqual(asyncio.run(args.func(args)), 0)
+
+            condition = state.list_jobs(path)[0]["condition"]
+            self.assertEqual(condition["turnId"], "turn-1")
+            self.assertNotIn("cursorTurnId", condition)
 
     def test_cmd_add_goal_does_not_persist_after_seed_failure(self) -> None:
         class BrokenAppServer:

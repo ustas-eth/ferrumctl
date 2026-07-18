@@ -201,8 +201,8 @@ codex-threadctl start "$WORKER" \
   "From coordinator: A goal was assigned. Call get_goal and proceed."
 ```
 
-The stop watch records the newest turn at creation, so it still observes a
-short worker turn completed between runner passes.
+Because the stop watch is created before `start`, it still observes a short
+worker turn completed between runner passes.
 
 `goalctl` uses its own short-lived stdio app-server. It does not need to use the
 same endpoint as `wakectl`, but both must refer to the same Codex home and

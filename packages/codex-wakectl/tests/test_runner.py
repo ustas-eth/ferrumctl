@@ -144,6 +144,58 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(fired["lastClientMessageId"], "client")
             self.assertEqual(sent, [("main", "worker stopped")])
 
+    async def test_exact_stop_job_fires_for_already_completed_turn(self) -> None:
+        async def list_turn_page(
+            app: object,
+            thread_id: str,
+            *,
+            cursor: str | None = None,
+            limit: int = 50,
+            sort_direction: str = "desc",
+            items_view: str = "notLoaded",
+        ) -> dict[str, object]:
+            return {
+                "data": [{"id": "turn-1", "status": "completed"}],
+                "nextCursor": None,
+            }
+
+        async def deliver_input(
+            app: object,
+            thread_id: str,
+            message: str,
+            *,
+            allow_active: bool = False,
+        ) -> dict[str, str]:
+            return {
+                "turnId": "wake-turn",
+                "clientMessageId": "client",
+                "delivery": "started",
+            }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp) / "jobs.sqlite3"
+            insert_job(
+                state,
+                new_job(
+                    {"type": "stop", "threadId": "worker", "turnId": "turn-1"},
+                    "main",
+                    "worker stopped",
+                    "unix:///tmp/codex.sock",
+                ),
+            )
+
+            with (
+                mock.patch.object(commands, "AppServer", FakeAppServer),
+                mock.patch.object(conditions, "list_turn_page", list_turn_page),
+                mock.patch.object(commands, "deliver_input", deliver_input),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                self.assertEqual(await commands.cmd_run(runner_args(state)), 0)
+
+            fired = list_jobs(state, include_all=True)[0]
+            self.assertEqual(fired["status"], "fired")
+            self.assertEqual(fired["lastReason"], "turn turn-1 completed")
+
     async def test_deferred_delivery_stays_pending_without_runner_failure(self) -> None:
         async def ready(*args: object, **kwargs: object):
             return True, {}, "ready"

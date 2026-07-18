@@ -141,6 +141,36 @@ def with_turn_cursor(
 
 
 async def seed_stop_condition(app: Any, condition: dict[str, Any]) -> dict[str, Any]:
+    exact_turn_id = condition.get("turnId")
+    if exact_turn_id is not None:
+        if exact_turn_id == "latest":
+            turns = await list_thread_turns(
+                app,
+                condition["threadId"],
+                limit=1,
+                items_view="notLoaded",
+            )
+            if not turns:
+                raise WakectlError("thread has no turns")
+            latest = turns[0]
+            if not isinstance(latest, dict):
+                raise WakectlError("app-server returned invalid latest turn")
+            latest_turn_id = latest.get("id")
+            if not isinstance(latest_turn_id, str) or not latest_turn_id:
+                raise WakectlError("app-server returned latest turn without an id")
+            resolved = dict(condition)
+            resolved["turnId"] = latest_turn_id
+            return resolved
+
+        turns, found = await turns_through_cursor(
+            app,
+            condition["threadId"],
+            exact_turn_id,
+        )
+        if not found:
+            raise WakectlError(f"turn not found: {exact_turn_id}")
+        return condition
+
     turns = await list_thread_turns(
         app,
         condition["threadId"],
@@ -221,6 +251,21 @@ async def stop_condition_ready(
     app: Any,
     condition: dict[str, Any],
 ) -> tuple[bool, dict[str, Any], str]:
+    exact_turn_id = condition.get("turnId")
+    if exact_turn_id is not None:
+        turns, found = await turns_through_cursor(
+            app,
+            condition["threadId"],
+            exact_turn_id,
+        )
+        if not found:
+            return False, {"status": "failed"}, f"turn no longer exists: {exact_turn_id}"
+        turn = next(turn for turn in turns if turn.get("id") == exact_turn_id)
+        status = turn.get("status", "unknown")
+        if status in TERMINAL_TURN_STATUSES:
+            return True, {}, f"turn {exact_turn_id} {status}"
+        return False, {}, f"turn {exact_turn_id} is {status}"
+
     if "cursorTurnId" not in condition:
         turns = await list_thread_turns(
             app,
@@ -264,7 +309,14 @@ async def stop_condition_ready(
         return True, {"condition": updated}, f"turn {completed.get('id')} {status}"
     if latest is None:
         return False, condition_updates, "waiting for first turn"
-    return False, condition_updates, f"latest turn is {latest.get('status', 'unknown')}"
+    status = latest.get("status", "unknown")
+    if (
+        latest.get("id") == condition.get("cursorTurnId")
+        and status in TERMINAL_TURN_STATUSES
+    ):
+        return False, condition_updates, f"waiting for a later turn; cursor turn is {status}"
+    reason = f"waiting for turn {latest.get('id')} to stop; status is {status}"
+    return False, condition_updates, reason
 
 
 async def condition_ready(
@@ -391,7 +443,12 @@ def build_stop_condition(args: argparse.Namespace) -> dict[str, Any]:
         "type": "stop",
         "threadId": args.thread_id,
     }
+    exact_turn_id = getattr(args, "turn", None)
+    if exact_turn_id is not None:
+        condition["turnId"] = exact_turn_id
     if getattr(args, "repeat", False):
+        if exact_turn_id is not None:
+            raise WakectlError("--turn cannot be combined with --repeat")
         condition["repeat"] = True
     if getattr(args, "max_fires", None) is not None:
         if not condition.get("repeat"):

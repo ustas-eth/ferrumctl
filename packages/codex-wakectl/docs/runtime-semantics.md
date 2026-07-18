@@ -50,17 +50,24 @@ observes later.
 Codex exposes goal creation time at one-second resolution. Two assignments
 created in the same second can be indistinguishable to a polling watcher.
 
-Stop conditions use materialized turn history. At creation, the job records the
-newest turn id and status. It fires when that turn becomes terminal or a newer
-turn reaches `completed`, `interrupted`, or `failed`, including a turn that
-starts and finishes between runner passes.
+Stop conditions use materialized turn history. Without `--turn`, creation
+records the newest turn id and status as a boundary. The condition fires when
+that turn becomes terminal or a newer turn reaches `completed`, `interrupted`,
+or `failed`, including a turn that starts and finishes between later runner
+passes. A turn already terminal when the boundary is recorded does not fire the
+condition.
 
 If no turn existed when the watch was created, the first later terminal turn
 is treated as the observed completion.
 
-The runner pages history until it finds the stored turn cursor. If rollback,
-compaction, or another history change removes that cursor, the job becomes
-`failed`; older terminal turns are not treated as new evidence.
+`--turn TURN_ID` binds a one-shot condition to that exact turn. It becomes ready
+if the turn is already terminal and otherwise waits for that turn to stop.
+`--turn latest` resolves to the newest existing turn during creation; it fails
+when the thread has no turns. Exact-turn conditions cannot repeat.
+
+The runner pages history until it finds the stored boundary or exact turn. If
+rollback, compaction, or another history change removes that identity, the job
+becomes `failed`; older terminal turns are not treated as new evidence.
 
 Command conditions retain argv and creation cwd, but execute in the runner's
 environment. The wakectl timeout also bounds the command. Predicates may run
@@ -81,7 +88,8 @@ goal supersedes the entire watch.
 
 Stop wakes repeat only with `--repeat`. Multiple completed turns between passes
 are coalesced into one wake and the cursor advances to the newest observed
-turn. Use `--max-fires N` when a repeating job should end by itself.
+turn. Use `--max-fires N` when a repeating job should end by itself. An exact
+`--turn` watch is always one-shot.
 
 ## Delivery
 

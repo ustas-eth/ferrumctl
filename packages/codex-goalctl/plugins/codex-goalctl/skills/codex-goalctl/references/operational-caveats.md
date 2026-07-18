@@ -68,11 +68,13 @@ to make it observe or continue the current goal, such as asking it to call
 `get_goal`. For new assignments, checkpoints, or changed ownership, update the
 goal state deliberately instead of relying on turn idleness.
 
-Create `stop` watches before the turn they should observe. The job records the
-newest turn as its cursor, then detects later terminal turns from persisted turn
-history. Several completions between runner passes are coalesced into one wake.
-If that cursor disappears, the job fails rather than treating older history as
-a new completion.
+An unqualified `stop` watch records the newest turn as a boundary, so create it
+before the turn it should observe. Several completions between runner passes
+are coalesced into one wake. When creation can race one known turn's completion,
+`--turn TURN_ID` binds the watch to that turn and also matches it when already
+terminal. `--turn latest` makes the newest existing turn that explicit target.
+If a stored turn identity disappears, the job fails rather than treating older
+history as a new completion.
 
 A wake sent by a running thread can arrive before that thread's final response
 is committed. A terminal goal status can also be observed before the current

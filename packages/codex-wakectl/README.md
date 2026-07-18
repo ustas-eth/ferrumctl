@@ -56,6 +56,10 @@ codex-wakectl add stop WORKER --to ORCH \
   "Automated event: Worker turn ended."
 ```
 
+An unqualified stop watch observes a completion after its creation boundary.
+When one particular turn is the target, use `--turn TURN_ID`; `--turn latest`
+explicitly binds the newest existing turn even if it has already ended.
+
 Wake when a host-visible condition becomes true:
 
 ```sh

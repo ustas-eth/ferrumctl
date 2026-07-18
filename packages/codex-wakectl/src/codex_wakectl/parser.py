@@ -153,9 +153,14 @@ def add_stop_condition_parser(sub: argparse._SubParsersAction[argparse.ArgumentP
     parser = sub.add_parser("stop", help="thread turn-completion condition")
     parser.add_argument("thread_id", help="thread to watch")
     parser.add_argument(
+        "--turn",
+        metavar="TURN_ID",
+        help="exact turn id to observe, or 'latest'",
+    )
+    parser.add_argument(
         "--repeat",
         action="store_true",
-        help="re-arm after each observed terminal turn",
+        help="re-arm an unqualified watch after each observed terminal turn",
     )
     parser.add_argument(
         "--max-fires",
@@ -223,8 +228,13 @@ def add_wait_cmd_condition_parser(
 def add_wait_stop_condition_parser(
     sub: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
-    parser = sub.add_parser("stop", help="block this process until a later turn ends")
+    parser = sub.add_parser("stop", help="block this process until a thread turn ends")
     parser.add_argument("thread_id", help="thread to watch")
+    parser.add_argument(
+        "--turn",
+        metavar="TURN_ID",
+        help="exact turn id to observe, or 'latest'",
+    )
     parser.set_defaults(condition_builder=build_stop_condition)
     add_wait_options(parser, defaults=False)
     add_global_options(parser, defaults=False, include_state=False)

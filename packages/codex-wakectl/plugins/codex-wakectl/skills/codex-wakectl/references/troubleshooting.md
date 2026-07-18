@@ -34,9 +34,13 @@ For goal predicates, verify that the goal exists and every predicate can match.
 rebase repeating buckets; a replacement assignment makes the job
 `superseded`.
 
-For stop predicates, create the job before the turn to observe. Use
-`list --json` to inspect its stored turn cursor. A `failed` cursor means that
-materialized history no longer contains the boundary and the wake was not sent.
+For an unqualified stop predicate, create the job before the turn to observe.
+A pending reason such as `waiting for a later turn; cursor turn is completed`
+means creation recorded an already-terminal boundary and no later completion
+has appeared. If creation can race the intended completion, use `--turn
+TURN_ID`; `--turn latest` deliberately binds the newest existing turn. Use
+`list --json` to inspect the stored identity. A failed identity means
+materialized history no longer contains it and the wake was not sent.
 
 For command predicates, inspect `lastReason` as well as `lastError`. A reason
 such as `command exited 1` only says that the predicate was not ready; wakectl

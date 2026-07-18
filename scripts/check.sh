@@ -70,7 +70,7 @@ run git diff --check
   run "$UV" pip check --python "$tool_dir/codex-wakectl/bin/python"
   test "$("$bin_dir/codex-goalctl" --version)" = "codex-goalctl 0.1.3"
   test "$("$bin_dir/codex-threadctl" --version)" = "codex-threadctl 0.3.1"
-  test "$("$bin_dir/codex-wakectl" --version)" = "codex-wakectl 0.3.3"
+  test "$("$bin_dir/codex-wakectl" --version)" = "codex-wakectl 0.3.4"
 )
 
 run packages/codex-readcov/target/debug/codex-readcov --version
