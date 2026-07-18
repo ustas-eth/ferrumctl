@@ -150,22 +150,12 @@ async def cmd_status(args: argparse.Namespace) -> int:
 async def cmd_inspect(args: argparse.Namespace) -> int:
     async with AppServer(args.endpoint, args.timeout) as app:
         local_rollout = app.endpoint.startswith("unix://")
-        detailed = []
-        if not args.brief:
-            detailed = (
-                await list_turn_page(
-                    app,
-                    args.thread_id,
-                    limit=1,
-                    items_view="full",
-                )
-            ).get("data", [])
-        summary_turns = (
+        turns = (
             await list_turn_page(
                 app,
                 args.thread_id,
                 limit=1 if args.no_previous else 2,
-                items_view="summary",
+                items_view="summary" if args.brief else "full",
             )
         ).get("data", [])
         goal = None
@@ -188,8 +178,7 @@ async def cmd_inspect(args: argparse.Namespace) -> int:
         loaded=loaded,
         goal=goal,
         goal_error=goal_error,
-        detailed_turn=detailed[0] if detailed else None,
-        summary_turns=summary_turns,
+        turns=turns,
         item_limit=args.items,
         context=context,
         compaction=compaction,

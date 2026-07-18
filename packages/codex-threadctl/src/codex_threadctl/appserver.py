@@ -85,7 +85,15 @@ class AppServer:
         while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                raise ThreadctlError(f"timed out waiting for app-server method {method}")
+                message = (
+                    f"timed out after {self.timeout:g}s waiting for "
+                    f"app-server method {method}"
+                )
+                if method == "thread/turns/list":
+                    message += (
+                        "; long histories or concurrent readers may need a larger --timeout"
+                    )
+                raise ThreadctlError(message)
             try:
                 raw = await asyncio.wait_for(self.ws.recv(), timeout=min(0.2, remaining))
             except TimeoutError:

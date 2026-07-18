@@ -134,6 +134,19 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(AppServerResponseError, "rejected"):
             await app.request("test")
 
+    async def test_appserver_timeout_names_limit_and_history_remedy(self):
+        class FakeWebSocket:
+            async def send(self, message):
+                pass
+
+        app = appserver.AppServer("unix://", 0)
+        app.ws = FakeWebSocket()
+        with self.assertRaisesRegex(
+            ThreadctlError,
+            r"timed out after 0s.*thread/turns/list.*concurrent readers.*--timeout",
+        ):
+            await app.request("thread/turns/list")
+
     async def test_appserver_ignores_server_request_with_matching_id(self):
         class FakeWebSocket:
             def __init__(self):

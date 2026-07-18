@@ -2,14 +2,18 @@ import io
 import json
 import unittest
 from contextlib import redirect_stdout
+from types import SimpleNamespace
 from unittest import mock
 
 from codex_threadctl import commands, parser
 
 
 class FakeContext:
+    def __init__(self, value=None):
+        self.value = object() if value is None else value
+
     async def __aenter__(self):
-        return object()
+        return self.value
 
     async def __aexit__(self, exc_type, exc, tb):
         return None
@@ -20,7 +24,10 @@ class ParserTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 parser.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-threadctl 0.3.0\n")
+        self.assertEqual(output.getvalue(), "codex-threadctl 0.3.1\n")
+
+    def test_default_timeout_allows_for_history_reconstruction(self):
+        self.assertEqual(parser.build_parser().parse_args(["loaded"]).timeout, 30.0)
 
     def test_parses_all_commands(self):
         cases = [
@@ -85,6 +92,66 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
             result = await commands.cmd_loaded(args)
         self.assertEqual(result, 0)
         self.assertEqual(output.getvalue(), "")
+
+    async def test_inspect_reads_turn_history_once(self):
+        args = parser.build_parser().parse_args(["inspect", "thread", "--json"])
+        page = {
+            "data": [
+                {
+                    "id": "latest",
+                    "status": "inProgress",
+                    "itemsView": "full",
+                    "items": [],
+                },
+                {
+                    "id": "previous",
+                    "status": "completed",
+                    "itemsView": "full",
+                    "items": [],
+                },
+            ]
+        }
+        list_turn_page = mock.AsyncMock(return_value=page)
+        app = SimpleNamespace(endpoint="unix://")
+        with (
+            mock.patch.object(commands, "AppServer", return_value=FakeContext(app)),
+            mock.patch.object(commands, "list_turn_page", list_turn_page),
+            mock.patch.object(commands, "get_goal", mock.AsyncMock(return_value=None)),
+            mock.patch.object(
+                commands,
+                "read_thread",
+                mock.AsyncMock(
+                    return_value={
+                        "id": "thread",
+                        "status": {"type": "active"},
+                        "path": None,
+                    }
+                ),
+            ),
+            mock.patch.object(
+                commands,
+                "list_loaded",
+                mock.AsyncMock(return_value=["thread"]),
+            ),
+            mock.patch.object(
+                commands,
+                "read_context_state",
+                return_value=(None, None),
+            ),
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            result = await commands.cmd_inspect(args)
+
+        self.assertEqual(result, 0)
+        list_turn_page.assert_awaited_once_with(
+            app,
+            "thread",
+            limit=2,
+            items_view="full",
+        )
+        inspection = json.loads(output.getvalue())
+        self.assertEqual(inspection["latestTurn"]["id"], "latest")
+        self.assertEqual(inspection["previousTurn"]["id"], "previous")
 
     async def test_list_passes_filters_and_prints_id_first(self):
         args = parser.build_parser().parse_args(

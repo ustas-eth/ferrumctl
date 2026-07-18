@@ -49,10 +49,14 @@ Rollback and compaction can change earlier turns, so a later scan may not match
 an earlier one. Persisted turn items are also lossy; command output, tool
 results, and some transient interactions are not guaranteed to be replayed.
 
-`inspect` loads the newest turn in full by default and the previous turn as a
-summary. `--brief` requests summaries only. `--items` limits printed items after
-the newest full turn is transferred; it does not reduce that app-server
-response.
+Reconstruction cost grows with retained history, and concurrent readers share
+app-server resources. If a history request times out, increase `--timeout`;
+retrying immediately can add more contention.
+
+`inspect` requests the newest one or two turns in one page. By default it keeps
+full detail for the newest turn and reduces the previous turn to a summary;
+`--brief` requests summaries only. `--items` limits printed items after the
+newest full turn is transferred; it does not reduce that app-server response.
 
 `messages` reads full turn pages and returns retained user and agent messages in
 chronological order. `--limit 0` scans the full materialized history. Each

@@ -1,6 +1,6 @@
 {
   "name": "codex-threadctl",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Codex skill for finding, inspecting, and controlling app-server-backed threads.",
   "author": {
     "name": "ustas-eth"

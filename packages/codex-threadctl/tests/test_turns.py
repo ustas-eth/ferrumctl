@@ -96,28 +96,30 @@ class MessageTests(unittest.IsolatedAsyncioTestCase):
 
 
 class InspectionTests(unittest.TestCase):
-    def test_build_inspection_merges_live_items_with_newer_lifecycle(self):
-        detailed = turn(
-            "turn",
+    def test_build_inspection_keeps_latest_full_and_summarizes_previous(self):
+        latest = turn(
+            "latest",
             user("item-1", "request"),
             {"id": "exec-1", "type": "commandExecution", "command": "true"},
+            agent("item-2", "working"),
             status="inProgress",
             completed=None,
         )
-        summary = turn(
-            "turn",
-            user("item-1", "request"),
-            agent("item-2", "done"),
-            status="inProgress",
-            completed=None,
+        latest["itemsView"] = "full"
+        previous = turn(
+            "previous",
+            user("item-3", "earlier request"),
+            agent("item-4", "progress", phase="commentary"),
+            {"id": "exec-2", "type": "commandExecution", "command": "true"},
+            agent("item-5", "earlier reply"),
         )
+        previous["itemsView"] = "full"
         result = turns.build_inspection(
             {"id": "thread", "status": {"type": "active"}, "cwd": "/work"},
             loaded=True,
             goal=None,
             goal_error=None,
-            detailed_turn=detailed,
-            summary_turns=[summary],
+            turns=[latest, previous],
             item_limit=0,
             context={"usedTokens": 10},
             compaction=None,
@@ -129,20 +131,8 @@ class InspectionTests(unittest.TestCase):
             [item["type"] for item in result["latestTurn"]["items"]],
             ["userMessage", "commandExecution", "agentMessage"],
         )
-
-    def test_changed_lifecycle_uses_summary_instead_of_stale_full_turn(self):
-        detailed = turn("turn", user("item-1", "request"), status="inProgress", completed=None)
-        summary = turn("turn", user("item-1", "request"), agent("item-2", "done"))
-        result = turns.build_inspection(
-            {"id": "thread", "status": {"type": "idle"}},
-            loaded=True,
-            goal=None,
-            goal_error=None,
-            detailed_turn=detailed,
-            summary_turns=[summary],
-            item_limit=0,
-            context=None,
-            compaction=None,
+        self.assertEqual(result["previousTurn"]["itemsView"], "summary")
+        self.assertEqual(
+            [item["text"] for item in result["previousTurn"]["items"]],
+            ["earlier request", "earlier reply"],
         )
-        self.assertEqual(result["latestTurn"]["status"], "completed")
-        self.assertEqual(result["latestTurn"]["items"][-1]["text"], "done")

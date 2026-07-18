@@ -31,30 +31,33 @@ def summarize_turn(turn: dict[str, Any], item_limit: int) -> dict[str, Any]:
     }
 
 
-def merge_turn_detail(
-    detailed: dict[str, Any], summary: dict[str, Any]
-) -> dict[str, Any]:
-    merged = dict(detailed)
-    for key in ("status", "error", "startedAt", "completedAt", "durationMs"):
-        if key in summary:
-            merged[key] = summary[key]
+def summary_view(turn: dict[str, Any]) -> dict[str, Any]:
+    items = turn.get("items", [])
+    first_user = next(
+        (item for item in items if item.get("type") == "userMessage"),
+        None,
+    )
+    final_agent = next(
+        (item for item in reversed(items) if item.get("type") == "agentMessage"),
+        None,
+    )
+    if (
+        first_user is not None
+        and final_agent is not None
+        and first_user.get("id") != final_agent.get("id")
+    ):
+        summary_items = [first_user, final_agent]
+    elif first_user is not None:
+        summary_items = [first_user]
+    elif final_agent is not None:
+        summary_items = [final_agent]
+    else:
+        summary_items = []
 
-    items = list(detailed.get("items", []))
-    positions = {
-        item["id"]: index
-        for index, item in enumerate(items)
-        if item.get("id") is not None
-    }
-    for item in summary.get("items", []):
-        item_id = item.get("id")
-        if item_id in positions:
-            items[positions[item_id]] = item
-        else:
-            items.append(item)
-            if item_id is not None:
-                positions[item_id] = len(items) - 1
-    merged["items"] = items
-    return merged
+    summary = dict(turn)
+    summary["items"] = summary_items
+    summary["itemsView"] = "summary"
+    return summary
 
 
 def build_inspection(
@@ -63,31 +66,23 @@ def build_inspection(
     loaded: bool,
     goal: dict[str, Any] | None,
     goal_error: str | None,
-    detailed_turn: dict[str, Any] | None,
-    summary_turns: list[dict[str, Any]],
+    turns: list[dict[str, Any]],
     item_limit: int,
     context: dict[str, Any] | None,
     compaction: dict[str, Any] | None,
     context_error: str | None = None,
 ) -> dict[str, Any]:
-    summary_latest = summary_turns[0] if summary_turns else None
-    if (
-        detailed_turn is not None
-        and summary_latest is not None
-        and detailed_turn.get("id") == summary_latest.get("id")
-        and not turn_lifecycle_changed(detailed_turn, summary_latest)
-    ):
-        latest = merge_turn_detail(detailed_turn, summary_latest)
-    else:
-        latest = summary_latest
+    latest = turns[0] if turns else None
     previous = next(
         (
             turn
-            for turn in summary_turns
+            for turn in turns[1:]
             if latest is None or turn.get("id") != latest.get("id")
         ),
         None,
     )
+    if previous is not None:
+        previous = summary_view(previous)
     metadata_keys = (
         "id",
         "status",
@@ -115,15 +110,6 @@ def build_inspection(
         "latestTurn": summarize_turn(latest, item_limit) if latest else None,
         "previousTurn": summarize_turn(previous, 0) if previous else None,
     }
-
-
-def turn_lifecycle_changed(
-    detailed: dict[str, Any], summary: dict[str, Any]
-) -> bool:
-    return any(
-        detailed.get(key) != summary.get(key)
-        for key in ("status", "error", "startedAt", "completedAt", "durationMs")
-    )
 
 
 async def recent_messages(
