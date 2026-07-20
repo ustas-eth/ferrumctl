@@ -149,6 +149,7 @@ package. Shared docs:
 - [docs/coordination-principles.md](docs/coordination-principles.md)
 - [docs/coordination-recipes.md](docs/coordination-recipes.md)
 - [docs/operational-caveats.md](docs/operational-caveats.md)
+- [docs/future-directions.md](docs/future-directions.md)
 
 Selected docs are copied into skill `references/` so installed Codex skills can
 load details without requiring a repo checkout. Regenerate or check those copies
