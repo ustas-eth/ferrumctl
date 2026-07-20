@@ -62,11 +62,12 @@ def expected_versions() -> dict[str, str]:
     return versions
 
 
-async def refresh_plugins(endpoint: str) -> None:
+async def refresh_plugins(endpoint: str, reload_threads: bool) -> None:
     sys.path.insert(0, str(ROOT / "packages" / "codex-threadctl" / "src"))
-    from codex_threadctl.appserver import AppServer, require_object
+    from codex_threadctl.appserver import AppServer, list_loaded, require_object
     from codex_threadctl.errors import ThreadctlError
 
+    reloaded_threads = 0
     try:
         async with AppServer(
             endpoint,
@@ -84,6 +85,13 @@ async def refresh_plugins(endpoint: str) -> None:
                     },
                 )
 
+            if reload_threads:
+                reloaded_threads = len(await list_loaded(app))
+                await app.request(
+                    "config/batchWrite",
+                    {"edits": [], "reloadUserConfig": True},
+                )
+
             result = require_object(
                 await app.request(
                     "skills/list",
@@ -93,6 +101,10 @@ async def refresh_plugins(endpoint: str) -> None:
             )
     except ThreadctlError as exc:
         raise RuntimeError(str(exc)) from exc
+
+    if reload_threads:
+        print(f"reloaded user config in {reloaded_threads} loaded thread(s)")
+        print("model-visible skills update when each thread rebuilds its context")
 
     paths = {
         skill.get("name", ""): skill.get("path", "")
@@ -118,6 +130,11 @@ def parse_args() -> argparse.Namespace:
         default="unix://",
         help="running app-server endpoint (default: unix://)",
     )
+    parser.add_argument(
+        "--reload-threads",
+        action="store_true",
+        help="reload user config in every loaded thread after installing plugins",
+    )
     return parser.parse_args()
 
 
@@ -125,7 +142,7 @@ def main() -> int:
     args = parse_args()
     try:
         install_commands()
-        asyncio.run(refresh_plugins(args.endpoint))
+        asyncio.run(refresh_plugins(args.endpoint, args.reload_threads))
     except (OSError, subprocess.CalledProcessError, RuntimeError) as exc:
         print(f"update-local: {exc}", file=sys.stderr)
         return 1

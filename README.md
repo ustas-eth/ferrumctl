@@ -172,4 +172,7 @@ the local compatibility probe to run after Codex upgrades; it uses a temporary
 `CODEX_HOME` and `XDG_STATE_HOME`, starts only its own app-server, and cleans up
 after itself. `scripts/update-local.py` reinstalls the commands from this
 checkout and refreshes the plugins in an existing app-server without restarting
-the server or its sessions.
+the server or its sessions. Pass `--reload-threads` when newly enabled plugins
+must become available to existing sessions. It reloads user configuration in
+every loaded thread. Model-visible skill instructions update when a thread next
+rebuilds its context, such as after compaction, rather than on an ordinary turn.
