@@ -75,6 +75,11 @@ goalctl() {
     "$PYTHON" -c 'import sys; from codex_goalctl.cli import main; raise SystemExit(main(sys.argv[1:]))' "$@"
 }
 
+limitctl() {
+  CODEX_BIN="$CODEX_BIN" PYTHONPATH="$ROOT/packages/codex-limitctl/src${PYTHONPATH:+:$PYTHONPATH}" \
+    "$PYTHON" -c 'import sys; from codex_limitctl.cli import main; raise SystemExit(main(sys.argv[1:]))' "$@"
+}
+
 wakectl() {
   PYTHONPATH="$ROOT/packages/codex-threadctl/src:$ROOT/packages/codex-wakectl/src${PYTHONPATH:+:$PYTHONPATH}" \
     "$PYTHON" -c 'import sys; from codex_wakectl.cli import main; raise SystemExit(main(sys.argv[1:]))' "$@"
@@ -227,6 +232,86 @@ parser_tag=$(sed -n 's/.*tag = "\(rust-v[^"]*\)".*/\1/p' "$ROOT/packages/codex-r
 if [[ -n "$parser_tag" ]]; then
   printf 'codex-readcov parser dependency: codex-shell-command %s\n' "$parser_tag"
 fi
+
+log "limitctl app-server schema compatibility"
+schema_dir="$SMOKE_ROOT/app-server-schema"
+"$CODEX_BIN" app-server generate-json-schema --out "$schema_dir" >/dev/null
+"$PYTHON" - "$schema_dir/ClientRequest.json" \
+  "$schema_dir/codex_app_server_protocol.v2.schemas.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    requests = json.load(handle)
+with open(sys.argv[2], encoding="utf-8") as handle:
+    protocol = json.load(handle)
+
+def request_definitions(value):
+    if isinstance(value, dict):
+        properties = value.get("properties", {})
+        methods = properties.get("method", {}).get("enum", [])
+        if "account/rateLimits/read" in methods:
+            yield value
+        for child in value.values():
+            yield from request_definitions(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from request_definitions(child)
+
+
+rate_limit_requests = list(request_definitions(requests))
+assert len(rate_limit_requests) == 1
+request = rate_limit_requests[0]
+assert set(request["required"]) == {"id", "method"}
+assert request["properties"]["params"] == {"type": "null"}
+
+definitions = protocol["definitions"]
+response = definitions["GetAccountRateLimitsResponse"]
+snapshot = definitions["RateLimitSnapshot"]["properties"]
+window = definitions["RateLimitWindow"]["properties"]
+assert response["type"] == "object"
+assert response["required"] == ["rateLimits"]
+assert {"rateLimits", "rateLimitsByLimitId"} <= set(response["properties"])
+assert response["properties"]["rateLimits"]["allOf"] == [
+    {"$ref": "#/definitions/RateLimitSnapshot"}
+]
+assert set(response["properties"]["rateLimitsByLimitId"]["type"]) == {"object", "null"}
+assert response["properties"]["rateLimitsByLimitId"]["additionalProperties"] == {
+    "$ref": "#/definitions/RateLimitSnapshot"
+}
+assert {"limitId", "limitName", "planType", "primary", "secondary"} <= set(snapshot)
+assert set(snapshot["limitId"]["type"]) == {"string", "null"}
+assert set(snapshot["limitName"]["type"]) == {"string", "null"}
+assert definitions["PlanType"]["type"] == "string"
+for field in ("primary", "secondary"):
+    assert {entry.get("$ref") or entry.get("type") for entry in snapshot[field]["anyOf"]} == {
+        "#/definitions/RateLimitWindow",
+        "null",
+    }
+assert {"usedPercent", "windowDurationMins", "resetsAt"} <= set(window)
+assert window["usedPercent"]["type"] == "integer"
+assert set(window["windowDurationMins"]["type"]) == {"integer", "null"}
+assert set(window["resetsAt"]["type"]) == {"integer", "null"}
+PY
+printf 'limitctl required account request and response shapes are present\n'
+
+if limitctl --timeout 5 list \
+  >"$SMOKE_ROOT/limit.out" 2>"$SMOKE_ROOT/limit.err"; then
+  fail "expected isolated account read to require authentication"
+else
+  limit_status=$?
+fi
+[[ "$limit_status" == "2" ]] || {
+  sed -n '1,40p' "$SMOKE_ROOT/limit.err" >&2
+  fail "limitctl authentication failure used exit $limit_status instead of 2"
+}
+grep -Eq '^codex-limitctl: app-server error [-0-9]+: .*authentication' \
+  "$SMOKE_ROOT/limit.err" || {
+  sed -n '1,40p' "$SMOKE_ROOT/limit.err" >&2
+  fail "unexpected limitctl authentication error"
+}
+printf 'limitctl reached account API and preserved operational exit status\n'
+
 log "goalctl stdio app-server compatibility"
 missing_thread="00000000-0000-4000-8000-000000000001"
 if goalctl --json --timeout 5 get "$missing_thread" >"$SMOKE_ROOT/goal.out" 2>"$SMOKE_ROOT/goal.err"; then

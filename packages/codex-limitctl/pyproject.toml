@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codex-limitctl"
+version = "0.1.0"
+description = "Inspect Codex subscription rate-limit windows"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+license-files = ["LICENSE"]
+
+[project.urls]
+Repository = "https://github.com/ustas-eth/ferrumctl"
+
+[project.scripts]
+codex-limitctl = "codex_limitctl.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

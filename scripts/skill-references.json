@@ -4,6 +4,7 @@
       "source": "docs/coordination-principles.md",
       "targets": [
         "packages/codex-goalctl/plugins/codex-goalctl/skills/codex-goalctl/references/coordination-principles.md",
+        "packages/codex-limitctl/plugins/codex-limitctl/skills/codex-limitctl/references/coordination-principles.md",
         "packages/codex-wakectl/plugins/codex-wakectl/skills/codex-wakectl/references/coordination-principles.md",
         "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/coordination-principles.md",
         "packages/codex-readcov/plugins/codex-readcov/skills/codex-readcov/references/coordination-principles.md"
@@ -13,6 +14,7 @@
       "source": "docs/coordination-recipes.md",
       "targets": [
         "packages/codex-goalctl/plugins/codex-goalctl/skills/codex-goalctl/references/coordination-recipes.md",
+        "packages/codex-limitctl/plugins/codex-limitctl/skills/codex-limitctl/references/coordination-recipes.md",
         "packages/codex-wakectl/plugins/codex-wakectl/skills/codex-wakectl/references/coordination-recipes.md",
         "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/coordination-recipes.md",
         "packages/codex-readcov/plugins/codex-readcov/skills/codex-readcov/references/coordination-recipes.md"
@@ -22,9 +24,16 @@
       "source": "docs/operational-caveats.md",
       "targets": [
         "packages/codex-goalctl/plugins/codex-goalctl/skills/codex-goalctl/references/operational-caveats.md",
+        "packages/codex-limitctl/plugins/codex-limitctl/skills/codex-limitctl/references/operational-caveats.md",
         "packages/codex-wakectl/plugins/codex-wakectl/skills/codex-wakectl/references/operational-caveats.md",
         "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/operational-caveats.md",
         "packages/codex-readcov/plugins/codex-readcov/skills/codex-readcov/references/operational-caveats.md"
+      ]
+    },
+    {
+      "source": "packages/codex-limitctl/docs/limit-semantics.md",
+      "targets": [
+        "packages/codex-limitctl/plugins/codex-limitctl/skills/codex-limitctl/references/limit-semantics.md"
       ]
     },
     {

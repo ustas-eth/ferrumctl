@@ -12,11 +12,38 @@ unless the user explicitly asks for a command or installs the missing skill.
 Use real thread ids for placeholders such as `MAIN`, `WORKER`, `REVIEWER`,
 `SELF`, and `NEXT`.
 
+## Account Capacity Gate
+
+Use `codex-limitctl` when a workflow has an explicit minimum-capacity policy. The
+observation is account-wide and separate from goal budgets and thread context.
+
+```sh
+codex-limitctl list
+codex-limitctl test codex --window 7d --remaining-at-least 20
+```
+
+When both the `codex-limitctl` and `codex-wakectl` skills are available, the
+same predicate can resume a sleeping coordinator after capacity becomes
+available:
+
+```sh
+SELF=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
+codex-wakectl add cmd --to "$SELF" \
+  "Automated event: Codex account capacity reached the configured threshold." \
+  -- codex-limitctl test codex --window 7d --remaining-at-least 20 --timeout 10
+```
+
+The inner timeout is lower than the runner's default command timeout so the
+predicate can report an unavailable observation before the runner stops it.
+Keep that ordering when either timeout is changed. The command predicate treats
+every nonzero exit as pending; inspect or pair the job with a time-based safety
+net when observation failure must not wait indefinitely.
+
 ## Self-Managing Thread
 
-Use `wakectl` for self-wakes and `threadctl` for host-visible state. Use native
-goal tools for the current thread's goal when available; `goalctl` adds little
-for self-management.
+Use `codex-wakectl` for self-wakes and `codex-threadctl` for host-visible state.
+Use native goal tools for the current thread's goal when available;
+`codex-goalctl` adds little for self-management.
 
 ```sh
 SELF=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
@@ -42,11 +69,11 @@ codex-readcov delta self.before.json packages --limit 20
 ## Two Threads: Main Plus Worker
 
 Main initializes work, worker runs, main reviews when the goal ends. The
-full version uses the `goalctl`, `wakectl`, `threadctl`, and `readcov` skills. If
-main has a native subagent handle, native input can replace `threadctl start` and
-native result retrieval can replace message inspection. Native wait or poll can
-replace the wake watch only when main should stay active and blocking is
-acceptable.
+full version uses the `codex-goalctl`, `codex-wakectl`, `codex-threadctl`, and
+`codex-readcov` skills. If main has a native subagent handle, native input can
+replace `codex-threadctl start` and native result retrieval can replace message
+inspection. Native wait or poll can replace the wake watch only when main should
+stay active and blocking is acceptable.
 
 ```sh
 MAIN=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
@@ -76,9 +103,10 @@ codex-readcov delta worker.before.json packages --limit 20
 
 If the inspected turn is still active, wait for it to end before relying on the
 final response. Retrieve a native subagent response through its native handle;
-for a standalone worker, use `threadctl` or a shared result artifact.
+for a standalone worker, use `codex-threadctl` or a shared result artifact.
 
-If main should end its turn and return later, keep the `wakectl add goal` watch.
+If main should end its turn and return later, keep the `codex-wakectl add goal`
+watch.
 
 ## Active Worker Supervision
 
@@ -108,8 +136,8 @@ codex-threadctl steer "$WORKER" "$TURN" \
 ```
 
 If the coordinator has a native subagent input handle, use that handle for the
-same immediate steering message. Keep `wakectl` for milestone watches and later
-resumption.
+same immediate steering message. Keep `codex-wakectl` for milestone watches and
+later resumption.
 
 Use a checkpoint when the answer must gate continuation:
 
@@ -137,9 +165,10 @@ If inspection already shows the worker idle, skip `interrupt`.
 ## Three Threads: Main, Worker, Reviewer
 
 Main initializes. Worker does the task. Reviewer inspects the worker result and
-wakes main only after review. The full version uses all four skills. Without
-`readcov`, the reviewer uses the result and thread history directly. Without
-`wakectl`, main must use native or manual input and wait paths.
+wakes main only after review. This version uses the `codex-goalctl`,
+`codex-wakectl`, `codex-threadctl`, and `codex-readcov` skills. Without
+`codex-readcov`, the reviewer uses the result and thread history directly.
+Without `codex-wakectl`, main must use native or manual input and wait paths.
 
 ```sh
 MAIN=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
@@ -183,10 +212,9 @@ or `codex-threadctl inspect "$REVIEWER"`.
 
 Use this when the targets are normal Codex sessions loaded on a shared
 app-server rather than native subagents of the current turn.
-The `threadctl` and `wakectl` skills provide immediate control and scheduled
-delivery;
-`goalctl` and `readcov` add durable state and transcript evidence when
-available.
+The `codex-threadctl` and `codex-wakectl` skills provide immediate control and
+scheduled delivery; `codex-goalctl` and `codex-readcov` add durable state and
+transcript evidence when available.
 
 ```sh
 codex-threadctl loaded
@@ -206,15 +234,15 @@ codex-threadctl start "$WORKER" \
 Because the stop watch is created before `start`, it still observes a short
 worker turn completed between runner passes.
 
-`goalctl` uses its own short-lived stdio app-server. It does not need to use the
-same endpoint as `wakectl`, but both must refer to the same Codex home and
-thread id.
+`codex-goalctl` uses its own short-lived stdio app-server. It does not need to
+use the same endpoint as `codex-wakectl`, but both must refer to the same Codex
+home and thread id.
 
 ## Peer Handoff
 
 One loaded session wakes another when a host-visible condition becomes true.
-This requires the `wakectl` skill. Add `goalctl` when the next session needs a
-durable assignment.
+This requires the `codex-wakectl` skill. Add `codex-goalctl` when the next
+session needs a durable assignment.
 
 ```sh
 NEXT=next-thread-id
@@ -233,7 +261,8 @@ codex-goalctl replace "$NEXT" \
 
 ## Coverage Audit And Gaps
 
-Use `readcov` to inspect transcript-recorded read actions during an interval.
+Use `codex-readcov` to inspect transcript-recorded read actions during an
+interval.
 
 ```sh
 codex-readcov snapshot "$WORKER" > before.json
@@ -282,12 +311,16 @@ and cleanup ownership.
 
 - Sleeping coordinator: arm watches, stop the coordinating turn, wake it on
   goal status, turn completion, time, or command condition.
-- Worker pool: one goal and optional read snapshot per worker; use `wakectl`
+- Worker pool: one goal and optional read snapshot per worker; use
+  `codex-wakectl`
   watches for attention, then retrieve each response through its native handle,
-  `threadctl`, or a shared artifact.
+  `codex-threadctl`, or a shared artifact.
 - Budget sentinel: use goal time/token predicates to wake the owner before
   budget exhaustion.
+- Capacity gate: test an account rate-limit window before large fan-out, or use
+  the same predicate as a durable wake condition.
 - Script dispatcher: store snapshots, wake ids, and read lists as files; use
   `--json` for parsed state.
-- Manual operator dashboard: combine threadctl `loaded`, `status`, and `inspect`
-  with goalctl `get`, wakectl `list`, and readcov `top` or `delta`.
+- Manual operator dashboard: combine `codex-threadctl loaded`, `status`, and
+  `inspect` with `codex-goalctl get`, `codex-wakectl list`, and
+  `codex-readcov top` or `delta`.

@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MARKETPLACE = ROOT / ".agents" / "plugins" / "marketplace.json"
 PYTHON_PACKAGES = (
     "codex-goalctl",
+    "codex-limitctl",
     "codex-threadctl",
     "codex-wakectl",
 )

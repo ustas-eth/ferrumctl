@@ -6,6 +6,7 @@ Small Unix-style control tools for Codex agent workflows.
 Use the tools separately and compose them with the shell:
 
 - `codex-goalctl` reads and changes persisted Codex thread goals.
+- `codex-limitctl` reads Codex subscription rate-limit windows.
 - `codex-threadctl` discovers and inspects threads and applies immediate,
   turn-scoped control.
 - `codex-wakectl` schedules durable thread input after later conditions.
@@ -21,6 +22,7 @@ git clone https://github.com/ustas-eth/ferrumctl
 cd ferrumctl
 
 uv tool install ./packages/codex-goalctl
+uv tool install ./packages/codex-limitctl
 uv tool install ./packages/codex-threadctl
 uv tool install ./packages/codex-wakectl
 cargo install --locked --path ./packages/codex-readcov
@@ -35,6 +37,7 @@ Install the optional skills from the root marketplace:
 ```sh
 codex plugin marketplace add ustas-eth/ferrumctl
 codex plugin add codex-goalctl@ferrumctl
+codex plugin add codex-limitctl@ferrumctl
 codex plugin add codex-threadctl@ferrumctl
 codex plugin add codex-wakectl@ferrumctl
 codex plugin add codex-readcov@ferrumctl
@@ -57,6 +60,13 @@ For daily use, keep the Codex flags you normally use and add `--remote
 unix://` to that shortcut, for example `alias x='codex --remote unix://'`.
 
 ## What You Can Do
+
+Check shared subscription capacity before starting expensive work:
+
+```sh
+codex-limitctl list
+codex-limitctl test codex --window 7d --remaining-at-least 20
+```
 
 Find recent sessions or retained subagent threads:
 
@@ -122,6 +132,7 @@ More combinations are in [docs/coordination-recipes.md](docs/coordination-recipe
 ```text
 packages/
   codex-goalctl/
+  codex-limitctl/
   codex-threadctl/
   codex-wakectl/
   codex-readcov/

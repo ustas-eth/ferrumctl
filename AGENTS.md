@@ -28,6 +28,7 @@ the same turn-scoped app-server operations as immediate control.
 The tools touch several independent Codex surfaces:
 
 - live app-server state
+- account rate-limit snapshots
 - persisted goal state
 - materialized thread and turn history
 - rollout transcript files
@@ -50,6 +51,10 @@ history.
 access or an operating-system audit log. It must reject unresolved dynamic
 command envelopes instead of silently under-counting. `codex-goalctl replace`
 is clear-then-set.
+
+`codex-limitctl` owns read-only account capacity. Normalize windows by limit id
+and duration, not backend field position, and never pass through account
+analytics, credit data, or consumable resets.
 
 ## Working Rules
 

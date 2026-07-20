@@ -1,0 +1,30 @@
+{
+  "name": "codex-limitctl",
+  "version": "0.1.0",
+  "description": "Codex skill for inspecting subscription rate-limit windows.",
+  "author": {
+    "name": "ustas-eth"
+  },
+  "homepage": "https://github.com/ustas-eth/ferrumctl/tree/main/packages/codex-limitctl",
+  "repository": "https://github.com/ustas-eth/ferrumctl",
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "limits",
+    "usage",
+    "automation"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Codex Limitctl",
+    "shortDescription": "Inspect Codex subscription capacity.",
+    "longDescription": "Codex Limitctl provides workflow guidance for listing normalized Codex subscription rate-limit windows and testing remaining capacity through Unix exit status.",
+    "developerName": "ustas-eth",
+    "category": "Productivity",
+    "capabilities": [
+      "Subscription rate-limit inspection",
+      "Capacity predicates"
+    ],
+    "defaultPrompt": "Use $codex-limitctl to inspect current Codex subscription capacity."
+  }
+}

@@ -30,6 +30,22 @@ observe the cleared state or overwrite the new state.
 Concurrent writes to the same goal are last-writer-wins. Use one owner for a
 thread goal when possible.
 
+## Account Limits
+
+`codex-limitctl` returns one account-wide observation. Other threads can consume
+capacity immediately after it is read, so a successful threshold is a gate, not
+a reservation.
+
+Limit ids are backend buckets, not necessarily model names. Windows are
+identified by duration rather than `primary` or `secondary` field position. An
+omitted requested window is unavailable and exits `2`; it is not fully unused.
+
+When `codex-limitctl test` is used as a `codex-wakectl` command predicate, both
+false exit `1` and unavailable exit `2` leave the job pending. Set the inner
+`codex-limitctl` timeout below the runner's command timeout. Use a separate
+safety wake or inspect the job when persistent observation failure needs
+attention.
+
 ## Scheduled Wakes
 
 `codex-wakectl` can wake only threads loaded on the selected app-server. A valid
@@ -87,7 +103,8 @@ threads, put results in a shared artifact or inspect the thread deliberately.
 
 Repeating conditions should have an owner and, when appropriate, a cap. Cancel
 stale jobs owned by that coordination loop when it is over. The default
-wakectl queue is shared; unrelated jobs may be pending in the same database.
+`codex-wakectl` queue is shared; unrelated jobs may be pending in the same
+database.
 Every goal watch belongs to one goal assignment. A replacement assignment marks
 the old watch `superseded`.
 
@@ -117,8 +134,8 @@ direct human input matters. The label provides context, not authorization.
 
 `resume` does not add a user message, but Codex can continue an active goal
 after loading it. App-server cannot atomically exclude goal continuation, so
-threadctl requires `--continue-goal` for every resume. Resume does not coordinate
-another server that may own the same thread.
+`codex-threadctl` requires `--continue-goal` for every resume. Resume does not
+coordinate another server that may own the same thread.
 
 Codex can reuse background-terminal process ids. `terminate-terminal` requires
 the current originating item id and checks it before acting, but the check and

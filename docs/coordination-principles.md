@@ -12,6 +12,10 @@ process.
 `codex-goalctl` reads and edits persisted goal state. It provides durable intent
 and counters, but does not start a turn or deliver input.
 
+`codex-limitctl` reads account-wide subscription rate-limit windows and tests
+remaining-capacity predicates. It does not measure thread context or goal token
+usage.
+
 `codex-wakectl` persists jobs that deliver normal input after later conditions.
 It also offers synchronous condition polling for scripts; those waits do not
 use the queue or deliver input.
@@ -40,7 +44,8 @@ needs to send an immediate message. Use native result retrieval for that
 subagent's completed response.
 
 Native wait or poll is appropriate when the current turn owns the live
-subagent or terminal handle and should stay active. A synchronous wakectl wait
+subagent or terminal handle and should stay active. A synchronous
+`codex-wakectl` wait
 is useful when a script or thread-id-only controller needs an exit status from
 a Codex condition. A queued wake is more suitable when the coordinator should
 end its turn and resume after a later condition.
@@ -82,16 +87,18 @@ context, unless the user explicitly requests another installed command.
 
 Common subsets:
 
-- `goalctl`: external goal assignment and status checks.
-- `wakectl`: later attention, stop watches, host predicates, and synchronous
+- `codex-goalctl`: external goal assignment and status checks.
+- `codex-limitctl`: account-wide subscription capacity and shell predicates.
+- `codex-wakectl`: later attention, stop watches, host predicates, and synchronous
   Codex conditions for scripts.
-- `threadctl`: current activity, conversation retrieval, immediate input,
+- `codex-threadctl`: current activity, conversation retrieval, immediate input,
   resume, and turn-scoped interruption.
-- `readcov`: read counts, interval deltas, overlap, and gaps.
-- `goalctl + threadctl`: durable assignment plus immediate input delivery.
-- `goalctl + wakectl`: durable assignment plus conditional later delivery.
-- `wakectl + threadctl`: later attention plus deliberate observation.
-- `threadctl + readcov`: behavioral inspection plus recorded read evidence.
+- `codex-readcov`: read counts, interval deltas, overlap, and gaps.
+- `codex-goalctl + codex-threadctl`: durable assignment plus immediate input.
+- `codex-goalctl + codex-wakectl`: durable assignment plus later delivery.
+- `codex-limitctl + codex-wakectl`: capacity predicate plus later attention.
+- `codex-wakectl + codex-threadctl`: later attention plus observation.
+- `codex-threadctl + codex-readcov`: thread state plus recorded read evidence.
 
 Missing skills remove guidance for that surface; they do not change the
 semantics of the remaining commands.
@@ -104,7 +111,8 @@ The surfaces can differ temporarily:
 - two app-servers can share persisted state while only one owns a loaded thread
 - a wake can arrive after its condition was handled manually
 - materialized turn history can change after rollback or compaction
-- a rollout can grow while threadctl or readcov scans it
+- a rollout can grow while `codex-threadctl` or `codex-readcov` scans it
+- account capacity can change immediately after `codex-limitctl` reads it
 
 Treat cross-surface workflows as retryable. Keep durable intent in goals, use
 small idempotent queued messages when context remains authoritative, inspect
