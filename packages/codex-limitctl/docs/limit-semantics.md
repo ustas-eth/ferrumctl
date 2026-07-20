@@ -1,8 +1,8 @@
 # Limit Semantics
 
-`codex-limitctl` reads `account/rateLimits/read` through a short-lived Codex
-app-server. The command uses the current Codex login and does not require a
-persistent app-server or an app-server-backed thread.
+`list` and `test` read `account/rateLimits/read` through a short-lived Codex
+app-server. They use the current Codex login and do not require a persistent
+app-server or an app-server-backed thread.
 
 `--timeout` bounds app-server startup, initialization, and the account read as
 one observation. Failure output omits raw app-server responses and diagnostics.

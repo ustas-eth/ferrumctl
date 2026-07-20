@@ -37,6 +37,12 @@
       ]
     },
     {
+      "source": "packages/codex-limitctl/docs/usage-history.md",
+      "targets": [
+        "packages/codex-limitctl/plugins/codex-limitctl/skills/codex-limitctl/references/usage-history.md"
+      ]
+    },
+    {
       "source": "packages/codex-goalctl/docs/goal-lifecycle.md",
       "targets": [
         "packages/codex-goalctl/plugins/codex-goalctl/skills/codex-goalctl/references/goal-lifecycle.md"

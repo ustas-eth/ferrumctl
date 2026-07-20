@@ -133,6 +133,14 @@ events = [
     },
     {
         "timestamp": timestamp,
+        "type": "turn_context",
+        "payload": {
+            "model": "gpt-smoke",
+            "service_tier": "default",
+        },
+    },
+    {
+        "timestamp": timestamp,
         "type": "event_msg",
         "payload": {
             "type": "turn_started",
@@ -213,7 +221,15 @@ events = [
                 },
                 "model_context_window": 200000,
             },
-            "rate_limits": None,
+            "rate_limits": {
+                "limit_id": "codex",
+                "primary": {
+                    "used_percent": 11,
+                    "window_minutes": 10080,
+                    "resets_at": 1767830400,
+                },
+                "secondary": None,
+            },
         },
     },
 ]
@@ -246,22 +262,28 @@ with open(sys.argv[1], encoding="utf-8") as handle:
 with open(sys.argv[2], encoding="utf-8") as handle:
     protocol = json.load(handle)
 
-def request_definitions(value):
+def request_definitions(value, method):
     if isinstance(value, dict):
         properties = value.get("properties", {})
         methods = properties.get("method", {}).get("enum", [])
-        if "account/rateLimits/read" in methods:
+        if method in methods:
             yield value
         for child in value.values():
-            yield from request_definitions(child)
+            yield from request_definitions(child, method)
     elif isinstance(value, list):
         for child in value:
-            yield from request_definitions(child)
+            yield from request_definitions(child, method)
 
 
-rate_limit_requests = list(request_definitions(requests))
+rate_limit_requests = list(request_definitions(requests, "account/rateLimits/read"))
 assert len(rate_limit_requests) == 1
 request = rate_limit_requests[0]
+assert set(request["required"]) == {"id", "method"}
+assert request["properties"]["params"] == {"type": "null"}
+
+usage_requests = list(request_definitions(requests, "account/usage/read"))
+assert len(usage_requests) == 1
+request = usage_requests[0]
 assert set(request["required"]) == {"id", "method"}
 assert request["properties"]["params"] == {"type": "null"}
 
@@ -292,6 +314,15 @@ assert {"usedPercent", "windowDurationMins", "resetsAt"} <= set(window)
 assert window["usedPercent"]["type"] == "integer"
 assert set(window["windowDurationMins"]["type"]) == {"integer", "null"}
 assert set(window["resetsAt"]["type"]) == {"integer", "null"}
+
+usage = definitions["GetAccountTokenUsageResponse"]["properties"]
+daily = usage["dailyUsageBuckets"]
+assert set(daily["type"]) == {"array", "null"}
+assert daily["items"] == {"$ref": "#/definitions/AccountTokenUsageDailyBucket"}
+bucket = definitions["AccountTokenUsageDailyBucket"]
+assert {"startDate", "tokens"} <= set(bucket["required"])
+assert bucket["properties"]["startDate"]["type"] == "string"
+assert bucket["properties"]["tokens"]["type"] == "integer"
 PY
 printf 'limitctl required account request and response shapes are present\n'
 
@@ -311,6 +342,38 @@ grep -Eq '^codex-limitctl: app-server error [-0-9]+: .*authentication' \
   fail "unexpected limitctl authentication error"
 }
 printf 'limitctl reached account API and preserved operational exit status\n'
+
+if limitctl usage --timeout 5 \
+  >"$SMOKE_ROOT/usage.out" 2>"$SMOKE_ROOT/usage.err"; then
+  fail "expected isolated account usage read to require authentication"
+else
+  usage_status=$?
+fi
+[[ "$usage_status" == "2" ]] || {
+  sed -n '1,40p' "$SMOKE_ROOT/usage.err" >&2
+  fail "limitctl usage authentication failure used exit $usage_status instead of 2"
+}
+grep -Eq '^codex-limitctl: app-server error [-0-9]+: .*authentication' \
+  "$SMOKE_ROOT/usage.err" || {
+  sed -n '1,40p' "$SMOKE_ROOT/usage.err" >&2
+  fail "unexpected limitctl usage authentication error"
+}
+printf 'limitctl reached account usage API and preserved operational exit status\n'
+
+limitctl history codex --window 7d --since 2026-01-01 --codex-home "$CODEX_HOME" \
+  >"$SMOKE_ROOT/history.out"
+grep -Fq "thread=$inspect_thread" "$SMOKE_ROOT/history.out" ||
+  fail "limitctl history did not parse the rollout rate-limit record"
+
+limitctl activity --since 2026-01-01 --codex-home "$CODEX_HOME" \
+  >"$SMOKE_ROOT/activity.out"
+grep -Fq "$inspect_thread" "$SMOKE_ROOT/activity.out" ||
+  fail "limitctl activity omitted the rollout thread"
+grep -Fq 'model=gpt-smoke' "$SMOKE_ROOT/activity.out" ||
+  fail "limitctl activity omitted the rollout model"
+grep -Fq 'tokens=12345' "$SMOKE_ROOT/activity.out" ||
+  fail "limitctl activity did not parse cumulative token usage"
+printf 'limitctl parsed rollout history and thread activity\n'
 
 log "goalctl stdio app-server compatibility"
 missing_thread="00000000-0000-4000-8000-000000000001"

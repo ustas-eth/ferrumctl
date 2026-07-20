@@ -22,28 +22,33 @@ codex-limitctl list
 codex-limitctl test codex --window 7d --remaining-at-least 20
 ```
 
-When both the `codex-limitctl` and `codex-wakectl` skills are available, the
-same predicate can resume a sleeping coordinator after capacity becomes
-available:
+When both the `codex-limitctl` and `codex-wakectl` skills are available and the
+selected window reports a renewal time, a sleeping coordinator can wake then
+re-evaluate the policy:
 
 ```sh
 SELF=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
-codex-wakectl add cmd --to "$SELF" \
-  "Automated event: Codex account capacity reached the configured threshold." \
-  -- codex-limitctl test codex --window 7d --remaining-at-least 20 --timeout 10
+RENEWS_AT=$(codex-limitctl list codex --window 7d --json |
+  jq -r '.windows[0].resetsAt | todateiso8601')
+codex-wakectl add time --at "$RENEWS_AT" --to "$SELF" \
+  "Automated event: Subscription window renewed. Recheck the capacity policy."
 ```
 
-The inner timeout is lower than the runner's default command timeout so the
-predicate can report an unavailable observation before the runner stops it.
-Keep that ordering when either timeout is changed. The command predicate treats
-every nonzero exit as pending; inspect or pair the job with a time-based safety
-net when observation failure must not wait indefinitely.
+An `add cmd` job can poll the same `test` predicate when readiness may change
+before renewal, but each runner pass starts a short-lived app-server. Reserve
+that form for short waits. Both false exit `1` and unavailable exit `2` remain
+pending, so keep the inner timeout below the runner timeout and retain a separate
+recovery path when observation failure must not wait indefinitely.
 
 ## Self-Managing Thread
 
 Use `codex-wakectl` for self-wakes and `codex-threadctl` for host-visible state.
 Use native goal tools for the current thread's goal when available;
 `codex-goalctl` adds little for self-management.
+
+Token-left predicates require the current goal to have a token budget. The
+budget warning below uses `--allow-active` because it must reach the current
+turn before the budget is exhausted.
 
 ```sh
 SELF=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
@@ -54,6 +59,7 @@ codex-wakectl add time --after 30m \
   "Self-scheduled reminder: Review progress and decide the next step."
 
 codex-wakectl add goal "$SELF" --tokens-left-lte 300000 \
+  --allow-active \
   --to "$SELF" \
   "Automated event: Goal budget is low. Summarize, stop, or request more budget."
 ```
@@ -174,14 +180,15 @@ Without `codex-wakectl`, main must use native or manual input and wait paths.
 MAIN=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
 WORKER=worker-thread-id
 REVIEWER=reviewer-thread-id
+SNAPSHOT=$PWD/worker.before.json
 
-codex-readcov snapshot "$WORKER" > worker.before.json
+codex-readcov snapshot "$WORKER" > "$SNAPSHOT"
 
 codex-goalctl replace "$WORKER" \
   "Make the requested change and mark the goal complete."
 
 codex-goalctl replace "$REVIEWER" \
-  "Wait for the worker wake. Review the worker result and read coverage, then mark this goal complete."
+  "On the completion event, review thread $WORKER and coverage since $SNAPSHOT. Report findings and mark this goal complete."
 
 codex-wakectl add goal "$WORKER" \
   --status complete,blocked,budgetLimited,usageLimited \
@@ -200,9 +207,11 @@ codex-threadctl start "$WORKER" \
 The reviewer can inspect coverage before reporting:
 
 ```sh
+WORKER=worker-thread-id-from-goal
+SNAPSHOT=/absolute/path/from-goal
 codex-goalctl get "$WORKER"
 codex-threadctl inspect "$WORKER"
-codex-readcov delta worker.before.json packages --limit 20
+codex-readcov delta "$SNAPSHOT" packages --limit 20
 ```
 
 When main wakes, it can retrieve the reviewer response through a native handle
@@ -241,23 +250,23 @@ home and thread id.
 ## Peer Handoff
 
 One loaded session wakes another when a host-visible condition becomes true.
-This requires the `codex-wakectl` skill. Add `codex-goalctl` when the next
-session needs a durable assignment.
+This requires the `codex-wakectl` skill. When `codex-goalctl` is available and
+the next session needs a durable assignment, write it before arming the wake so
+an already-true condition cannot arrive first.
 
 ```sh
 NEXT=next-thread-id
+
+codex-goalctl replace "$NEXT" \
+  "Continue from done.txt, complete the next step, and mark this goal complete."
 
 codex-wakectl add cmd --to "$NEXT" \
   "Automated event: Input is ready." \
   -- sh -c 'test -f done.txt'
 ```
 
-Add a persisted goal when the next session should have durable instructions:
-
-```sh
-codex-goalctl replace "$NEXT" \
-  "Continue from done.txt, complete the next step, and mark this goal complete."
-```
+Omit the goal write when only the `codex-wakectl` skill is available or the wake
+message is deliberately the complete instruction.
 
 ## Coverage Audit And Gaps
 
@@ -298,10 +307,10 @@ WORKER=worker-thread-id
 
 codex-threadctl --endpoint "$ENDPOINT" loaded
 codex-threadctl --endpoint "$ENDPOINT" inspect "$WORKER"
+codex-readcov snapshot "$WORKER" > worker.before.json
 codex-goalctl replace "$WORKER" "Work from this external assignment."
 codex-threadctl --endpoint "$ENDPOINT" start "$WORKER" \
   "From coordinator: A goal was assigned. Call get_goal and proceed."
-codex-readcov snapshot "$WORKER" > worker.before.json
 ```
 
 This topology may need local conventions for thread discovery, socket paths,

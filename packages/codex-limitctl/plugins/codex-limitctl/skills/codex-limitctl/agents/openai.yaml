@@ -1,6 +1,6 @@
 interface:
   display_name: "Codex Limitctl"
-  short_description: "Inspect Codex subscription capacity"
-  default_prompt: "Use $codex-limitctl to inspect current Codex subscription capacity."
+  short_description: "Inspect Codex limits and usage signals"
+  default_prompt: "Use $codex-limitctl to inspect Codex subscription limits or usage signals."
 policy:
   allow_implicit_invocation: true

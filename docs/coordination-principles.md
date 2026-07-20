@@ -12,9 +12,10 @@ process.
 `codex-goalctl` reads and edits persisted goal state. It provides durable intent
 and counters, but does not start a turn or deliver input.
 
-`codex-limitctl` reads account-wide subscription rate-limit windows and tests
-remaining-capacity predicates. It does not measure thread context or goal token
-usage.
+`codex-limitctl` reads account-wide subscription limits and daily token
+activity, tests remaining-capacity predicates, and reconstructs local rollout
+history. Local activity is comparative evidence, not exact account
+attribution. It does not measure thread context or goal token usage.
 
 `codex-wakectl` persists jobs that deliver normal input after later conditions.
 It also offers synchronous condition polling for scripts; those waits do not
@@ -88,7 +89,8 @@ context, unless the user explicitly requests another installed command.
 Common subsets:
 
 - `codex-goalctl`: external goal assignment and status checks.
-- `codex-limitctl`: account-wide subscription capacity and shell predicates.
+- `codex-limitctl`: subscription capacity, usage trends, local thread activity,
+  and shell predicates.
 - `codex-wakectl`: later attention, stop watches, host predicates, and synchronous
   Codex conditions for scripts.
 - `codex-threadctl`: current activity, conversation retrieval, immediate input,
@@ -96,7 +98,7 @@ Common subsets:
 - `codex-readcov`: read counts, interval deltas, overlap, and gaps.
 - `codex-goalctl + codex-threadctl`: durable assignment plus immediate input.
 - `codex-goalctl + codex-wakectl`: durable assignment plus later delivery.
-- `codex-limitctl + codex-wakectl`: capacity predicate plus later attention.
+- `codex-limitctl + codex-wakectl`: capacity observation plus later attention.
 - `codex-wakectl + codex-threadctl`: later attention plus observation.
 - `codex-threadctl + codex-readcov`: thread state plus recorded read evidence.
 

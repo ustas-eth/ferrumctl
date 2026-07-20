@@ -6,7 +6,7 @@ Small Unix-style control tools for Codex agent workflows.
 Use the tools separately and compose them with the shell:
 
 - `codex-goalctl` reads and changes persisted Codex thread goals.
-- `codex-limitctl` reads Codex subscription rate-limit windows.
+- `codex-limitctl` reads Codex subscription limits and usage signals.
 - `codex-threadctl` discovers and inspects threads and applies immediate,
   turn-scoped control.
 - `codex-wakectl` schedules durable thread input after later conditions.
@@ -61,11 +61,13 @@ unix://` to that shortcut, for example `alias x='codex --remote unix://'`.
 
 ## What You Can Do
 
-Check shared subscription capacity before starting expensive work:
+Check shared subscription capacity and recent usage:
 
 ```sh
 codex-limitctl list
 codex-limitctl test codex --window 7d --remaining-at-least 20
+codex-limitctl usage --since 7d
+codex-limitctl activity --since 24h | head
 ```
 
 Find recent sessions or retained subagent threads:
@@ -77,8 +79,7 @@ codex-threadctl list --parent "$SELF" --limit 5
 codex-threadctl search "decision text" --limit 10
 ```
 
-Assign durable work, wake the worker, then inspect its state and recorded read
-actions:
+Assign durable work, arrange the coordinator's return, then start the worker:
 
 ```sh
 WORKER=thread-id
@@ -86,18 +87,19 @@ MAIN=main-thread-id
 
 codex-readcov snapshot "$WORKER" > worker.before.json
 codex-goalctl replace "$WORKER" "Review this package and mark the goal complete."
-codex-threadctl start "$WORKER" "From coordinator: A goal was assigned. Call get_goal and proceed."
-codex-threadctl inspect "$WORKER"
-codex-readcov delta worker.before.json packages --limit 20
-```
-
-Resume a main thread when a worker goal reaches a terminal status:
-
-```sh
 codex-wakectl add goal "$WORKER" \
   --status complete,blocked,budgetLimited,usageLimited \
   --to "$MAIN" \
   "Automated event: Worker goal reached a terminal status. Inspect it."
+codex-threadctl start "$WORKER" "From coordinator: A goal was assigned. Call get_goal and proceed."
+```
+
+When the coordinator resumes:
+
+```sh
+codex-goalctl get "$WORKER"
+codex-threadctl inspect "$WORKER"
+codex-readcov delta worker.before.json packages --limit 20
 ```
 
 Schedule a self-reminder from a loaded Codex session:

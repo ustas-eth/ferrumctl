@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "codex-limitctl"
-version = "0.1.0"
-description = "Inspect Codex subscription rate-limit windows"
+version = "0.2.0"
+description = "Inspect Codex subscription limits and usage signals"
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"

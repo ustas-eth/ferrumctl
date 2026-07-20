@@ -66,6 +66,10 @@ class ParseTests(unittest.TestCase):
         self.assertTrue(args.json)
         self.assertEqual(args.timeout, 5)
 
+    def test_global_json_is_preserved_for_rollout_commands(self) -> None:
+        args = cli.build_parser().parse_args(["--json", "activity"])
+        self.assertTrue(args.json)
+
     def test_invalid_environment_timeout_is_parser_error(self) -> None:
         with mock.patch.dict(os.environ, {"CODEX_LIMITCTL_TIMEOUT": "bogus"}):
             with contextlib.redirect_stderr(io.StringIO()):
@@ -94,7 +98,7 @@ class ParseTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 cli.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-limitctl 0.1.0\n")
+        self.assertEqual(output.getvalue(), "codex-limitctl 0.2.0\n")
 
 
 class CommandTests(unittest.TestCase):
@@ -169,6 +173,74 @@ class CommandTests(unittest.TestCase):
             stderr,
             "codex-limitctl: codex has no reported 5h window\n",
         )
+
+    def test_usage_prints_filtered_account_days(self) -> None:
+        payload = {
+            "dailyUsageBuckets": [
+                {"startDate": "2026-07-18", "tokens": 10},
+                {"startDate": "2026-07-20", "tokens": 20},
+            ]
+        }
+        stdout = io.StringIO()
+        with mock.patch.object(cli, "read_token_usage", return_value=payload):
+            with contextlib.redirect_stdout(stdout):
+                rc = cli.main(["usage", "--since", "2026-07-19"])
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(stdout.getvalue(), "2026-07-20\ttokens=20\n")
+
+    def test_history_filters_local_observations(self) -> None:
+        rows = [
+            {
+                "observedAt": "2026-07-20T00:00:00Z",
+                "threadId": "thread-1",
+                "model": "gpt-test",
+                "serviceTier": "default",
+                "limitId": "codex",
+                "windowDurationMins": 10080,
+                "usedPercent": 20,
+                "remainingPercent": 80,
+                "resetsAt": 1800000000,
+            }
+        ]
+        stdout = io.StringIO()
+        with mock.patch.object(cli, "resolve_codex_home"):
+            with mock.patch.object(cli, "scan_rollouts", return_value=(rows, [])):
+                with contextlib.redirect_stdout(stdout):
+                    rc = cli.main(
+                        ["history", "codex", "--window", "7d", "--json"]
+                    )
+
+        result = json.loads(stdout.getvalue())
+        self.assertEqual(rc, 0)
+        self.assertEqual(result["scope"], "host-local")
+        self.assertEqual(result["accountScope"], "unscoped")
+        self.assertEqual(result["history"], rows)
+
+    def test_activity_prints_largest_threads_first(self) -> None:
+        rows = [
+            {
+                "threadId": "thread-1",
+                "model": "gpt-test",
+                "serviceTier": "default",
+                "limitId": "codex",
+                "updates": 2,
+                "inputTokens": 90,
+                "cachedInputTokens": 50,
+                "outputTokens": 10,
+                "reasoningOutputTokens": 4,
+                "totalTokens": 100,
+            }
+        ]
+        stdout = io.StringIO()
+        with mock.patch.object(cli, "resolve_codex_home"):
+            with mock.patch.object(cli, "scan_rollouts", return_value=([], rows)):
+                with contextlib.redirect_stdout(stdout):
+                    rc = cli.main(["activity"])
+
+        self.assertEqual(rc, 0)
+        self.assertIn("thread-1\tmodel=gpt-test", stdout.getvalue())
+        self.assertIn("tokens=100", stdout.getvalue())
 
 
 if __name__ == "__main__":

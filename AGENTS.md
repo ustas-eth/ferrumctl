@@ -52,9 +52,10 @@ access or an operating-system audit log. It must reject unresolved dynamic
 command envelopes instead of silently under-counting. `codex-goalctl replace`
 is clear-then-set.
 
-`codex-limitctl` owns read-only account capacity. Normalize windows by limit id
-and duration, not backend field position, and never pass through account
-analytics, credit data, or consumable resets.
+`codex-limitctl` owns read-only account capacity and usage signals. Keep current
+account reads distinct from account-unscoped rollout history, normalize windows
+by limit id and duration, and never pass through credit data or consumable
+resets.
 
 ## Working Rules
 

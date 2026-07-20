@@ -30,9 +30,11 @@ thread goal when possible.
 
 ## Account Limits
 
-`codex-limitctl` returns one account-wide observation. Other threads can consume
-capacity immediately after it is read, so a successful threshold is a gate, not
-a reservation.
+Each `codex-limitctl list` or `test` invocation returns one account-wide
+observation. Other threads can consume capacity immediately after it is read,
+so a successful threshold is a gate, not a reservation. `usage` reports current
+account buckets; `history` and `activity` instead reconstruct host-local,
+account-unscoped rollout data.
 
 Limit ids are backend buckets, not necessarily model names. Windows are
 identified by duration rather than `primary` or `secondary` field position. An

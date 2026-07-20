@@ -157,7 +157,7 @@ def format_rpc_error(value: Any) -> str:
     return f"{prefix}: {message}"
 
 
-def read_rate_limits(codex_bin: str, timeout: float) -> Any:
+def read_account(codex_bin: str, timeout: float, method: str) -> Any:
     deadline = time.monotonic() + timeout
     app = AppServer(codex_bin, timeout)
 
@@ -180,9 +180,14 @@ def read_rate_limits(codex_bin: str, timeout: float) -> Any:
             timeout=remaining("initialize"),
         )
         app.notify("initialized")
-        return app.request(
-            "account/rateLimits/read",
-            timeout=remaining("account/rateLimits/read"),
-        )
+        return app.request(method, timeout=remaining(method))
     finally:
         app.close()
+
+
+def read_rate_limits(codex_bin: str, timeout: float) -> Any:
+    return read_account(codex_bin, timeout, "account/rateLimits/read")
+
+
+def read_token_usage(codex_bin: str, timeout: float) -> Any:
+    return read_account(codex_bin, timeout, "account/usage/read")

@@ -1,13 +1,13 @@
 # codex-limitctl
 
-`codex-limitctl` reads Codex subscription rate-limit windows.
+`codex-limitctl` reads Codex subscription limits and usage signals.
 
-Use it when a script or agent needs machine-readable 5-hour, weekly, or other
-reported capacity. It does not expose historical account usage, paid credits,
-reset credits, or reset consumption.
+Use it to check current capacity, list daily account token activity, follow
+rate-limit changes, or compare token activity across local Codex threads.
 
-Each command starts a short-lived stdio app-server, so no shared server is
-required.
+Current account data comes from a short-lived stdio app-server. Historical
+thread data comes from local Codex rollout files. No shared server or collector
+is required.
 
 ## Install
 
@@ -47,9 +47,21 @@ the requested window or account observation is unavailable. It is quiet unless
 codex-limitctl list --json
 ```
 
+See daily account activity and local history:
+
+```sh
+codex-limitctl usage --since 30d
+codex-limitctl history codex --window 7d --since 30d
+codex-limitctl activity --since 24h | head
+```
+
+`history` and `activity` describe this host's rollout files. They are useful for
+trends, but are not billing records or exact account-to-thread attribution.
+
 More detail:
 
 - [docs/limit-semantics.md](docs/limit-semantics.md)
+- [docs/usage-history.md](docs/usage-history.md)
 
 ## Codex Skill
 

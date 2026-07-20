@@ -1,7 +1,7 @@
 {
   "name": "codex-limitctl",
-  "version": "0.1.0",
-  "description": "Codex skill for inspecting subscription rate-limit windows.",
+  "version": "0.2.0",
+  "description": "Codex skill for inspecting subscription limits and usage signals.",
   "author": {
     "name": "ustas-eth"
   },
@@ -17,14 +17,17 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Codex Limitctl",
-    "shortDescription": "Inspect Codex subscription capacity.",
-    "longDescription": "Codex Limitctl provides workflow guidance for listing normalized Codex subscription rate-limit windows and testing remaining capacity through Unix exit status.",
+    "shortDescription": "Inspect Codex limits and usage signals.",
+    "longDescription": "Codex Limitctl provides workflow guidance for current subscription capacity, daily account token activity, local rate-limit history, local thread activity, and capacity predicates.",
     "developerName": "ustas-eth",
     "category": "Productivity",
     "capabilities": [
       "Subscription rate-limit inspection",
+      "Daily account token activity",
+      "Local rate-limit history",
+      "Local thread activity",
       "Capacity predicates"
     ],
-    "defaultPrompt": "Use $codex-limitctl to inspect current Codex subscription capacity."
+    "defaultPrompt": "Use $codex-limitctl to inspect Codex subscription limits or usage signals."
   }
 }

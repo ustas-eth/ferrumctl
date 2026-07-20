@@ -7,7 +7,7 @@ import time
 import unittest
 from pathlib import Path
 
-from codex_limitctl.appserver import AppServer, read_rate_limits
+from codex_limitctl.appserver import AppServer, read_rate_limits, read_token_usage
 from codex_limitctl.errors import LimitctlError
 
 
@@ -55,6 +55,33 @@ class AppServerTests(unittest.TestCase):
             result = read_rate_limits(str(path), 2.0)
 
         self.assertEqual(result, {"rateLimits": {"limitId": "codex"}})
+
+    def test_reads_account_usage_after_initialization(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.make_server(
+                tmp,
+                """
+                if method == "initialize":
+                    print(json.dumps({"id": request_id, "result": {}}), flush=True)
+                elif method == "account/usage/read":
+                    print(json.dumps({
+                        "id": request_id,
+                        "result": {
+                            "dailyUsageBuckets": [
+                                {"startDate": "2026-07-20", "tokens": 123}
+                            ]
+                        },
+                    }), flush=True)
+                else:
+                    raise RuntimeError(method)
+                """,
+            )
+            result = read_token_usage(str(path), 2.0)
+
+        self.assertEqual(
+            result,
+            {"dailyUsageBuckets": [{"startDate": "2026-07-20", "tokens": 123}]},
+        )
 
     def test_ignores_notifications_while_waiting(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
