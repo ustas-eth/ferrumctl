@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "codex-threadctl"
-version = "0.3.1"
+version = "0.4.0"
 description = "Inspect and control app-server-backed Codex threads"
 readme = "README.md"
 requires-python = ">=3.11"

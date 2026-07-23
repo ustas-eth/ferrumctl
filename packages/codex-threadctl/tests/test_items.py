@@ -86,3 +86,41 @@ class ItemTests(unittest.TestCase):
     def test_rejects_non_message_text(self):
         with self.assertRaisesRegex(ThreadctlError, "not a conversation message"):
             items.message_text({"type": "commandExecution"})
+
+    def test_item_record_bounds_text_and_omits_large_payload(self):
+        result = items.item_record(
+            {"id": "turn", "status": "completed"},
+            {
+                "id": "item",
+                "type": "commandExecution",
+                "status": "completed",
+                "command": "line\n" + "x" * 300,
+                "aggregatedOutput": "large output",
+            },
+        )
+        self.assertEqual(result["turnId"], "turn")
+        self.assertEqual(result["itemId"], "item")
+        self.assertEqual(result["turnStatus"], "completed")
+        self.assertNotIn("\n", result["command"])
+        self.assertLessEqual(len(result["command"]), items.ITEM_TEXT_LIMIT)
+        self.assertNotIn("aggregatedOutput", result)
+
+    def test_item_record_preserves_structured_values_and_nulls(self):
+        error = {"message": "failed", "details": ["one", "two"]}
+        result = items.item_record(
+            {"id": "turn", "status": "completed"},
+            {
+                "id": "item",
+                "type": "mcpToolCall",
+                "server": "example",
+                "tool": "run",
+                "error": error,
+            },
+        )
+        self.assertEqual(result["error"], error)
+
+        image = items.item_record(
+            {"id": "turn", "status": "completed"},
+            {"id": "image", "type": "imageView", "path": None},
+        )
+        self.assertIsNone(image["path"])

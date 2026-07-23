@@ -344,8 +344,55 @@ async def list_turn_page(
         await app.request("thread/turns/list", params),
         "thread/turns/list result",
     )
-    if not isinstance(result.get("data"), list):
+    data = result.get("data")
+    if not isinstance(data, list) or not all(
+        isinstance(turn, dict) and isinstance(turn.get("id"), str)
+        for turn in data
+    ):
         raise ThreadctlError("app-server returned invalid turn data")
+    return result
+
+
+async def list_item_page(
+    app: AppServer,
+    thread_id: str,
+    *,
+    turn_id: str | None = None,
+    cursor: str | None = None,
+    limit: int = 100,
+    sort_direction: str = "asc",
+) -> dict[str, Any]:
+    params: dict[str, Any] = {
+        "threadId": thread_id,
+        "limit": limit,
+        "sortDirection": sort_direction,
+    }
+    if turn_id is not None:
+        params["turnId"] = turn_id
+    if cursor is not None:
+        params["cursor"] = cursor
+    result = require_object(
+        await app.request("thread/items/list", params),
+        "thread/items/list result",
+    )
+    data = result.get("data")
+    if not isinstance(data, list) or not all(
+        isinstance(entry, dict)
+        and (
+            (
+                isinstance(entry.get("id"), str)
+                and isinstance(entry.get("type"), str)
+            )
+            or (
+                isinstance(entry.get("turnId"), str)
+                and isinstance(entry.get("item"), dict)
+                and isinstance(entry["item"].get("id"), str)
+                and isinstance(entry["item"].get("type"), str)
+            )
+        )
+        for entry in data
+    ):
+        raise ThreadctlError("app-server returned invalid item data")
     return result
 
 
@@ -516,34 +563,52 @@ async def confirm_input(
 ) -> dict[str, Any]:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        page = await list_turn_page(
-            app,
-            thread_id,
-            limit=5,
-            items_view="full",
-        )
-        for turn in page["data"]:
-            if not isinstance(turn, dict):
-                continue
-            for item in turn.get("items", []):
-                if not isinstance(item, dict):
-                    continue
-                if item.get("type") != "userMessage":
-                    continue
-                if item.get("clientId") != client_message_id:
-                    continue
-                actual_turn_id = str(turn.get("id") or submitted_turn_id)
-                return {
-                    "threadId": thread_id,
-                    "turnId": actual_turn_id,
-                    "submittedTurnId": submitted_turn_id,
-                    "clientMessageId": client_message_id,
-                    "delivery": (
-                        "started" if actual_turn_id == submitted_turn_id else "steered"
-                    ),
-                    "turnStatus": turn.get("status"),
-                }
-        await asyncio.sleep(0.1)
+        cursor: str | None = None
+        seen_cursors: set[str] = set()
+        while time.monotonic() < deadline:
+            page = await list_turn_page(
+                app,
+                thread_id,
+                cursor=cursor,
+                limit=5,
+                items_view="full",
+            )
+            for turn in page["data"]:
+                for item in turn.get("items", []):
+                    if not isinstance(item, dict):
+                        continue
+                    if item.get("type") != "userMessage":
+                        continue
+                    if item.get("clientId") != client_message_id:
+                        continue
+                    actual_turn_id = str(turn.get("id") or submitted_turn_id)
+                    return {
+                        "threadId": thread_id,
+                        "turnId": actual_turn_id,
+                        "submittedTurnId": submitted_turn_id,
+                        "clientMessageId": client_message_id,
+                        "delivery": (
+                            "started"
+                            if actual_turn_id == submitted_turn_id
+                            else "steered"
+                        ),
+                        "turnStatus": turn.get("status"),
+                    }
+
+            next_cursor = page.get("nextCursor")
+            if next_cursor is None:
+                break
+            if (
+                not isinstance(next_cursor, str)
+                or next_cursor in seen_cursors
+            ):
+                raise ThreadctlError(
+                    "app-server returned an invalid confirmation cursor"
+                )
+            seen_cursors.add(next_cursor)
+            cursor = next_cursor
+        if time.monotonic() < deadline:
+            await asyncio.sleep(0.1)
     raise DeliveryUncertain(submitted_turn_id, client_message_id)
 
 

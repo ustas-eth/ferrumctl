@@ -3,8 +3,9 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from .appserver import AppServer, list_turn_page
+from .appserver import AppServer
 from .errors import ThreadctlError
+from .history import MaterializedSelection, select_materialized_items
 from .items import message_record, summarize_item
 
 
@@ -116,46 +117,24 @@ async def recent_messages(
     app: AppServer,
     thread_id: str,
     *,
+    turn_id: str | None = None,
+    after: tuple[str, str] | None = None,
+    before: tuple[str, str] | None = None,
     limit: int,
-) -> list[dict[str, Any]]:
-    cursor: str | None = None
-    seen_cursors: set[str] = set()
-    newest_first_batches: list[list[dict[str, Any]]] = []
-    count = 0
-
-    while limit == 0 or count < limit:
-        page = await list_turn_page(
-            app,
-            thread_id,
-            cursor=cursor,
-            limit=10,
-            sort_direction="desc",
-            items_view="full",
-        )
-        turns = page.get("data", [])
-        for turn in turns:
-            messages = [
-                message_record(turn, item)
-                for item in turn.get("items", [])
-                if item.get("type") in {"userMessage", "agentMessage"}
-            ]
-            newest_first_batches.append(messages)
-            count += len(messages)
-
-        next_cursor = page.get("nextCursor")
-        if not turns or next_cursor is None:
-            break
-        if not isinstance(next_cursor, str) or next_cursor in seen_cursors:
-            raise ThreadctlError("app-server repeated a turn pagination cursor")
-        seen_cursors.add(next_cursor)
-        cursor = next_cursor
-
-    chronological = [
-        message
-        for batch in reversed(newest_first_batches)
-        for message in batch
-    ]
-    return chronological if limit == 0 else chronological[-limit:]
+) -> tuple[list[dict[str, Any]], str]:
+    selection = await select_materialized_items(
+        app,
+        thread_id,
+        turn_id=turn_id,
+        after=after,
+        before=before,
+        types={"userMessage", "agentMessage"},
+        limit=limit,
+    )
+    return (
+        [message_record(entry.turn, entry.item) for entry in selection.entries],
+        selection.backend,
+    )
 
 
 async def find_message(
@@ -164,35 +143,20 @@ async def find_message(
     turn_id: str,
     item_id: str,
 ) -> dict[str, Any]:
-    cursor: str | None = None
-    seen_cursors: set[str] = set()
-    while True:
-        page = await list_turn_page(
-            app,
-            thread_id,
-            cursor=cursor,
-            limit=10,
-            sort_direction="desc",
-            items_view="full",
+    selection: MaterializedSelection = await select_materialized_items(
+        app,
+        thread_id,
+        turn_id=turn_id,
+        limit=0,
+    )
+    item = next(
+        (entry for entry in selection.entries if entry.item["id"] == item_id),
+        None,
+    )
+    if item is None:
+        raise ThreadctlError(f"message item not found in turn {turn_id}: {item_id}")
+    if item.item["type"] not in {"userMessage", "agentMessage"}:
+        raise ThreadctlError(
+            f"item is not a conversation message: {item.item['type']}"
         )
-        turns = page.get("data", [])
-        for turn in turns:
-            if turn.get("id") != turn_id:
-                continue
-            item = next(
-                (entry for entry in turn.get("items", []) if entry.get("id") == item_id),
-                None,
-            )
-            if item is None:
-                raise ThreadctlError(f"message item not found in turn {turn_id}: {item_id}")
-            if item.get("type") not in {"userMessage", "agentMessage"}:
-                raise ThreadctlError(f"item is not a conversation message: {item.get('type')}")
-            return message_record(turn, item)
-
-        next_cursor = page.get("nextCursor")
-        if not turns or next_cursor is None:
-            raise ThreadctlError(f"turn not found: {turn_id}")
-        if not isinstance(next_cursor, str) or next_cursor in seen_cursors:
-            raise ThreadctlError("app-server repeated a turn pagination cursor")
-        seen_cursors.add(next_cursor)
-        cursor = next_cursor
+    return message_record(item.turn, item.item)

@@ -245,6 +245,62 @@ worker turn completed between runner passes.
 use the same endpoint as `codex-wakectl`, but both must refer to the same Codex
 home and thread id.
 
+## Peer Discussion
+
+Two loaded sessions can exchange ideas directly when each knows the other's
+thread id. This requires the `codex-threadctl` skill. For an alternating
+discussion, each side sends one concise advisory thought to the idle peer, then
+ends its own turn so the peer can reply with another `start`:
+
+```sh
+# From A
+codex-threadctl start "$B" \
+  "From peer A, advisory: I think the range should be half-open because ..."
+
+# Later, from B
+codex-threadctl start "$A" \
+  "From peer B, advisory: I agree about the lower bound, but ..."
+```
+
+This form treats the pushed text itself as the payload. It is stored as a user
+message in the recipient's thread, so labels clarify origin without granting
+authority. Shared files are a better place for lengthy evidence or durable
+decisions.
+
+For delegated analysis or review, keep the response as an assistant message in
+the responder's thread. When the `codex-wakectl` skill is also available, bind
+a one-shot wake to the exact turn returned by `start`:
+
+```sh
+START=$(codex-threadctl start "$B" \
+  "From peer A, advisory request: Review the design and reply in this turn." \
+  --json)
+
+DELIVERY=$(printf '%s\n' "$START" | jq -r .delivery)
+TURN=$(printf '%s\n' "$START" | jq -r .turnId)
+
+test "$DELIVERY" = started || {
+  printf '%s\n' "$START" >&2
+  exit 1
+}
+codex-wakectl add stop "$B" --turn "$TURN" --to "$A" \
+  "Automated event: Peer B completed turn $TURN."
+```
+
+An exact-turn watch also recognizes a turn that completed before the job was
+created. When A wakes, it retrieves that completed exchange:
+
+```sh
+codex-threadctl messages "$B" \
+  --turn "$TURN" --limit 0 --json
+```
+
+If `start` reports `steered`, the input reached a competing turn. Inspect that
+turn rather than retrying automatically. One-shot exact-turn watches avoid the
+self-sustaining traffic that reciprocal repeating stop watches could create.
+The target turn already correlates the request, wake, and response; no separate
+exchange identifier is needed.
+
 ## Peer Handoff
 
 One loaded session wakes another when a host-visible condition becomes true.

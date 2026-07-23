@@ -79,6 +79,12 @@
       ]
     },
     {
+      "source": "packages/codex-threadctl/docs/materialized-history.md",
+      "targets": [
+        "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/materialized-history.md"
+      ]
+    },
+    {
       "source": "packages/codex-threadctl/docs/lifecycle-control.md",
       "targets": [
         "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/lifecycle-control.md"

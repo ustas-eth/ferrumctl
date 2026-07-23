@@ -22,10 +22,10 @@ It also offers synchronous condition polling for scripts; those waits do not
 use the queue or deliver input.
 
 `codex-threadctl` discovers and searches persisted threads and observes thread
-status, materialized turns, goal state, context records, and running terminal
-processes. It also starts or steers immediate input, resumes persisted threads,
-interrupts exact turns, and terminates exact terminal processes. Its inspection
-is a read-only aggregate, not an atomic snapshot.
+status, materialized item ranges, goal state, context records, and running
+terminal processes. It also starts or steers immediate input, resumes persisted
+threads, interrupts exact turns, and terminates exact terminal processes. Its
+inspection is a read-only aggregate, not an atomic snapshot.
 
 `codex-readcov` reads rollout transcripts and reports recorded file-read
 actions. It provides transcript evidence, not verified operating-system access.
@@ -93,8 +93,8 @@ Common subsets:
   and shell predicates.
 - `codex-wakectl`: later attention, stop watches, host predicates, and synchronous
   Codex conditions for scripts.
-- `codex-threadctl`: current activity, conversation retrieval, immediate input,
-  resume, and turn-scoped interruption.
+- `codex-threadctl`: current and ordered activity, conversation retrieval,
+  immediate input, resume, and turn-scoped interruption.
 - `codex-readcov`: read counts, interval deltas, overlap, and gaps.
 - `codex-goalctl + codex-threadctl`: durable assignment plus immediate input.
 - `codex-goalctl + codex-wakectl`: durable assignment plus later delivery.

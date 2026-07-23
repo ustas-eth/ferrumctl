@@ -6,6 +6,7 @@ import math
 from .commands import (
     cmd_inspect,
     cmd_interrupt,
+    cmd_items,
     cmd_list,
     cmd_loaded,
     cmd_message,
@@ -61,6 +62,26 @@ def add_global_options(parser: argparse.ArgumentParser, *, defaults: bool) -> No
         action="store_true",
         default=False if defaults else argparse.SUPPRESS,
         help="print JSON output",
+    )
+
+
+def add_item_range_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--turn",
+        metavar="TURN_ID",
+        help="restrict results to one turn",
+    )
+    parser.add_argument(
+        "--after",
+        nargs=2,
+        metavar=("TURN_ID", "ITEM_ID"),
+        help="start after this item",
+    )
+    parser.add_argument(
+        "--before",
+        nargs=2,
+        metavar=("TURN_ID", "ITEM_ID"),
+        help="stop before this item",
     )
 
 
@@ -155,12 +176,39 @@ def build_parser() -> argparse.ArgumentParser:
         "--limit",
         type=nonnegative_int,
         default=20,
-        help="messages to return; 0 scans the full materialized history",
+        help="messages to return; 0 scans the selected materialized history",
     )
+    add_item_range_options(messages)
     add_global_options(messages, defaults=False)
     messages.set_defaults(func=cmd_messages)
 
-    message = sub.add_parser("message", help="print one complete conversation message")
+    items = sub.add_parser(
+        "items",
+        help="list compact materialized activity summaries",
+    )
+    items.add_argument("thread_id")
+    items.add_argument(
+        "--type",
+        dest="types",
+        action="append",
+        default=[],
+        metavar="TYPE",
+        help="include this item type; repeat to include more",
+    )
+    items.add_argument(
+        "--limit",
+        type=nonnegative_int,
+        default=20,
+        help="items to return; 0 scans the selected materialized history",
+    )
+    add_item_range_options(items)
+    add_global_options(items, defaults=False)
+    items.set_defaults(func=cmd_items)
+
+    message = sub.add_parser(
+        "message",
+        help="print the retained text of one conversation message",
+    )
     message.add_argument("thread_id")
     message.add_argument("turn_id")
     message.add_argument("item_id")

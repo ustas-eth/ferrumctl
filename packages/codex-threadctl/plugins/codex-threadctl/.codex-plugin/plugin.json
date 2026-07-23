@@ -1,6 +1,6 @@
 {
   "name": "codex-threadctl",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Codex skill for finding, inspecting, and controlling app-server-backed threads.",
   "author": {
     "name": "ustas-eth"
@@ -18,13 +18,14 @@
   "interface": {
     "displayName": "Codex Threadctl",
     "shortDescription": "Find, inspect, and control app-server-backed Codex threads.",
-    "longDescription": "Codex Threadctl provides guidance for discovering and searching persisted threads, inspecting activity, context, messages, and terminal processes, starting or steering input, resuming stored threads, interrupting exact turns, and terminating exact terminal processes.",
+    "longDescription": "Codex Threadctl provides guidance for discovering and searching persisted threads, inspecting activity, item ranges, context, messages, and terminal processes, starting or steering input, resuming stored threads, interrupting exact turns, and terminating exact terminal processes.",
     "developerName": "ustas-eth",
     "category": "Productivity",
     "capabilities": [
       "Persisted thread discovery",
       "Persisted thread search",
       "Thread activity inspection",
+      "Materialized activity ranges",
       "Running terminal inspection",
       "Conversation message retrieval",
       "Context and compaction visibility",

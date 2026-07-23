@@ -1,6 +1,6 @@
 {
   "name": "codex-wakectl",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Codex skill for waiting on conditions and scheduling thread input.",
   "author": {
     "name": "ustas-eth"

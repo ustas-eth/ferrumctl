@@ -83,6 +83,70 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
         expected = Path(tmp) / "relative-home/app-server-control/app-server-control.sock"
         self.assertEqual(result, str(expected))
 
+    async def test_item_page_passes_native_pagination_fields(self):
+        class ItemApp:
+            def __init__(self):
+                self.call = None
+
+            async def request(self, method, params=None):
+                self.call = (method, params)
+                return {
+                    "data": [{"id": "item", "type": "contextCompaction"}],
+                    "nextCursor": None,
+                }
+
+        app = ItemApp()
+        result = await appserver.list_item_page(
+            app,
+            "thread",
+            turn_id="turn",
+            cursor="cursor",
+            limit=7,
+            sort_direction="desc",
+        )
+        self.assertEqual(result["data"][0]["id"], "item")
+        self.assertEqual(
+            app.call,
+            (
+                "thread/items/list",
+                {
+                    "threadId": "thread",
+                    "turnId": "turn",
+                    "cursor": "cursor",
+                    "limit": 7,
+                    "sortDirection": "desc",
+                },
+            ),
+        )
+
+    async def test_item_page_accepts_turn_wrapped_items(self):
+        class ItemApp:
+            async def request(self, method, params=None):
+                return {
+                    "data": [
+                        {
+                            "turnId": "turn",
+                            "item": {"id": "item", "type": "contextCompaction"},
+                        }
+                    ],
+                    "nextCursor": None,
+                }
+
+        result = await appserver.list_item_page(ItemApp(), "thread", turn_id="turn")
+        self.assertEqual(result["data"][0]["turnId"], "turn")
+
+    async def test_history_pages_reject_malformed_records(self):
+        class InvalidApp:
+            async def request(self, method, params=None):
+                if method == "thread/items/list":
+                    return {"data": [{"id": "missing-type"}]}
+                return {"data": [{"status": "completed"}]}
+
+        with self.assertRaisesRegex(ThreadctlError, "invalid item data"):
+            await appserver.list_item_page(InvalidApp(), "thread")
+        with self.assertRaisesRegex(ThreadctlError, "invalid turn data"):
+            await appserver.list_turn_page(InvalidApp(), "thread")
+
     async def test_appserver_closes_socket_when_initialize_fails(self):
         class FakeWebSocket:
             def __init__(self):
@@ -459,9 +523,12 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_start_confirms_new_turn(self):
-        result = await appserver.start_turn(FakeApp(), "thread", "message")
+        app = FakeApp()
+        result = await appserver.start_turn(app, "thread", "message")
         self.assertEqual(result["delivery"], "started")
         self.assertEqual(result["turnId"], "submission")
+        self.assertEqual(result["clientMessageId"], app.client_message_id)
+        self.assertNotIn("itemId", result)
 
     async def test_start_reports_race_into_active_turn(self):
         app = FakeApp(actual_turn_id="other-turn")
@@ -469,6 +536,56 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["delivery"], "steered")
         self.assertEqual(result["turnId"], "other-turn")
         self.assertEqual(result["submittedTurnId"], "submission")
+
+    async def test_start_confirmation_follows_turn_pages(self):
+        class PaginatedApp(FakeApp):
+            async def request(self, method, params=None):
+                if (
+                    method == "thread/turns/list"
+                    and self.client_message_id is not None
+                ):
+                    self.calls.append((method, params))
+                    if params.get("cursor") is None:
+                        return {
+                            "data": [
+                                {
+                                    "id": f"newer-{index}",
+                                    "status": "completed",
+                                    "items": [],
+                                }
+                                for index in range(5)
+                            ],
+                            "nextCursor": "older",
+                        }
+                    return {
+                        "data": [
+                            {
+                                "id": "submission",
+                                "status": "inProgress",
+                                "items": [
+                                    {
+                                        "type": "userMessage",
+                                        "id": "item",
+                                        "clientId": self.client_message_id,
+                                        "content": [],
+                                    }
+                                ],
+                            }
+                        ],
+                        "nextCursor": None,
+                    }
+                return await super().request(method, params)
+
+        app = PaginatedApp()
+        result = await appserver.start_turn(app, "thread", "message")
+
+        self.assertEqual(result["delivery"], "started")
+        confirmation_calls = [
+            params
+            for method, params in app.calls
+            if method == "thread/turns/list"
+        ]
+        self.assertEqual(confirmation_calls[-1]["cursor"], "older")
 
     async def test_start_refuses_known_active_thread(self):
         with self.assertRaises(ThreadStateError):

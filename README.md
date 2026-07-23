@@ -7,8 +7,8 @@ Use the tools separately and compose them with the shell:
 
 - `codex-goalctl` reads and changes persisted Codex thread goals.
 - `codex-limitctl` reads Codex subscription limits and usage signals.
-- `codex-threadctl` discovers and inspects threads and applies immediate,
-  turn-scoped control.
+- `codex-threadctl` discovers threads, inspects ordered activity, and applies
+  immediate, turn-scoped control.
 - `codex-wakectl` schedules durable thread input after later conditions.
 - `codex-readcov` counts file-read actions from Codex rollout transcripts.
 

@@ -5,6 +5,10 @@ from typing import Any
 from .errors import ThreadctlError
 
 
+ITEM_TEXT_LIMIT = 240
+ITEM_LIST_LIMIT = 20
+
+
 def summarize_item(item: dict[str, Any]) -> dict[str, Any]:
     kind = item.get("type", "unknown")
     summary: dict[str, Any] = {"type": kind}
@@ -81,6 +85,61 @@ def summarize_item(item: dict[str, Any]) -> dict[str, Any]:
     elif kind in {"enteredReviewMode", "exitedReviewMode"}:
         summary["review"] = item.get("review")
     return summary
+
+
+def compact_text(value: Any, limit: int = ITEM_TEXT_LIMIT) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= limit:
+        return text
+    return text[: limit - 3] + "..."
+
+
+def item_record(turn: dict[str, Any], item: dict[str, Any]) -> dict[str, Any]:
+    summary = summarize_item(item)
+    record: dict[str, Any] = {
+        "turnId": turn.get("id"),
+        "itemId": summary.pop("id", item.get("id")),
+        **summary,
+        "turnStatus": turn.get("status"),
+    }
+    for key in (
+        "text",
+        "command",
+        "cwd",
+        "error",
+        "query",
+        "action",
+        "path",
+        "review",
+    ):
+        if isinstance(record.get(key), str):
+            record[key] = compact_text(record[key])
+    if "summary" in record:
+        values = record["summary"]
+        if isinstance(values, list):
+            record["summary"] = [
+                compact_text(value) for value in values[:ITEM_LIST_LIMIT]
+            ]
+            if len(values) > ITEM_LIST_LIMIT:
+                record["omittedSummaryCount"] = len(values) - ITEM_LIST_LIMIT
+    if "changes" in record:
+        changes = record["changes"]
+        if isinstance(changes, list):
+            record["changes"] = [
+                {
+                    **change,
+                    "path": (
+                        compact_text(change["path"])
+                        if isinstance(change.get("path"), str)
+                        else change.get("path")
+                    ),
+                }
+                for change in changes[:ITEM_LIST_LIMIT]
+                if isinstance(change, dict)
+            ]
+            if len(changes) > ITEM_LIST_LIMIT:
+                record["omittedChangeCount"] = len(changes) - ITEM_LIST_LIMIT
+    return record
 
 
 def bounded_collab_states(states: dict[str, Any]) -> dict[str, dict[str, Any]]:

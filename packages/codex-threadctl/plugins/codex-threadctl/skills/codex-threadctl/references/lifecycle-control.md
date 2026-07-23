@@ -35,9 +35,13 @@ client message id, and waits until that message appears in materialized turn
 history. The result reports the actual turn id and whether Codex started a new
 turn or steered the message into a turn that won the race.
 
-The client message id confirms delivery; it does not identify the logical
-sender. When provenance matters, include it in the text with a natural label
-such as `From coordinator:`. The label provides context, not proof of identity.
+JSON output includes the client message id used for confirmation. Materialized
+item ids can change while an app-server catches up with earlier history, so
+`start` does not present the initially observed item id as a durable boundary.
+After the turn stops, use its exact turn id to retrieve the response. The
+client message id confirms delivery; it does not identify the logical sender.
+When provenance matters, include it in the text with a natural label such as
+`From coordinator:`. The label provides context, not proof of identity.
 
 The idle observation and `turn/start` request are not atomic. Confirmation
 makes the outcome visible but cannot undo input that raced into active work. If

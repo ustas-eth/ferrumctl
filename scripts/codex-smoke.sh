@@ -515,6 +515,38 @@ grep -Fqx 'Smoke complete.' "$SMOKE_ROOT/message.out" || {
 }
 printf 'threadctl listed and retrieved materialized messages\n'
 
+threadctl --timeout 5 --json items "$inspect_thread" \
+  --limit 0 >"$SMOKE_ROOT/items.json"
+"$PYTHON" - "$SMOKE_ROOT/items.json" "$SMOKE_ROOT/item-boundary" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    payload = json.load(handle)
+assert payload["view"] == "materialized"
+assert payload["backend"] == "thread/turns/list"
+assert [item["type"] for item in payload["items"]] == [
+    "userMessage",
+    "agentMessage",
+]
+boundary = payload["items"][0]
+with open(sys.argv[2], "w", encoding="utf-8") as handle:
+    handle.write(f"{boundary['turnId']}\t{boundary['itemId']}\n")
+PY
+IFS=$'\t' read -r boundary_turn boundary_item <"$SMOKE_ROOT/item-boundary"
+threadctl --timeout 5 --json messages "$inspect_thread" \
+  --after "$boundary_turn" "$boundary_item" --limit 0 \
+  >"$SMOKE_ROOT/ranged-messages.json"
+"$PYTHON" - "$SMOKE_ROOT/ranged-messages.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    messages = json.load(handle)["messages"]
+assert [message["text"] for message in messages] == ["Smoke complete."]
+PY
+printf 'threadctl listed compact items and selected an exclusive range\n'
+
 goalctl replace "$inspect_thread" "Smoke-test guarded resume." \
   >"$SMOKE_ROOT/resume-goal.out"
 if threadctl --timeout 5 resume "$inspect_thread" \

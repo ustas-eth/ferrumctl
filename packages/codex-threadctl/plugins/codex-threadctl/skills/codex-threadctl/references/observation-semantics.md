@@ -58,15 +58,17 @@ full detail for the newest turn and reduces the previous turn to a summary;
 `--brief` requests summaries only. `--items` limits printed items after the
 newest full turn is transferred; it does not reduce that app-server response.
 
-`messages` reads full turn pages and returns retained user and agent messages in
-chronological order. `--limit 0` scans the full materialized history. Each
-locator contains a turn id and item id because item ids can repeat across turns
-or compaction windows.
+`items` exposes compact activity summaries. Plain `messages` lists conversation
+previews; its JSON form preserves all retained text. `message` prints the
+retained text of one exact user or agent message. These commands share ordering
+and composite locators. Range selection, limit behavior, backend fallback, and
+mutable-item caveats are described in
+[materialized-history.md](materialized-history.md).
 
-`message` pages through full turns until it finds that pair, then prints the
-complete message text retained by Codex. Codex 0.144 has no working item lookup
-endpoint, so old message retrieval can still reconstruct a large rollout more
-than once even though network output stays small.
+Exact message retrieval first tries native item pagination for the selected
+turn and falls back to full turn reconstruction when that store does not
+support it. Non-text user inputs and message metadata are not part of the
+printed text.
 
 Turn timestamps describe turn boundaries. Persisted message and activity items
 do not provide absolute item timestamps, so threadctl does not invent them.

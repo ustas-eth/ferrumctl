@@ -3,6 +3,7 @@ from unittest import mock
 
 from codex_threadctl import turns
 from codex_threadctl.errors import ThreadctlError
+from codex_threadctl.history import MaterializedItem, MaterializedSelection
 
 
 def user(item_id, text):
@@ -29,70 +30,87 @@ def turn(turn_id, *items, status="completed", started=100, completed=101):
 
 
 class MessageTests(unittest.IsolatedAsyncioTestCase):
-    async def test_recent_messages_pages_and_returns_chronological_tail(self):
-        pages = [
-            {
-                "data": [turn("new", user("item-1", "new request"), agent("item-2", "new reply"))],
-                "nextCursor": "older",
-            },
-            {
-                "data": [turn("old", user("item-1", "old request"), agent("item-2", "old reply"))],
-                "nextCursor": None,
-            },
-        ]
-        with mock.patch.object(turns, "list_turn_page", mock.AsyncMock(side_effect=pages)):
-            result = await turns.recent_messages(object(), "thread", limit=3)
+    async def test_recent_messages_projects_selected_materialized_items(self):
+        selected_turn = turn(
+            "turn",
+            user("item-1", "request"),
+            agent("item-2", "reply"),
+        )
+        selection = MaterializedSelection(
+            [
+                MaterializedItem(selected_turn, selected_turn["items"][0]),
+                MaterializedItem(selected_turn, selected_turn["items"][1]),
+            ],
+            "thread/items/list",
+        )
+        selected = mock.AsyncMock(return_value=selection)
+        with mock.patch.object(turns, "select_materialized_items", selected):
+            result, backend = await turns.recent_messages(
+                object(),
+                "thread",
+                turn_id="turn",
+                after=("turn", "before"),
+                before=("turn", "after"),
+                limit=0,
+            )
 
-        self.assertEqual([entry["text"] for entry in result], ["old reply", "new request", "new reply"])
-        self.assertEqual(result[0]["turnId"], "old")
-        self.assertEqual(result[1]["itemId"], "item-1")
-
-    async def test_recent_messages_limit_one_returns_latest_response(self):
-        page = {
-            "data": [turn("new", user("item-1", "request"), agent("item-2", "reply"))],
-            "nextCursor": "unused",
-        }
-        mocked = mock.AsyncMock(return_value=page)
-        with mock.patch.object(turns, "list_turn_page", mocked):
-            result = await turns.recent_messages(object(), "thread", limit=1)
-
-        self.assertEqual([entry["text"] for entry in result], ["reply"])
-        mocked.assert_awaited_once()
+        self.assertEqual([entry["text"] for entry in result], ["request", "reply"])
+        self.assertEqual(backend, "thread/items/list")
+        selected.assert_awaited_once_with(
+            mock.ANY,
+            "thread",
+            turn_id="turn",
+            after=("turn", "before"),
+            before=("turn", "after"),
+            types={"userMessage", "agentMessage"},
+            limit=0,
+        )
 
     async def test_find_message_uses_turn_and_item_as_composite_locator(self):
-        pages = [
-            {"data": [turn("new", agent("item-2", "wrong"))], "nextCursor": "older"},
-            {"data": [turn("old", agent("item-2", "wanted"))], "nextCursor": None},
-        ]
-        mocked = mock.AsyncMock(side_effect=pages)
-        with mock.patch.object(turns, "list_turn_page", mocked):
+        selected_turn = turn("old", agent("item-2", "wanted"))
+        selection = MaterializedSelection(
+            [MaterializedItem(selected_turn, selected_turn["items"][0])],
+            "thread/turns/list",
+        )
+        selected = mock.AsyncMock(return_value=selection)
+        with mock.patch.object(turns, "select_materialized_items", selected):
             result = await turns.find_message(object(), "thread", "old", "item-2")
 
         self.assertEqual(result["text"], "wanted")
         self.assertEqual(result["turnId"], "old")
-        self.assertTrue(
-            all(call.kwargs["items_view"] == "full" for call in mocked.await_args_list)
+        selected.assert_awaited_once_with(
+            mock.ANY,
+            "thread",
+            turn_id="old",
+            limit=0,
         )
 
     async def test_find_message_rejects_non_message_item(self):
-        page = {
-            "data": [
-                turn(
-                    "turn",
-                    {"id": "exec-1", "type": "commandExecution", "command": "true"},
-                )
-            ],
-            "nextCursor": None,
-        }
-        with mock.patch.object(turns, "list_turn_page", mock.AsyncMock(return_value=page)):
+        selected_turn = turn(
+            "turn",
+            {"id": "exec-1", "type": "commandExecution", "command": "true"},
+        )
+        selection = MaterializedSelection(
+            [MaterializedItem(selected_turn, selected_turn["items"][0])],
+            "thread/turns/list",
+        )
+        with mock.patch.object(
+            turns,
+            "select_materialized_items",
+            mock.AsyncMock(return_value=selection),
+        ):
             with self.assertRaisesRegex(ThreadctlError, "not a conversation message"):
                 await turns.find_message(object(), "thread", "turn", "exec-1")
 
-    async def test_repeated_cursor_is_rejected(self):
-        page = {"data": [turn("turn")], "nextCursor": "same"}
-        with mock.patch.object(turns, "list_turn_page", mock.AsyncMock(return_value=page)):
-            with self.assertRaisesRegex(ThreadctlError, "repeated"):
-                await turns.recent_messages(object(), "thread", limit=0)
+    async def test_find_message_reports_missing_item(self):
+        selection = MaterializedSelection([], "thread/turns/list")
+        with mock.patch.object(
+            turns,
+            "select_materialized_items",
+            mock.AsyncMock(return_value=selection),
+        ):
+            with self.assertRaisesRegex(ThreadctlError, "message item not found"):
+                await turns.find_message(object(), "thread", "turn", "missing")
 
 
 class InspectionTests(unittest.TestCase):

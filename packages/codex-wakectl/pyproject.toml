@@ -4,14 +4,14 @@ build-backend = "hatchling.build"
 
 [project]
 name = "codex-wakectl"
-version = "0.3.4"
+version = "0.3.5"
 description = "Schedule conditional input and synchronously poll Codex conditions"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
 dependencies = [
-  "codex-threadctl>=0.1,<0.4",
+  "codex-threadctl>=0.1,<0.5",
 ]
 
 [tool.uv.sources]

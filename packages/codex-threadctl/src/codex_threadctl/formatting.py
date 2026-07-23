@@ -220,6 +220,19 @@ def format_messages(messages: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def format_items(items: list[dict[str, Any]]) -> str:
+    return "\n".join(
+        "\t".join(
+            [
+                str(item.get("turnId") or "-"),
+                str(item.get("itemId") or "-"),
+                item_line(item),
+            ]
+        )
+        for item in items
+    )
+
+
 def format_thread_list(threads: list[dict[str, Any]]) -> str:
     lines = []
     for thread in threads:

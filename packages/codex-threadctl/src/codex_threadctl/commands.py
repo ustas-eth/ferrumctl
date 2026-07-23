@@ -23,10 +23,13 @@ from .context import read_context_state
 from .errors import ThreadctlError
 from .formatting import (
     format_inspection,
+    format_items,
     format_messages,
     format_terminals,
     format_thread_list,
 )
+from .history import select_materialized_items
+from .items import item_record
 from .turns import build_inspection, find_message, recent_messages
 
 
@@ -193,11 +196,59 @@ async def cmd_inspect(args: argparse.Namespace) -> int:
 
 async def cmd_messages(args: argparse.Namespace) -> int:
     async with AppServer(args.endpoint, args.timeout) as app:
-        messages = await recent_messages(app, args.thread_id, limit=args.limit)
+        messages, backend = await recent_messages(
+            app,
+            args.thread_id,
+            turn_id=args.turn,
+            after=tuple(args.after) if args.after else None,
+            before=tuple(args.before) if args.before else None,
+            limit=args.limit,
+        )
     if args.json:
-        print(json.dumps({"threadId": args.thread_id, "messages": messages}, indent=2))
+        print(
+            json.dumps(
+                {
+                    "threadId": args.thread_id,
+                    "view": "materialized",
+                    "backend": backend,
+                    "messages": messages,
+                },
+                indent=2,
+            )
+        )
     else:
         output = format_messages(messages)
+        if output:
+            print(output)
+    return 0
+
+
+async def cmd_items(args: argparse.Namespace) -> int:
+    async with AppServer(args.endpoint, args.timeout) as app:
+        selection = await select_materialized_items(
+            app,
+            args.thread_id,
+            turn_id=args.turn,
+            after=tuple(args.after) if args.after else None,
+            before=tuple(args.before) if args.before else None,
+            types=set(args.types),
+            limit=args.limit,
+        )
+    records = [item_record(entry.turn, entry.item) for entry in selection.entries]
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "threadId": args.thread_id,
+                    "view": "materialized",
+                    "backend": selection.backend,
+                    "items": records,
+                },
+                indent=2,
+            )
+        )
+    else:
+        output = format_items(records)
         if output:
             print(output)
     return 0

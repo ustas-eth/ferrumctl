@@ -4,9 +4,10 @@
 `codex app-server`.
 
 Use it to find or search stored sessions and spawned threads, inspect recent
-work, retrieve conversation messages, inspect running terminal processes,
-start or steer input, resume a persisted thread, or interrupt one known turn.
-It does not edit goals, schedule future work, or measure file-read coverage.
+work, list ordered activity, retrieve conversation messages, inspect running
+terminal processes, start or steer input, resume a persisted thread, or
+interrupt one known turn. It does not edit goals, schedule future work, or
+measure file-read coverage.
 
 ## Install
 
@@ -50,7 +51,7 @@ codex-threadctl inspect THREAD_ID
 codex-threadctl inspect THREAD_ID --brief
 ```
 
-List recent conversation messages, then print one in full:
+List recent message previews, then print one message's retained text:
 
 ```sh
 codex-threadctl messages THREAD_ID --limit 10
@@ -59,6 +60,14 @@ codex-threadctl message THREAD_ID TURN_ID ITEM_ID
 
 The list output includes both ids because an item id is only unique within its
 turn.
+
+List compact activity or continue after a known item:
+
+```sh
+codex-threadctl items THREAD_ID --limit 10
+codex-threadctl items THREAD_ID --type contextCompaction --limit 1
+codex-threadctl items THREAD_ID --after TURN_ID ITEM_ID --limit 0
+```
 
 Start a new turn on an idle thread, or steer one known active turn:
 
@@ -97,6 +106,7 @@ Use `--json` when another program will parse output.
 More detail:
 
 - [docs/observation-semantics.md](docs/observation-semantics.md)
+- [docs/materialized-history.md](docs/materialized-history.md)
 - [docs/lifecycle-control.md](docs/lifecycle-control.md)
 
 ## Codex Skill

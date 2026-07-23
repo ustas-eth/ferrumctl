@@ -24,7 +24,7 @@ class ParserTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 parser.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-threadctl 0.3.1\n")
+        self.assertEqual(output.getvalue(), "codex-threadctl 0.4.0\n")
 
     def test_default_timeout_allows_for_history_reconstruction(self):
         self.assertEqual(parser.build_parser().parse_args(["loaded"]).timeout, 30.0)
@@ -36,7 +36,30 @@ class ParserTests(unittest.TestCase):
             ["search", "decision text", "--limit", "0", "--sort", "updated"],
             ["status", "thread"],
             ["inspect", "thread", "--brief", "--items", "0"],
-            ["messages", "thread", "--limit", "0"],
+            [
+                "messages",
+                "thread",
+                "--turn",
+                "turn",
+                "--after",
+                "turn",
+                "item-1",
+                "--before",
+                "turn",
+                "item-3",
+                "--limit",
+                "0",
+            ],
+            [
+                "items",
+                "thread",
+                "--type",
+                "userMessage",
+                "--type",
+                "agentMessage",
+                "--limit",
+                "0",
+            ],
             ["message", "thread", "turn", "item"],
             ["start", "thread", "message"],
             ["steer", "thread", "turn", "message"],
@@ -397,9 +420,98 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
         ]
         with (
             mock.patch.object(commands, "AppServer", return_value=FakeContext()),
-            mock.patch.object(commands, "recent_messages", mock.AsyncMock(return_value=messages)),
+            mock.patch.object(
+                commands,
+                "recent_messages",
+                mock.AsyncMock(return_value=(messages, "thread/turns/list")),
+            ),
             redirect_stdout(io.StringIO()) as output,
         ):
             result = await commands.cmd_messages(args)
         self.assertEqual(result, 0)
         self.assertIn("turn\titem-2\tfinal_answer", output.getvalue())
+
+    async def test_messages_passes_range_and_reports_materialized_backend(self):
+        args = parser.build_parser().parse_args(
+            [
+                "messages",
+                "thread",
+                "--turn",
+                "turn",
+                "--after",
+                "turn",
+                "first",
+                "--before",
+                "turn",
+                "last",
+                "--limit",
+                "0",
+                "--json",
+            ]
+        )
+        recent = mock.AsyncMock(return_value=([], "thread/items/list"))
+        with (
+            mock.patch.object(commands, "AppServer", return_value=FakeContext()),
+            mock.patch.object(commands, "recent_messages", recent),
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            result = await commands.cmd_messages(args)
+
+        self.assertEqual(result, 0)
+        recent.assert_awaited_once_with(
+            mock.ANY,
+            "thread",
+            turn_id="turn",
+            after=("turn", "first"),
+            before=("turn", "last"),
+            limit=0,
+        )
+        self.assertEqual(
+            json.loads(output.getvalue()),
+            {
+                "threadId": "thread",
+                "view": "materialized",
+                "backend": "thread/items/list",
+                "messages": [],
+            },
+        )
+
+    async def test_items_outputs_compact_records(self):
+        args = parser.build_parser().parse_args(
+            ["items", "thread", "--type", "commandExecution", "--json"]
+        )
+        entry = SimpleNamespace(
+            turn={"id": "turn", "status": "completed"},
+            item={
+                "id": "item",
+                "type": "commandExecution",
+                "status": "completed",
+                "command": "true",
+                "aggregatedOutput": "omitted",
+            },
+        )
+        selection = SimpleNamespace(
+            entries=[entry],
+            backend="thread/turns/list",
+        )
+        selected = mock.AsyncMock(return_value=selection)
+        with (
+            mock.patch.object(commands, "AppServer", return_value=FakeContext()),
+            mock.patch.object(commands, "select_materialized_items", selected),
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            result = await commands.cmd_items(args)
+
+        self.assertEqual(result, 0)
+        selected.assert_awaited_once_with(
+            mock.ANY,
+            "thread",
+            turn_id=None,
+            after=None,
+            before=None,
+            types={"commandExecution"},
+            limit=20,
+        )
+        payload = json.loads(output.getvalue())
+        self.assertEqual(payload["items"][0]["itemId"], "item")
+        self.assertNotIn("aggregatedOutput", payload["items"][0])

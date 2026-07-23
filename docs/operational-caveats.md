@@ -118,6 +118,12 @@ Materialized turn history can change after rollback or compaction. Persisted
 items are lossy and do not include every transient interaction or item
 timestamp. A message locator therefore uses both its turn id and item id.
 
+Materialized item ranges are snapshots, not a changefeed. An in-progress item
+can change status or content without moving past an exclusive boundary. A
+saved boundary can also disappear after rollback or reconstruction. Overlap
+the observed tail when mutable item updates matter, and treat a missing
+boundary as an explicit reconciliation case.
+
 Context usage is the latest recorded model exchange. It may remain unchanged
 during a long command and should be interpreted with its observation age. Goal
 token counters are cumulative and are not context-window usage.
@@ -131,6 +137,10 @@ it does not pause a goal or terminate background terminals. `terminals` and
 Immediate and queued cross-thread input does not identify its logical sender to
 the target. Put a natural source label in the message when confusion with
 direct human input matters. The label provides context, not authorization.
+Peer-authored input is still stored as a user message in the recipient's
+thread. It is suitable for concise advisory discussion; committed analysis is
+usually clearer when retained as the responder's assistant message and read
+from that turn.
 
 `resume` does not add a user message, but Codex can continue an active goal
 after loading it. App-server cannot atomically exclude goal continuation, so

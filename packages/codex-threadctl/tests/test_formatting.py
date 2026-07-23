@@ -63,6 +63,19 @@ class FormattingTests(unittest.TestCase):
         self.assertEqual(len(preview), 160)
         self.assertTrue(preview.endswith("..."))
 
+    def test_items_print_composite_locator_first(self):
+        output = formatting.format_items(
+            [
+                {
+                    "turnId": "turn",
+                    "itemId": "item",
+                    "type": "contextCompaction",
+                    "turnStatus": "completed",
+                }
+            ]
+        )
+        self.assertEqual(output, "turn\titem\tcontextCompaction")
+
     def test_thread_list_is_id_first_and_labels_server_state(self):
         output = formatting.format_thread_list(
             [
