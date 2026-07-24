@@ -29,17 +29,28 @@ Use `--json` when a program needs counts and metadata instead of plain paths.
 ## Negative Coverage
 
 Negative coverage is a set operation outside `codex-readcov`: produce the
-expected file set, produce the read file set, then subtract.
+expected file set, produce the read file set, then subtract. The expected set
+must use the same namespace as readcov output, which is relative to the rollout
+cwd when possible.
+
+For a tracked-file audit:
 
 ```sh
-find PATH -type f | sort > all.txt
-codex-readcov delta before.json PATH --paths-only --limit 0 | sort > read.txt
+SCOPE=PATH
+ROLLOUT_CWD=$(jq -r .cwd before.json)
+git -C "$ROLLOUT_CWD" ls-files -- "$SCOPE" | sort > all.txt
+codex-readcov delta before.json "$SCOPE" \
+  --paths-only --limit 0 | sort > read.txt
 comm -23 all.txt read.txt
 ```
 
-This reports files in `PATH` that were not present in the read list for that
-window. It should not be described as proof that the agent could not have
-observed the file through another channel.
+This reports tracked files in `SCOPE` that were not present in the read list for
+that window. The example assumes `SCOPE` is relative to and beneath the rollout
+cwd. For an external absolute scope, generate absolute expected paths to match
+readcov output. A different audit can deliberately choose another expected
+universe, but unrestricted filesystem walks commonly include ignored build
+outputs, environments, and caches. The result should not be described as proof
+that the agent could not have observed a file through another channel.
 
 ## Multiple Threads
 

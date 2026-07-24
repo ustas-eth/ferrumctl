@@ -7,10 +7,10 @@ thread start, steering, resume, interruption, and terminal-process control.
 
 ## Endpoint Ownership
 
-Starting, steering, interruption, and terminal-process control require the
-target to be loaded on the selected app-server. A thread id identifies
-persisted state under a Codex home, but it does not identify which server
-currently owns live execution.
+Notification, wake, starting, steering, interruption, and terminal-process
+control require the target to be loaded on the selected app-server. A thread id
+identifies persisted state under a Codex home, but it does not identify which
+server currently owns live execution.
 
 ## Resuming
 
@@ -31,19 +31,23 @@ injection method and does not provide lifecycle control.
 
 ## Advisory Notification
 
-`notify` submits one raw `agent_message` through `thread/inject_items`. Its
-author defaults to `CODEX_THREAD_ID` and its recipient is the target thread id.
-The text is model-visible advisory context rather than a user message.
+`notify` submits one raw `agent_message` to a loaded target through
+`thread/inject_items`. Its author defaults to `CODEX_THREAD_ID` and its
+recipient is the target thread id. The text is advisory agent context rather
+than a user message.
 
-The operation does not start a turn. When the target is active, Codex can hold
-the item in pending in-memory input until the next model step. When the target
-is idle, Codex records it in materialized conversation state. App-server
-returns no native disposition, so success means only that the injection request
-was accepted. It does not prove persistence, model receipt, or action.
+The operation does not start a turn. A notice can become available at a later
+model step, including during active reasoning, but app-server returns no native
+delivery disposition. Success means only that the injection request was
+accepted. It does not prove timing, retained materialization, model receipt, or
+action. Notice arrival also does not establish the order of the durable events
+it announces.
 
 A connection failure after submission has an uncertain outcome. Do not retry
 automatically. Agent messages can be absorbed or retained by compaction, so
-`notify` is not an ephemeral event channel or a durable mailbox.
+`notify` is neither an ephemeral event channel nor a durable mailbox. Batch
+nearby announcements to the latest useful high-water position, and do not send
+notifications merely to acknowledge another notice.
 
 ## Empty Wake
 

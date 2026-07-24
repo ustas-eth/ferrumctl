@@ -270,8 +270,10 @@ POSITION=$(codex-streamctl append "$STREAM" --author "$A" \
   jq -r .position)
 ```
 
-When `codex-threadctl` is also available, announce only the committed position.
-The notice does not start a turn; the empty wake is a no-op if B is active:
+When `codex-threadctl` is also available, announce the highest committed
+position when B's attention is useful. Batch nearby appends into one notice.
+The notice can enter active reasoning at a later model step but does not start
+a turn; the empty wake is a no-op if B is active:
 
 ```sh
 codex-threadctl notify "$B" --from "$A" \
@@ -280,19 +282,27 @@ codex-threadctl wake "$B"
 ```
 
 B reads every entry after its acknowledgement, processes the complete returned
-prefix, and then advances its cursor:
+prefix, and only then advances its cursor:
 
 ```sh
-BATCH=$(codex-streamctl list "$STREAM" --reader "$B" --limit 0 --json)
-THROUGH=$(printf '%s\n' "$BATCH" | jq -er .lastPosition)
-# Process every returned entry.
-codex-streamctl ack "$STREAM" --reader "$B" --through "$THROUGH"
+codex-streamctl list "$STREAM" --reader "$B" --limit 0 --json
 ```
 
-B can append its response and announce the new position in the same way.
+After processing the result:
+
+```sh
+codex-streamctl ack "$STREAM" --reader "$B" --through LAST_POSITION
+```
+
+`LAST_POSITION` is `.lastPosition` from that exact list result, not
+`.tailPosition` from a later observation. The acknowledgement is already the
+durable processed-through receipt. Do not notify it or answer a notice without
+substantive stream content. B can append a response and later announce the
+newest committed position in the same way.
 Without `codex-threadctl`, participants inspect the stream at natural
-milestones. Missing or duplicate notices do not change the durable exchange;
-the reader acknowledgement determines what remains.
+milestones. Missing, delayed, reordered, or duplicate notices do not change the
+durable exchange; stream order and reader acknowledgements determine what
+remains.
 
 ## Peer Handoff
 
@@ -326,11 +336,16 @@ codex-readcov snapshot "$WORKER" > before.json
 codex-readcov delta before.json packages --limit 20
 ```
 
-Negative coverage is a normal set operation:
+Negative coverage is a normal set operation. Choose the expected universe
+explicitly and generate it in the snapshot cwd, because readcov displays paths
+relative to that cwd:
 
 ```sh
-find packages -type f | sort > all.txt
-codex-readcov delta before.json packages --paths-only --limit 0 | sort > read.txt
+SCOPE=packages
+WORKER_CWD=$(jq -r .cwd before.json)
+git -C "$WORKER_CWD" ls-files -- "$SCOPE" | sort > all.txt
+codex-readcov delta before.json "$SCOPE" \
+  --paths-only --limit 0 | sort > read.txt
 comm -23 all.txt read.txt
 ```
 

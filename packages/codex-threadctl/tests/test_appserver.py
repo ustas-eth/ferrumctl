@@ -717,6 +717,16 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(ThreadctlError, "outcome is uncertain"):
             await appserver.notify_thread(app, "thread", "author", "message")
 
+    async def test_notify_requires_target_loaded_on_selected_server(self):
+        app = FakeApp(loaded=False)
+
+        with self.assertRaises(ThreadNotLoaded):
+            await appserver.notify_thread(app, "thread", "author", "message")
+
+        self.assertFalse(
+            any(method == "thread/inject_items" for method, _ in app.calls)
+        )
+
     async def test_wake_starts_an_empty_turn_and_confirms_its_identity(self):
         app = FakeApp()
 
@@ -824,6 +834,20 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result["outcome"], "rejected")
         self.assertEqual(result["turnId"], "turn")
+
+    async def test_wake_confirmation_reports_competing_active_turn(self):
+        app = FakeApp(actual_turn_id="other-turn")
+        with mock.patch.object(
+            appserver.time,
+            "monotonic",
+            side_effect=[0.0, 0.0, 2.0, 2.0],
+        ):
+            result = await appserver.confirm_wake(app, "thread", "submitted", 1)
+
+        self.assertEqual(result["outcome"], "uncertain")
+        self.assertEqual(result["turnId"], "submitted")
+        self.assertEqual(result["observedStatus"], "active")
+        self.assertIn("another active turn was other-turn", result["reason"])
 
     async def test_steer_uses_expected_turn_id(self):
         app = FakeApp(status="active")

@@ -5,9 +5,9 @@
 
 Use it to find or search stored sessions and spawned threads, inspect recent
 work, retrieve materialized messages, inspect running terminal processes,
-deliver an advisory agent notice, wake an idle thread without user input, or
-apply immediate turn control. It does not edit goals, schedule future work, or
-measure file-read coverage.
+deliver an advisory agent notice to a loaded thread, wake a loaded idle thread
+without user input, or apply immediate turn control. It does not edit goals,
+schedule future work, or measure file-read coverage.
 
 ## Install
 
@@ -81,8 +81,8 @@ codex-threadctl steer THREAD_ID TURN_ID \
 The target sees the message as ordinary input. Name the logical sender when it
 could be mistaken for direct human input.
 
-Append an advisory agent notice without waking the target, then start an empty
-turn if the loaded target is idle:
+Append an advisory agent notice to a loaded target without waking it, then
+start an empty turn if that target is idle:
 
 ```sh
 codex-threadctl notify THREAD_ID --from AUTHOR \
@@ -90,9 +90,10 @@ codex-threadctl notify THREAD_ID --from AUTHOR \
 codex-threadctl wake THREAD_ID
 ```
 
-`notify` reports app-server acceptance, not persistence or model receipt.
-`wake` carries no message and is a successful no-op when the target is already
-active.
+`notify` reports app-server acceptance, not timing, persistence, or model
+receipt. Its notice can enter active reasoning at a later model step, so use it
+sparingly. `wake` carries no message and is a successful no-op when the target
+is already active.
 
 Resume a stored thread or request interruption of one exact turn:
 

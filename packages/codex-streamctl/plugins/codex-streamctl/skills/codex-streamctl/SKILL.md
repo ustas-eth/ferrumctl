@@ -37,23 +37,27 @@ codex-streamctl append "$STREAM" --reply-to "$POSITION" \
   "Confirmed. The state check must move into the transaction."
 ```
 
-Read the next entries after your acknowledgement, process them in order, then
-acknowledge the complete returned prefix:
+Read the next entries after your acknowledgement:
 
 ```sh
 SELF=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
-ENTRIES=$(codex-streamctl list "$STREAM" --reader "$SELF" --json)
-THROUGH=$(printf '%s\n' "$ENTRIES" | jq -er .lastPosition)
-# Process every returned entry before advancing the cursor.
-codex-streamctl ack "$STREAM" --reader "$SELF" --through "$THROUGH"
+codex-streamctl list "$STREAM" --reader "$SELF" --json
+```
+
+Process every returned entry in order. Only afterward, acknowledge
+`.lastPosition` from that exact result:
+
+```sh
+codex-streamctl ack "$STREAM" --reader "$SELF" --through LAST_POSITION
 ```
 
 Use `--after POSITION` for an explicit one-off range without changing a reader
 acknowledgement. Use `--limit 0` when the complete selected interval is needed.
 If no entries are returned, there is nothing to acknowledge.
 
-When the `codex-threadctl` skill is also available, a committed append can be
-followed by a short advisory notice and an optional idle wake:
+When the `codex-threadctl` skill is also available, announce the highest
+committed position when peer attention is useful, then optionally wake an idle
+peer:
 
 ```sh
 codex-threadctl notify "$PEER" \
@@ -61,8 +65,10 @@ codex-threadctl notify "$PEER" \
 codex-threadctl wake "$PEER"
 ```
 
-The append is authoritative. Missing or duplicate notices are reconciled by
-listing from the reader acknowledgement.
+The append is authoritative. A notice can enter active reasoning at a later
+model step, so batch nearby appends instead of notifying each one. Missing,
+delayed, reordered, or duplicate notices are reconciled by listing from the
+reader acknowledgement.
 
 ## Conventions
 
@@ -75,8 +81,9 @@ listing from the reader acknowledgement.
 - Treat author and reader values as provenance, not authentication.
 - Do not assume an append wakes another agent. Use its native handle or an
   available thread-control skill when immediate attention is required.
-- Keep notifications shorter than the stream entry they announce. Do not copy
-  the authoritative payload into both surfaces.
+- Keep notifications shorter than the stream entries they announce. Announce
+  only the latest useful position; do not copy authoritative payloads, notify
+  acknowledgements, or answer a notice without substantive stream content.
 - An ambiguous append may have committed. Inspect the tail before retrying, or
   a duplicate entry can be created.
 - Use `--state PATH` only when every participant is intentionally using the

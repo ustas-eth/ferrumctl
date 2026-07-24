@@ -42,11 +42,14 @@ Produce a complete read path list for Unix set operations:
 codex-readcov delta before.json PATH --paths-only --limit 0
 ```
 
-Find expected files that were not present in the read list:
+Find tracked files that were not present in the read list:
 
 ```sh
-find PATH -type f | sort > all.txt
-codex-readcov delta before.json PATH --paths-only --limit 0 | sort > read.txt
+SCOPE=PATH
+ROLLOUT_CWD=$(jq -r .cwd before.json)
+git -C "$ROLLOUT_CWD" ls-files -- "$SCOPE" | sort > all.txt
+codex-readcov delta before.json "$SCOPE" \
+  --paths-only --limit 0 | sort > read.txt
 comm -23 all.txt read.txt
 ```
 

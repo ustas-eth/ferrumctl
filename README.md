@@ -126,11 +126,15 @@ codex-wakectl add time --after 30m --to "$SELF" \
   "Self-scheduled reminder: Review progress."
 ```
 
-Find expected files not present in a read list:
+Find tracked files not present in a read list, using the snapshot cwd as the
+shared path namespace:
 
 ```sh
-find packages -type f | sort > all.txt
-codex-readcov delta worker.before.json packages --paths-only --limit 0 | sort > read.txt
+SCOPE=packages
+WORKER_CWD=$(jq -r .cwd worker.before.json)
+git -C "$WORKER_CWD" ls-files -- "$SCOPE" | sort > all.txt
+codex-readcov delta worker.before.json "$SCOPE" \
+  --paths-only --limit 0 | sort > read.txt
 comm -23 all.txt read.txt
 ```
 

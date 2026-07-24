@@ -45,7 +45,8 @@ coordination changes, not simple CLI plumbing.
 `codex-streamctl` owns only append-only stream entries and cumulative reader
 acknowledgements. Keep publication, notification, wake, and acknowledgement as
 separate operations. An acknowledgement is a processed-through cursor, not a
-delivery receipt.
+delivery receipt. Advisory notices can interrupt active reasoning; batch nearby
+appends and do not create notification receipts or acknowledgement loops.
 
 `codex-threadctl` depends on materialized turn pagination and selected rollout
 records. It owns synchronous app-server start, steer, resume, and interruption
@@ -55,8 +56,9 @@ requests, confirmed delivery, and persisted history.
 
 `codex-readcov` reports transcript-recorded read actions, not verified file
 access or an operating-system audit log. It must reject unresolved dynamic
-command envelopes instead of silently under-counting. `codex-goalctl replace`
-is clear-then-set.
+command envelopes instead of silently under-counting. Negative-coverage
+examples must choose an expected universe and use the rollout cwd path
+namespace. `codex-goalctl replace` is clear-then-set.
 
 `codex-limitctl` owns read-only account capacity and usage signals. Keep current
 account reads distinct from account-unscoped rollout history, normalize windows

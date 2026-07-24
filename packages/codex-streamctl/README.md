@@ -36,8 +36,14 @@ codex-streamctl append "$STREAM" --author "$B" --reply-to 1 \
 Read entries that one participant has not acknowledged:
 
 ```sh
-codex-streamctl list "$STREAM" --reader "$B"
-codex-streamctl ack "$STREAM" --reader "$B" --through 2
+codex-streamctl list "$STREAM" --reader "$B" --json
+```
+
+After processing every returned entry, acknowledge `.lastPosition` from that
+exact result:
+
+```sh
+codex-streamctl ack "$STREAM" --reader "$B" --through LAST_POSITION
 ```
 
 `CODEX_THREAD_ID` is the default author for `append` and the default reader for

@@ -73,6 +73,18 @@ Produce path lists for Unix set operations:
 codex-readcov delta before.json PATH --paths-only --limit 0 | sort > read.txt
 ```
 
+For negative coverage, build the expected set in the snapshot cwd so both
+inputs use the same path namespace:
+
+```sh
+SCOPE=PATH
+ROLLOUT_CWD=$(jq -r .cwd before.json)
+git -C "$ROLLOUT_CWD" ls-files -- "$SCOPE" | sort > all.txt
+codex-readcov delta before.json "$SCOPE" \
+  --paths-only --limit 0 | sort > read.txt
+comm -23 all.txt read.txt
+```
+
 ## References
 
 - Read `references/coverage-semantics.md` when what counts, transcript
@@ -98,6 +110,9 @@ codex-readcov delta before.json PATH --paths-only --limit 0 | sort > read.txt
 - Use path operands for an intentionally scoped view, not as proof that other
   paths were unread.
 - Use `--paths-only --limit 0` before `sort`, `comm`, or `uniq`.
+- Generate negative-coverage inputs in the snapshot cwd and choose the expected
+  universe explicitly. Do not compare rollout-relative output with an
+  unrestricted walk of the caller's filesystem.
 - Keep negative coverage, union, and intersection outside `codex-readcov`.
 - Use `--json` when another program will parse output.
 - Do not present results as verified command success, model context exposure,

@@ -56,9 +56,11 @@ command has no idempotency key. Reconcile the stream tail before retrying an
 ambiguous append.
 
 Streams do not notify or wake participants. A separate transport can announce
-the latest committed position, but that notice is advisory. Readers recover
-from missing or duplicate notices by listing after their durable
-acknowledgement.
+the latest committed position, but that notice is advisory. Notice timing or
+arrival order does not define stream order. Nearby appends can be announced
+once at their highest position; acknowledgements need no notice because they
+are already durable state. Readers recover from missing, delayed, reordered, or
+duplicate notices by listing after their durable acknowledgement.
 
 Appending, notifying, waking, and acknowledging are independent operations.
 There is no cross-command transaction or automatic rollback between them.

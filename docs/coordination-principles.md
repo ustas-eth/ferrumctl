@@ -27,10 +27,11 @@ use the queue or deliver input.
 
 `codex-threadctl` discovers and searches persisted threads and observes thread
 status, materialized item ranges, goal state, context records, and running
-terminal processes. It also injects advisory agent notices, wakes loaded idle
-threads without user input, starts or steers immediate input, resumes persisted
-threads, interrupts exact turns, and terminates exact terminal processes. Its
-inspection is a read-only aggregate, not an atomic snapshot.
+terminal processes. It also injects advisory agent notices into loaded threads,
+wakes loaded idle threads without user input, starts or steers immediate input,
+resumes persisted threads, interrupts exact turns, and terminates exact
+terminal processes. Its inspection is a read-only aggregate, not an atomic
+snapshot.
 
 `codex-readcov` reads rollout transcripts and reports recorded file-read
 actions. It provides transcript evidence, not verified operating-system access.
@@ -68,6 +69,10 @@ via threadctl:`. `codex-threadctl start`, `codex-threadctl steer`, and
 clarifies origin but does not prove identity or override existing instructions.
 `codex-threadctl notify` instead injects an advisory agent message with a
 caller-supplied author, which is provenance rather than authentication.
+The notice can enter an active thread's reasoning at a later model step.
+For shared streams, batch nearby appends into one high-water notice and do not
+send acknowledgement receipts; stream order and reader cursors remain the
+authority.
 
 ## Goal And Turn State
 
@@ -127,6 +132,7 @@ The surfaces can differ temporarily:
 - account capacity can change immediately after `codex-limitctl` reads it
 
 Treat cross-surface workflows as retryable. Keep durable intent in goals, use
-small idempotent queued messages when context remains authoritative, inspect
-before interruption, take read snapshots around the interval of
-interest, and cancel only queued jobs owned by the current workflow.
+small idempotent queued messages when context remains authoritative, coalesce
+advisory stream notices, inspect before interruption, take read snapshots
+around the interval of interest, and cancel only queued jobs owned by the
+current workflow.

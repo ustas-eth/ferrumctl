@@ -63,6 +63,11 @@ tail before retrying. Notification and wake are separate operations: a
 committed entry remains authoritative if a notice is lost, duplicated, or
 arrives while the recipient is already active.
 
+An advisory notice can enter a loaded recipient's active reasoning at a later
+model step. Batch nearby appends and announce only the highest useful committed
+position. Do not notify acknowledgements or create stream entries solely to
+acknowledge a notice; cumulative reader state is already the durable receipt.
+
 ## Scheduled Wakes
 
 `codex-wakectl` can wake only threads loaded on the selected app-server. A valid
@@ -146,25 +151,27 @@ Context usage is the latest recorded model exchange. It may remain unchanged
 during a long command and should be interpreted with its observation age. Goal
 token counters are cumulative and are not context-window usage.
 
-Immediate input and interruption require a loaded target. `start` confirms the
-actual delivery mode, while `steer` and `interrupt` require an expected turn id.
-Interruption reports `requested` unless the caller waits for terminal status;
-it does not pause a goal or terminate background terminals. `terminals` and
-`terminate-terminal` expose those processes separately.
+Notification, wake, immediate input, and interruption require a loaded target
+on the selected app-server. `start` confirms the actual delivery mode, while
+`steer` and `interrupt` require an expected turn id. Interruption reports
+`requested` unless the caller waits for terminal status; it does not pause a
+goal or terminate background terminals. `terminals` and `terminate-terminal`
+expose those processes separately.
 
 `notify` injects advisory agent context without starting a turn. Acceptance
-does not prove persistence or model receipt. `wake` adds no message; it starts
-an empty turn only when the loaded target appears idle and otherwise reports a
-no-op or explicit failure outcome. Wake uses the direct-input path that Codex
-rejects for v2 subagents; raw notification uses a separate injection method.
-An active no-op does not reserve a follow-up turn after the observed turn ends.
+does not prove timing, retained materialization, model receipt, or action.
+`wake` adds no message; it starts an empty turn only when the loaded target
+appears idle and otherwise reports a no-op or explicit failure outcome. Wake
+uses the direct-input path that Codex rejects for v2 subagents; raw notification
+uses a separate injection method. An active no-op does not reserve a follow-up
+turn after the observed turn ends.
 
 User input sent by `start`, `steer`, or wakectl does not identify its logical
 sender to the target. Put a natural source label in the message when confusion
 with direct human input matters. The label provides context, not authorization.
 Peer-authored user input is stored as a user message in the recipient's thread.
-`notify` instead records an agent message with a caller-supplied author, which
-still does not prove identity.
+`notify` instead injects an agent message with a caller-supplied author, which
+still does not prove identity or retained materialization.
 
 `resume` does not add a user message, but Codex can continue an active goal
 after loading it. App-server cannot atomically exclude goal continuation, so
@@ -205,6 +212,7 @@ Prefer workflows that tolerate retries:
 
 - write durable intent to the goal
 - append durable peer content before announcing its stream position
+- coalesce stream notices and do not notify acknowledgement receipts
 - prefer small queued wake messages that mark the event
 - inspect before steering or interruption
 - snapshot before the interval being measured

@@ -1,6 +1,6 @@
 ---
 name: codex-threadctl
-description: "Use when the useful handle is a Codex thread id or persisted thread state is needed: discover or search stored sessions and spawned threads unavailable through native handles, inspect current or ordered activity, context, compaction, messages, or terminal processes, inject a concise advisory agent notice without waking, wake a loaded idle thread without user input, start or steer immediate input, resume persisted state, interrupt one exact turn, or terminate one exact terminal process. Do not use for ordinary native subagent messaging, waiting, or result retrieval while this session owns the live handle; future or conditional wakes; goal editing; file-read coverage; terminal keystroke injection; or agent spawning."
+description: "Use when the useful handle is a Codex thread id or persisted thread state is needed: discover or search stored sessions and spawned threads unavailable through native handles, inspect current or ordered activity, context, compaction, messages, or terminal processes, inject a concise advisory notice into a loaded thread without waking, wake a loaded idle thread without user input, start or steer immediate input, resume persisted state, interrupt one exact turn, or terminate one exact terminal process. Do not use for ordinary native subagent messaging, waiting, or result retrieval while this session owns the live handle; future or conditional wakes; goal editing; file-read coverage; terminal keystroke injection; or agent spawning."
 ---
 
 # Codex Threadctl
@@ -32,10 +32,11 @@ Use `start` for a new turn on a target that appears idle. Use `steer` only with
 the exact active turn id. Use wakectl instead when delivery must survive this
 turn or wait for a later condition and its skill is available.
 
-Use `notify` for a concise advisory hint that should not become user input or
-start a turn. Use `wake` only when existing context, a goal, or a shared record
-already says what to do and a loaded idle target should take another turn.
-`notify` does not wake; `wake` carries no instructions.
+Use `notify` for a concise advisory hint to a loaded target when that hint
+should not become user input or start a turn. Use `wake` only when existing
+context, a goal, or a shared record already says what to do and a loaded idle
+target should take another turn. `notify` does not wake; `wake` carries no
+instructions.
 
 ## Patterns
 
@@ -102,8 +103,8 @@ codex-threadctl steer THREAD_ID TURN_ID \
   "From coordinator: Focus on the failing test first."
 ```
 
-Append an advisory agent notice without starting a turn. `--from` defaults to
-`CODEX_THREAD_ID`:
+Append an advisory agent notice to a loaded target without starting a turn.
+`--from` defaults to `CODEX_THREAD_ID`:
 
 ```sh
 codex-threadctl notify "$PEER" \
@@ -158,9 +159,11 @@ codex-threadctl inspect "$SELF"
 - Read the result of `start`. Its idle check is not atomic; if another turn
   wins the race, the confirmed delivery mode can be `steered`. Use JSON when a
   later query needs the confirmed request's actual turn or client message id.
-- Treat `notify` success as app-server acceptance only. It does not prove that
-  the notice was persisted, read, or acted on. Keep notices concise and
-  idempotent, and do not retry an uncertain injection automatically.
+- Treat `notify` success as app-server acceptance only. The target must be
+  loaded on that server, and the notice can enter active reasoning at a later
+  model step. Success does not prove timing, persistence, receipt, or action.
+  Keep notices concise and idempotent, and do not retry an uncertain injection
+  automatically.
 - Treat `wake` as execution without new instructions. It starts an empty turn
   only on a loaded idle target and submits nothing when the target is already
   active. Inspect `rejected` or `uncertain` outcomes instead of retrying
@@ -169,7 +172,9 @@ codex-threadctl inspect "$SELF"
   the current turn ending, use a stop-triggered wakectl job when that skill is
   available.
 - When the `codex-streamctl` skill is available, put durable peer content in
-  the stream and use `notify` only to announce its committed position.
+  the stream. Batch nearby appends and use `notify` only when attention is
+  useful, announcing the highest committed position. Do not notify
+  acknowledgements or answer a notice without substantive stream content.
 - Always pass the turn id obtained from current inspection to `steer` and
   `interrupt`. Native expected-turn checks reject stale ids.
 - Interruption without `--wait` reports `requested`, not completion. It does
