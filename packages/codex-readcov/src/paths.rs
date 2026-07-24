@@ -14,13 +14,21 @@ pub(crate) fn display_path(cwd: &Path, path: &Path) -> String {
         .into_owned()
 }
 
+pub(crate) fn canonical_path(path: &Path) -> PathBuf {
+    fs::canonicalize(path).unwrap_or_else(|_| normalize_path(path))
+}
+
 pub(crate) fn resolve_path(cwd: &Path, path: &Path) -> PathBuf {
     let raw = if path.is_absolute() {
         path.to_path_buf()
     } else {
         cwd.join(path)
     };
-    fs::canonicalize(&raw).unwrap_or_else(|_| normalize_path(&raw))
+    match fs::canonicalize(&raw) {
+        Ok(path) => path,
+        Err(_) if path.is_relative() => normalize_path(&canonical_path(cwd).join(path)),
+        Err(_) => normalize_path(&raw),
+    }
 }
 
 pub(crate) fn normalize_path(path: &Path) -> PathBuf {
