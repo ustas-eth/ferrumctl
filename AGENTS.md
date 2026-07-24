@@ -30,6 +30,7 @@ The tools touch several independent Codex surfaces:
 - live app-server state
 - account rate-limit snapshots
 - persisted goal state
+- the streamctl SQLite exchange store
 - materialized thread and turn history
 - rollout transcript files
 - the wakectl SQLite queue
@@ -41,11 +42,16 @@ consistency than Codex actually provides.
 condition cursors, leases, and delivery policy. Treat changes there as
 coordination changes, not simple CLI plumbing.
 
+`codex-streamctl` owns only append-only stream entries and cumulative reader
+acknowledgements. Keep publication, notification, wake, and acknowledgement as
+separate operations. An acknowledgement is a processed-through cursor, not a
+delivery receipt.
+
 `codex-threadctl` depends on materialized turn pagination and selected rollout
 records. It owns synchronous app-server start, steer, resume, and interruption
-operations used by wakectl. Keep message locators composite and preserve the
-distinction between accepted requests, confirmed delivery, and persisted
-history.
+operations used by wakectl, plus advisory item injection and empty-turn wake.
+Keep message locators composite and preserve the distinction between accepted
+requests, confirmed delivery, and persisted history.
 
 `codex-readcov` reports transcript-recorded read actions, not verified file
 access or an operating-system audit log. It must reject unresolved dynamic

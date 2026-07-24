@@ -5,6 +5,7 @@
       "targets": [
         "packages/codex-goalctl/plugins/codex-goalctl/skills/codex-goalctl/references/coordination-principles.md",
         "packages/codex-limitctl/plugins/codex-limitctl/skills/codex-limitctl/references/coordination-principles.md",
+        "packages/codex-streamctl/plugins/codex-streamctl/skills/codex-streamctl/references/coordination-principles.md",
         "packages/codex-wakectl/plugins/codex-wakectl/skills/codex-wakectl/references/coordination-principles.md",
         "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/coordination-principles.md",
         "packages/codex-readcov/plugins/codex-readcov/skills/codex-readcov/references/coordination-principles.md"
@@ -15,6 +16,7 @@
       "targets": [
         "packages/codex-goalctl/plugins/codex-goalctl/skills/codex-goalctl/references/coordination-recipes.md",
         "packages/codex-limitctl/plugins/codex-limitctl/skills/codex-limitctl/references/coordination-recipes.md",
+        "packages/codex-streamctl/plugins/codex-streamctl/skills/codex-streamctl/references/coordination-recipes.md",
         "packages/codex-wakectl/plugins/codex-wakectl/skills/codex-wakectl/references/coordination-recipes.md",
         "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/coordination-recipes.md",
         "packages/codex-readcov/plugins/codex-readcov/skills/codex-readcov/references/coordination-recipes.md"
@@ -25,6 +27,7 @@
       "targets": [
         "packages/codex-goalctl/plugins/codex-goalctl/skills/codex-goalctl/references/operational-caveats.md",
         "packages/codex-limitctl/plugins/codex-limitctl/skills/codex-limitctl/references/operational-caveats.md",
+        "packages/codex-streamctl/plugins/codex-streamctl/skills/codex-streamctl/references/operational-caveats.md",
         "packages/codex-wakectl/plugins/codex-wakectl/skills/codex-wakectl/references/operational-caveats.md",
         "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/operational-caveats.md",
         "packages/codex-readcov/plugins/codex-readcov/skills/codex-readcov/references/operational-caveats.md"
@@ -52,6 +55,12 @@
       "source": "packages/codex-goalctl/docs/app-server-boundaries.md",
       "targets": [
         "packages/codex-goalctl/plugins/codex-goalctl/skills/codex-goalctl/references/app-server-boundaries.md"
+      ]
+    },
+    {
+      "source": "packages/codex-streamctl/docs/stream-semantics.md",
+      "targets": [
+        "packages/codex-streamctl/plugins/codex-streamctl/skills/codex-streamctl/references/stream-semantics.md"
       ]
     },
     {

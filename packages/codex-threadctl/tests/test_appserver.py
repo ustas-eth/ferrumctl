@@ -31,6 +31,7 @@ class FakeApp:
         self.client_message_id = None
         self.timeout = 1
         self.calls = []
+        self.turn_notifications = []
 
     async def request(self, method, params=None):
         self.calls.append((method, params))
@@ -60,7 +61,7 @@ class FakeApp:
                 "nextCursor": None,
             }
         if method == "turn/start":
-            self.client_message_id = params["clientUserMessageId"]
+            self.client_message_id = params.get("clientUserMessageId")
             return {"turn": {"id": "submission", "status": "inProgress"}}
         if method == "turn/steer":
             return {"turnId": params["expectedTurnId"]}
@@ -228,6 +229,31 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
         app = appserver.AppServer("unix://", 1)
         app.ws = FakeWebSocket()
         self.assertEqual(await app.request("test"), {"ok": True})
+
+    async def test_appserver_retains_notifications_seen_during_a_request(self):
+        class FakeWebSocket:
+            def __init__(self):
+                self.messages = [
+                    '{"method":"item/agentMessage/delta","params":{}}',
+                    '{"method":"turn/started","params":{"threadId":"thread"}}',
+                    '{"id":1,"result":{"ok":true}}',
+                ]
+
+            async def send(self, message):
+                pass
+
+            async def recv(self):
+                return self.messages.pop(0)
+
+        app = appserver.AppServer("unix://", 1)
+        app.ws = FakeWebSocket()
+
+        await app.request("test")
+
+        self.assertEqual(
+            [notification["method"] for notification in app.turn_notifications],
+            ["turn/started"],
+        )
 
     async def test_list_loaded_follows_pagination(self):
         calls = []
@@ -629,6 +655,175 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(DeliveryUncertain) as raised:
             await appserver.start_turn(app, "thread", "message")
         self.assertEqual(raised.exception.turn_id, "submission")
+
+    async def test_notify_injects_one_agent_message_without_starting_a_turn(self):
+        app = FakeApp()
+
+        async def request(method, params=None):
+            if method == "thread/inject_items":
+                app.calls.append((method, params))
+                return {}
+            return await FakeApp.request(app, method, params)
+
+        app.request = request
+        result = await appserver.notify_thread(
+            app,
+            "thread",
+            "coordinator",
+            "Stream s has unread entries.",
+        )
+
+        self.assertEqual(result["outcome"], "accepted")
+        method, params = app.calls[-1]
+        self.assertEqual(method, "thread/inject_items")
+        self.assertEqual(params["threadId"], "thread")
+        self.assertEqual(
+            params["items"],
+            [
+                {
+                    "type": "agent_message",
+                    "id": None,
+                    "author": "coordinator",
+                    "recipient": "thread",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": "Stream s has unread entries.",
+                        }
+                    ],
+                }
+            ],
+        )
+        self.assertFalse(any(method == "turn/start" for method, _ in app.calls))
+
+    async def test_notify_preserves_rejection_and_marks_other_failures_uncertain(self):
+        app = FakeApp()
+
+        async def reject(method, params=None):
+            if method == "thread/inject_items":
+                raise AppServerResponseError({"message": "rejected"})
+            return await FakeApp.request(app, method, params)
+
+        app.request = reject
+        with self.assertRaises(AppServerResponseError):
+            await appserver.notify_thread(app, "thread", "author", "message")
+
+        async def fail(method, params=None):
+            if method == "thread/inject_items":
+                raise ThreadctlError("connection closed")
+            return await FakeApp.request(app, method, params)
+
+        app.request = fail
+        with self.assertRaisesRegex(ThreadctlError, "outcome is uncertain"):
+            await appserver.notify_thread(app, "thread", "author", "message")
+
+    async def test_wake_starts_an_empty_turn_and_confirms_its_identity(self):
+        app = FakeApp()
+
+        result = await appserver.wake_thread(app, "thread")
+
+        self.assertEqual(result["outcome"], "confirmedStarted")
+        self.assertEqual(result["turnId"], "submission")
+        self.assertIn(
+            ("turn/start", {"threadId": "thread", "input": []}),
+            app.calls,
+        )
+
+    async def test_wake_is_a_successful_noop_for_an_active_thread(self):
+        app = FakeApp(status="active", actual_turn_id="active-turn")
+
+        result = await appserver.wake_thread(app, "thread")
+
+        self.assertEqual(result["outcome"], "notSubmittedActive")
+        self.assertEqual(result["turnId"], "active-turn")
+        self.assertFalse(any(method == "turn/start" for method, _ in app.calls))
+
+    async def test_wake_active_noop_survives_optional_turn_lookup_failure(self):
+        app = FakeApp(status="active")
+        original_request = app.request
+
+        async def fail_turn_lookup(method, params=None):
+            if method == "thread/turns/list":
+                raise OSError("connection closed")
+            return await original_request(method, params)
+
+        app.request = fail_turn_lookup
+        result = await appserver.wake_thread(app, "thread")
+
+        self.assertEqual(
+            result,
+            {
+                "threadId": "thread",
+                "outcome": "notSubmittedActive",
+                "observedStatus": "active",
+            },
+        )
+        self.assertFalse(any(method == "turn/start" for method, _ in app.calls))
+
+    async def test_wake_reports_not_loaded_without_resuming(self):
+        app = FakeApp(loaded=False)
+
+        result = await appserver.wake_thread(app, "thread")
+
+        self.assertEqual(result["outcome"], "notLoaded")
+        self.assertFalse(any(method == "thread/resume" for method, _ in app.calls))
+        self.assertFalse(any(method == "turn/start" for method, _ in app.calls))
+
+    async def test_wake_reports_rpc_rejection_and_uncertain_confirmation(self):
+        app = FakeApp()
+
+        async def reject(method, params=None):
+            if method == "turn/start":
+                raise AppServerResponseError({"message": "rejected"})
+            return await FakeApp.request(app, method, params)
+
+        app.request = reject
+        rejected = await appserver.wake_thread(app, "thread")
+        self.assertEqual(rejected["outcome"], "rejected")
+
+        uncertain = await appserver.wake_thread(
+            FakeApp(actual_turn_id="other-turn"),
+            "thread",
+            confirmation_timeout=0,
+        )
+        self.assertEqual(uncertain["outcome"], "uncertain")
+        self.assertEqual(uncertain["turnId"], "submission")
+
+    async def test_wake_confirmation_accepts_exact_started_notification(self):
+        app = FakeApp()
+        app.turn_notifications.append(
+            {
+                "method": "turn/started",
+                "params": {
+                    "threadId": "thread",
+                    "turn": {"id": "turn", "status": "inProgress"},
+                },
+            }
+        )
+
+        result = await appserver.confirm_wake(app, "thread", "turn", 1)
+
+        self.assertEqual(result["outcome"], "confirmedStarted")
+        self.assertEqual(result["turnId"], "turn")
+
+    async def test_wake_confirmation_reports_terminal_error_notification(self):
+        app = FakeApp()
+        app.turn_notifications.append(
+            {
+                "method": "error",
+                "params": {
+                    "threadId": "thread",
+                    "turnId": "turn",
+                    "willRetry": False,
+                    "error": {"message": "empty input rejected"},
+                },
+            }
+        )
+
+        result = await appserver.confirm_wake(app, "thread", "turn", 1)
+
+        self.assertEqual(result["outcome"], "rejected")
+        self.assertEqual(result["turnId"], "turn")
 
     async def test_steer_uses_expected_turn_id(self):
         app = FakeApp(status="active")

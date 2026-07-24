@@ -7,8 +7,10 @@ Use the tools separately and compose them with the shell:
 
 - `codex-goalctl` reads and changes persisted Codex thread goals.
 - `codex-limitctl` reads Codex subscription limits and usage signals.
-- `codex-threadctl` discovers threads, inspects ordered activity, and applies
-  immediate, turn-scoped control.
+- `codex-streamctl` provides durable append-only exchanges with per-reader
+  acknowledgements.
+- `codex-threadctl` discovers threads, inspects ordered activity, sends
+  advisory agent notices, and applies immediate control.
 - `codex-wakectl` schedules durable thread input after later conditions.
 - `codex-readcov` counts file-read actions from Codex rollout transcripts.
 
@@ -23,6 +25,7 @@ cd ferrumctl
 
 uv tool install ./packages/codex-goalctl
 uv tool install ./packages/codex-limitctl
+uv tool install ./packages/codex-streamctl
 uv tool install ./packages/codex-threadctl
 uv tool install ./packages/codex-wakectl
 cargo install --locked --path ./packages/codex-readcov
@@ -38,6 +41,7 @@ Install the optional skills from the root marketplace:
 codex plugin marketplace add ustas-eth/ferrumctl
 codex plugin add codex-goalctl@ferrumctl
 codex plugin add codex-limitctl@ferrumctl
+codex plugin add codex-streamctl@ferrumctl
 codex plugin add codex-threadctl@ferrumctl
 codex plugin add codex-wakectl@ferrumctl
 codex plugin add codex-readcov@ferrumctl
@@ -77,6 +81,18 @@ SELF=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
 codex-threadctl list --limit 10
 codex-threadctl list --parent "$SELF" --limit 5
 codex-threadctl search "decision text" --limit 10
+```
+
+Share a durable peer update, announce it without user input, and wake an idle
+recipient:
+
+```sh
+STREAM=$(codex-streamctl create --label "review")
+POSITION=$(codex-streamctl append "$STREAM" --author "$A" \
+  "I reproduced the race; inspect commit abc123." --json | jq -r .position)
+codex-threadctl notify "$B" --from "$A" \
+  "Stream $STREAM has unread entries through $POSITION."
+codex-threadctl wake "$B"
 ```
 
 Assign durable work, arrange the coordinator's return, then start the worker:
@@ -135,6 +151,7 @@ More combinations are in [docs/coordination-recipes.md](docs/coordination-recipe
 packages/
   codex-goalctl/
   codex-limitctl/
+  codex-streamctl/
   codex-threadctl/
   codex-wakectl/
   codex-readcov/

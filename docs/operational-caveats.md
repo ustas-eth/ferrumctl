@@ -46,6 +46,23 @@ false exit `1` and unavailable exit `2` leave the job pending. Set the inner
 safety wake or inspect the job when persistent observation failure needs
 attention.
 
+## Shared Streams
+
+`codex-streamctl` state is shared by every caller using the same database.
+Stream ids, author names, and reader names provide scope and provenance, not
+authorization. Do not advance cursors owned by another workflow unless that
+ownership is explicit.
+
+Append positions are committed transactionally and remain immutable.
+Acknowledgements are cumulative processed-through cursors. A reader must
+process every entry through a position, including its own entries, before
+advancing. Listing with `--after` does not change the saved acknowledgement.
+
+An ambiguous append can create a duplicate if retried. Reconcile the stream
+tail before retrying. Notification and wake are separate operations: a
+committed entry remains authoritative if a notice is lost, duplicated, or
+arrives while the recipient is already active.
+
 ## Scheduled Wakes
 
 `codex-wakectl` can wake only threads loaded on the selected app-server. A valid
@@ -105,6 +122,7 @@ Repeating conditions should have an owner and, when appropriate, a cap. Cancel
 stale jobs owned by that coordination loop when it is over. The default
 `codex-wakectl` queue is shared; unrelated jobs may be pending in the same
 database.
+
 Every goal watch belongs to one goal assignment. A replacement assignment marks
 the old watch `superseded`.
 
@@ -134,13 +152,19 @@ Interruption reports `requested` unless the caller waits for terminal status;
 it does not pause a goal or terminate background terminals. `terminals` and
 `terminate-terminal` expose those processes separately.
 
-Immediate and queued cross-thread input does not identify its logical sender to
-the target. Put a natural source label in the message when confusion with
-direct human input matters. The label provides context, not authorization.
-Peer-authored input is still stored as a user message in the recipient's
-thread. It is suitable for concise advisory discussion; committed analysis is
-usually clearer when retained as the responder's assistant message and read
-from that turn.
+`notify` injects advisory agent context without starting a turn. Acceptance
+does not prove persistence or model receipt. `wake` adds no message; it starts
+an empty turn only when the loaded target appears idle and otherwise reports a
+no-op or explicit failure outcome. Wake uses the direct-input path that Codex
+rejects for v2 subagents; raw notification uses a separate injection method.
+An active no-op does not reserve a follow-up turn after the observed turn ends.
+
+User input sent by `start`, `steer`, or wakectl does not identify its logical
+sender to the target. Put a natural source label in the message when confusion
+with direct human input matters. The label provides context, not authorization.
+Peer-authored user input is stored as a user message in the recipient's thread.
+`notify` instead records an agent message with a caller-supplied author, which
+still does not prove identity.
 
 `resume` does not add a user message, but Codex can continue an active goal
 after loading it. App-server cannot atomically exclude goal continuation, so
@@ -173,13 +197,14 @@ instead of being counted as zero.
 
 ## Cross-Surface Workflows
 
-Persisted goal state, live app-server state, materialized turn history, rollout
-transcripts, and the wake queue are different surfaces. They can be temporarily
-inconsistent.
+Persisted goal state, live app-server state, shared stream state, materialized
+turn history, rollout transcripts, and the wake queue are different surfaces.
+They can be temporarily inconsistent.
 
 Prefer workflows that tolerate retries:
 
 - write durable intent to the goal
+- append durable peer content before announcing its stream position
 - prefer small queued wake messages that mark the event
 - inspect before steering or interruption
 - snapshot before the interval being measured

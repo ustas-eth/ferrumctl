@@ -13,10 +13,6 @@ already solve cleanly.
 - **Multi-thread observation:** inspect several workers in one compact request,
   including loaded state, active flags, goal status, context pressure, current
   turn, and recent activity.
-- **Activity after a known point:** retrieve materialized thread activity newer
-  than a turn-and-item locator. Use native identities rather than inferred
-  timestamps or another workflow database, and do not present the result as an
-  immutable event log.
 - **Thread predicates:** expose loaded state, thread status, active flags,
   context remaining, and activity age through exit status for shell and
   wakectl composition. Avoid a general `stalled` judgment.
@@ -42,8 +38,8 @@ already solve cleanly.
 
 ## Boundaries
 
-- Do not add an umbrella command, task graph, worker scheduler, shared result
-  store, automatic approval policy, or generic stalled-agent detector.
+- Do not add an umbrella command, task graph, worker scheduler, automatic
+  approval policy, or generic stalled-agent detector.
 - Do not wrap native subagent operations when the current session owns the live
   handle.
 - Prefer read-only observation improvements first. Add stateful coordination

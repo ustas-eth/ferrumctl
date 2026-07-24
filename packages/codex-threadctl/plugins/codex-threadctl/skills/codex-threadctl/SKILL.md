@@ -1,6 +1,6 @@
 ---
 name: codex-threadctl
-description: "Use when the useful handle is a Codex thread id or persisted thread state is needed: use the host codex-threadctl command through app-server to discover or search stored sessions and spawned threads unavailable through native handles, inspect current or ordered activity, context, or compaction state, retrieve retained messages or what followed a known item, inspect running terminal processes, start input on an idle thread, steer one expected active turn, resume a persisted thread, interrupt one exact turn, or terminate one exact terminal process. Do not use for ordinary native subagent messaging, waiting, or result retrieval while this session owns the live handle; future or conditional wakes; goal editing; file-read coverage; terminal keystroke injection; or agent spawning."
+description: "Use when the useful handle is a Codex thread id or persisted thread state is needed: discover or search stored sessions and spawned threads unavailable through native handles, inspect current or ordered activity, context, compaction, messages, or terminal processes, inject a concise advisory agent notice without waking, wake a loaded idle thread without user input, start or steer immediate input, resume persisted state, interrupt one exact turn, or terminate one exact terminal process. Do not use for ordinary native subagent messaging, waiting, or result retrieval while this session owns the live handle; future or conditional wakes; goal editing; file-read coverage; terminal keystroke injection; or agent spawning."
 ---
 
 # Codex Threadctl
@@ -13,9 +13,9 @@ apply an immediate thread operation through its thread id.
 Assume `codex-threadctl` is installed. It reads persisted thread relationships
 and search results, app-server state, materialized item history, and running
 terminal processes. It supplements local inspection with timestamped rollout
-context and exposes native start, steer, resume, interruption, and exact
-terminal termination. It does not schedule future input, edit goals, measure
-read coverage, or spawn agents.
+context and exposes advisory notification, empty-turn wake, native start,
+steer, resume, interruption, and exact terminal termination. It does not
+schedule future input, edit goals, measure read coverage, or spawn agents.
 
 ## Choosing The Control Surface
 
@@ -31,6 +31,11 @@ and `message` for one exact message's retained text.
 Use `start` for a new turn on a target that appears idle. Use `steer` only with
 the exact active turn id. Use wakectl instead when delivery must survive this
 turn or wait for a later condition and its skill is available.
+
+Use `notify` for a concise advisory hint that should not become user input or
+start a turn. Use `wake` only when existing context, a goal, or a shared record
+already says what to do and a loaded idle target should take another turn.
+`notify` does not wake; `wake` carries no instructions.
 
 ## Patterns
 
@@ -97,6 +102,20 @@ codex-threadctl steer THREAD_ID TURN_ID \
   "From coordinator: Focus on the failing test first."
 ```
 
+Append an advisory agent notice without starting a turn. `--from` defaults to
+`CODEX_THREAD_ID`:
+
+```sh
+codex-threadctl notify "$PEER" \
+  "Stream $STREAM has unread entries through $POSITION."
+```
+
+Ask a loaded idle target to take another turn without adding user input:
+
+```sh
+codex-threadctl wake "$PEER"
+```
+
 Resume a persisted thread without adding a user message. The required flag
 acknowledges that Codex can continue an active goal:
 
@@ -122,9 +141,9 @@ codex-threadctl inspect "$SELF"
 ## Conventions
 
 - Inspect unfamiliar work before steering or interrupting it.
-- Cross-thread input does not identify its logical sender. When the target
-  could mistake it for direct human input, begin the message with a natural
-  label such as `From coordinator:` or `From reviewer:`. Add `via
+- Input sent by `start` or `steer` does not identify its logical sender. When
+  the target could mistake it for direct human input, begin the message with a
+  natural label such as `From coordinator:` or `From reviewer:`. Add `via
   threadctl` only when transport matters. A source label does not override
   existing instructions.
 - Treat `list --parent` and `list --ancestor` as persisted spawn relationships.
@@ -139,6 +158,18 @@ codex-threadctl inspect "$SELF"
 - Read the result of `start`. Its idle check is not atomic; if another turn
   wins the race, the confirmed delivery mode can be `steered`. Use JSON when a
   later query needs the confirmed request's actual turn or client message id.
+- Treat `notify` success as app-server acceptance only. It does not prove that
+  the notice was persisted, read, or acted on. Keep notices concise and
+  idempotent, and do not retry an uncertain injection automatically.
+- Treat `wake` as execution without new instructions. It starts an empty turn
+  only on a loaded idle target and submits nothing when the target is already
+  active. Inspect `rejected` or `uncertain` outcomes instead of retrying
+  blindly.
+- `notSubmittedActive` does not reserve a later turn. If attention must survive
+  the current turn ending, use a stop-triggered wakectl job when that skill is
+  available.
+- When the `codex-streamctl` skill is available, put durable peer content in
+  the stream and use `notify` only to announce its committed position.
 - Always pass the turn id obtained from current inspection to `steer` and
   `interrupt`. Native expected-turn checks reject stale ids.
 - Interruption without `--wait` reports `requested`, not completion. It does
@@ -151,7 +182,8 @@ codex-threadctl inspect "$SELF"
   and native process-id termination are not atomic. Self-inspection can include
   the command performing the inspection.
 - Codex rejects direct app-server input to v2 subagents. Use their native
-  parent handle instead of `start` or `steer`.
+  parent handle instead of `wake`, `start`, or `steer`; `notify` is advisory
+  item injection, not lifecycle control.
 - Treat context percentage and age as orientation. Remote endpoints omit local
   rollout context, and long commands can run without a new model observation.
 - Use turn id and item id together for lookup and range boundaries. Bounds are
@@ -162,10 +194,10 @@ codex-threadctl inspect "$SELF"
   transcript. A running item can change without moving past a saved boundary,
   and rollback or reconstruction can invalidate that boundary. Do not use an
   item id observed during an active turn as a durable checkpoint.
-- For alternating peer discussion through thread ids, keep pushed thoughts
-  concise and label them as advisory. For substantial analysis, leave the
-  response in the responder's thread and retrieve that exact turn instead of
-  copying it into another thread as user input.
+- Without a shared stream, keep peer input through thread ids concise and label
+  it as advisory. For substantial one-off analysis, leave the response in the
+  responder's thread and retrieve that exact turn instead of copying it into
+  another thread as user input.
 - Use `--json` when another program will parse output.
 
 ## References
@@ -175,11 +207,11 @@ codex-threadctl inspect "$SELF"
   freshness, or snapshot consistency matters.
 - Read `references/materialized-history.md` when item types, range boundaries,
   filtering and limits, backend fallback, or mutable item behavior matters.
-- Read `references/lifecycle-control.md` before relying on start, steering,
-  resume, interruption, or terminal-process behavior.
+- Read `references/lifecycle-control.md` before relying on notification, wake,
+  start, steering, resume, interruption, or terminal-process behavior.
 - Read `references/coordination-principles.md` when composing immediate control
-  with native handles, goals, scheduled wakes, coverage, or partial skill
-  availability.
+  with native handles, goals, streams, scheduled wakes, coverage, or partial
+  skill availability.
 - Read `references/coordination-recipes.md` for command combinations involving
   worker review, checkpoints, peer discussion, handoffs, or external managers.
 - Read `references/operational-caveats.md` when concurrent control, retries, or

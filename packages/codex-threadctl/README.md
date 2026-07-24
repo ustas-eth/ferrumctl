@@ -4,9 +4,9 @@
 `codex app-server`.
 
 Use it to find or search stored sessions and spawned threads, inspect recent
-work, list ordered activity, retrieve conversation messages, inspect running
-terminal processes, start or steer input, resume a persisted thread, or
-interrupt one known turn. It does not edit goals, schedule future work, or
+work, retrieve materialized messages, inspect running terminal processes,
+deliver an advisory agent notice, wake an idle thread without user input, or
+apply immediate turn control. It does not edit goals, schedule future work, or
 measure file-read coverage.
 
 ## Install
@@ -80,6 +80,19 @@ codex-threadctl steer THREAD_ID TURN_ID \
 
 The target sees the message as ordinary input. Name the logical sender when it
 could be mistaken for direct human input.
+
+Append an advisory agent notice without waking the target, then start an empty
+turn if the loaded target is idle:
+
+```sh
+codex-threadctl notify THREAD_ID --from AUTHOR \
+  "Stream STREAM_ID has unread entries through POSITION."
+codex-threadctl wake THREAD_ID
+```
+
+`notify` reports app-server acceptance, not persistence or model receipt.
+`wake` carries no message and is a successful no-op when the target is already
+active.
 
 Resume a stored thread or request interruption of one exact turn:
 

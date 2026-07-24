@@ -1,0 +1,32 @@
+{
+  "name": "codex-streamctl",
+  "version": "0.1.0",
+  "description": "Coding-agent skill for durable append-only coordination streams.",
+  "author": {
+    "name": "ustas-eth"
+  },
+  "homepage": "https://github.com/ustas-eth/ferrumctl/tree/main/packages/codex-streamctl",
+  "repository": "https://github.com/ustas-eth/ferrumctl",
+  "license": "MIT",
+  "keywords": [
+    "agents",
+    "streams",
+    "coordination",
+    "sqlite"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Codex Streamctl",
+    "shortDescription": "Share durable append-only streams between coding agents.",
+    "longDescription": "Codex Streamctl provides guidance for creating shared streams, appending immutable entries, reading from stable positions, and advancing per-reader acknowledgements.",
+    "developerName": "ustas-eth",
+    "category": "Productivity",
+    "capabilities": [
+      "Durable append-only streams",
+      "Stable stream positions",
+      "Per-reader acknowledgements",
+      "Cross-agent coordination"
+    ],
+    "defaultPrompt": "Use $codex-streamctl for a durable shared exchange between coding agents."
+  }
+}

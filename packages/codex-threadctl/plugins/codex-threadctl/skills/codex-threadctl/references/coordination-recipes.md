@@ -249,59 +249,52 @@ home and thread id.
 
 ## Peer Discussion
 
-Two loaded sessions can exchange ideas directly when each knows the other's
-thread id. This requires the `codex-threadctl` skill. For an alternating
-discussion, each side sends one concise advisory thought to the idle peer, then
-ends its own turn so the peer can reply with another `start`:
+For one short exchange between loaded sessions, immediate input and retained
+turn history are sufficient. Use native subagent controls when one participant
+owns the other's handle. With only thread ids, use `codex-threadctl`:
 
 ```sh
-# From A
 codex-threadctl start "$B" \
-  "From peer A, advisory: I think the range should be half-open because ..."
-
-# Later, from B
-codex-threadctl start "$A" \
-  "From peer B, advisory: I agree about the lower bound, but ..."
+  "From peer A, advisory request: Review the range semantics and reply in this turn."
 ```
 
-This form treats the pushed text itself as the payload. It is stored as a user
-message in the recipient's thread, so labels clarify origin without granting
-authority. Shared files are a better place for lengthy evidence or durable
-decisions.
+Retrieve B's answer through the native handle or from the exact turn returned
+by `start`.
 
-For delegated analysis or review, keep the response as an assistant message in
-the responder's thread. When the `codex-wakectl` skill is also available, bind
-a one-shot wake to the exact turn returned by `start`:
+For sustained peer work, use `codex-streamctl` when its skill is available.
+Create one stream during initialization and place its id in each participant's
+goal or existing context. Each append is durable shared content:
 
 ```sh
-START=$(codex-threadctl start "$B" \
-  "From peer A, advisory request: Review the design and reply in this turn." \
-  --json)
-
-DELIVERY=$(printf '%s\n' "$START" | jq -r .delivery)
-TURN=$(printf '%s\n' "$START" | jq -r .turnId)
-
-test "$DELIVERY" = started || {
-  printf '%s\n' "$START" >&2
-  exit 1
-}
-codex-wakectl add stop "$B" --turn "$TURN" --to "$A" \
-  "Automated event: Peer B completed turn $TURN."
+STREAM=$(codex-streamctl create --label "range review")
+POSITION=$(codex-streamctl append "$STREAM" --author "$A" \
+  "The half-open range avoids replaying the boundary item." --json |
+  jq -r .position)
 ```
 
-An exact-turn watch also recognizes a turn that completed before the job was
-created. When A wakes, it retrieves that completed exchange:
+When `codex-threadctl` is also available, announce only the committed position.
+The notice does not start a turn; the empty wake is a no-op if B is active:
 
 ```sh
-codex-threadctl messages "$B" \
-  --turn "$TURN" --limit 0 --json
+codex-threadctl notify "$B" --from "$A" \
+  "Peer stream $STREAM has unread entries through $POSITION."
+codex-threadctl wake "$B"
 ```
 
-If `start` reports `steered`, the input reached a competing turn. Inspect that
-turn rather than retrying automatically. One-shot exact-turn watches avoid the
-self-sustaining traffic that reciprocal repeating stop watches could create.
-The target turn already correlates the request, wake, and response; no separate
-exchange identifier is needed.
+B reads every entry after its acknowledgement, processes the complete returned
+prefix, and then advances its cursor:
+
+```sh
+BATCH=$(codex-streamctl list "$STREAM" --reader "$B" --limit 0 --json)
+THROUGH=$(printf '%s\n' "$BATCH" | jq -er .lastPosition)
+# Process every returned entry.
+codex-streamctl ack "$STREAM" --reader "$B" --through "$THROUGH"
+```
+
+B can append its response and announce the new position in the same way.
+Without `codex-threadctl`, participants inspect the stream at natural
+milestones. Missing or duplicate notices do not change the durable exchange;
+the reader acknowledgement determines what remains.
 
 ## Peer Handoff
 

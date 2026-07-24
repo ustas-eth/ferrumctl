@@ -24,7 +24,7 @@ class ParserTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 parser.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-threadctl 0.4.0\n")
+        self.assertEqual(output.getvalue(), "codex-threadctl 0.5.0\n")
 
     def test_default_timeout_allows_for_history_reconstruction(self):
         self.assertEqual(parser.build_parser().parse_args(["loaded"]).timeout, 30.0)
@@ -62,6 +62,8 @@ class ParserTests(unittest.TestCase):
             ],
             ["message", "thread", "turn", "item"],
             ["start", "thread", "message"],
+            ["notify", "thread", "--from", "author", "message"],
+            ["wake", "thread"],
             ["steer", "thread", "turn", "message"],
             ["interrupt", "thread", "turn", "--wait"],
             ["terminals", "thread", "--limit", "0"],
@@ -115,6 +117,70 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
             result = await commands.cmd_loaded(args)
         self.assertEqual(result, 0)
         self.assertEqual(output.getvalue(), "")
+
+    async def test_notify_uses_current_thread_identity_and_prints_acceptance(self):
+        args = parser.build_parser().parse_args(["notify", "target", "notice"])
+        with (
+            mock.patch.dict("os.environ", {"CODEX_THREAD_ID": "author"}),
+            mock.patch.object(commands, "AppServer", return_value=FakeContext()),
+            mock.patch.object(
+                commands,
+                "notify_thread",
+                mock.AsyncMock(
+                    return_value={
+                        "threadId": "target",
+                        "author": "author",
+                        "outcome": "accepted",
+                    }
+                ),
+            ) as notify_thread,
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            result = await commands.cmd_notify(args)
+
+        self.assertEqual(result, 0)
+        notify_thread.assert_awaited_once_with(
+            mock.ANY,
+            "target",
+            "author",
+            "notice",
+        )
+        self.assertEqual(output.getvalue(), "accepted\ttarget\n")
+
+    async def test_notify_requires_an_author_identity(self):
+        args = parser.build_parser().parse_args(["notify", "target", "notice"])
+        with mock.patch.dict("os.environ", {}, clear=True):
+            with self.assertRaisesRegex(commands.ThreadctlError, "--from"):
+                await commands.cmd_notify(args)
+
+    async def test_wake_reports_outcome_and_exit_status(self):
+        cases = [
+            ("confirmedStarted", 0),
+            ("notSubmittedActive", 0),
+            ("notLoaded", 1),
+            ("rejected", 1),
+            ("uncertain", 1),
+        ]
+        for outcome, expected_status in cases:
+            with self.subTest(outcome=outcome):
+                args = parser.build_parser().parse_args(["wake", "thread", "--json"])
+                result = {"threadId": "thread", "outcome": outcome}
+                with (
+                    mock.patch.object(
+                        commands,
+                        "AppServer",
+                        return_value=FakeContext(),
+                    ),
+                    mock.patch.object(
+                        commands,
+                        "wake_thread",
+                        mock.AsyncMock(return_value=result),
+                    ),
+                    redirect_stdout(io.StringIO()) as output,
+                ):
+                    status = await commands.cmd_wake(args)
+                self.assertEqual(status, expected_status)
+                self.assertEqual(json.loads(output.getvalue()), result)
 
     async def test_inspect_reads_turn_history_once(self):
         args = parser.build_parser().parse_args(["inspect", "thread", "--json"])

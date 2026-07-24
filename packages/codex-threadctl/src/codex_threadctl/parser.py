@@ -11,6 +11,7 @@ from .commands import (
     cmd_loaded,
     cmd_message,
     cmd_messages,
+    cmd_notify,
     cmd_resume,
     cmd_search,
     cmd_start,
@@ -18,6 +19,7 @@ from .commands import (
     cmd_steer,
     cmd_terminals,
     cmd_terminate_terminal,
+    cmd_wake,
 )
 from .constants import CLIENT_VERSION, DEFAULT_TIMEOUT
 
@@ -220,6 +222,28 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("message")
     add_global_options(start, defaults=False)
     start.set_defaults(func=cmd_start)
+
+    notify = sub.add_parser(
+        "notify",
+        help="append an advisory agent message without starting a turn",
+    )
+    notify.add_argument("thread_id", help="loaded thread to receive the notice")
+    notify.add_argument(
+        "--from",
+        dest="author",
+        help="author identity (default: CODEX_THREAD_ID)",
+    )
+    notify.add_argument("message", type=nonempty_text, help="advisory notice text")
+    add_global_options(notify, defaults=False)
+    notify.set_defaults(func=cmd_notify)
+
+    wake = sub.add_parser(
+        "wake",
+        help="start an empty turn if a loaded thread is idle",
+    )
+    wake.add_argument("thread_id", help="loaded thread to wake if idle")
+    add_global_options(wake, defaults=False)
+    wake.set_defaults(func=cmd_wake)
 
     steer = sub.add_parser("steer", help="send input to one expected active turn")
     steer.add_argument("thread_id")

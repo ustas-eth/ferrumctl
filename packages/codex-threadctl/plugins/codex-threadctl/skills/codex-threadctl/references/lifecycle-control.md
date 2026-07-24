@@ -2,8 +2,8 @@
 
 # Immediate Thread Control
 
-This reference describes the native operations behind thread start, steering,
-resume, interruption, and terminal-process control.
+This reference describes the native operations behind notification, wake,
+thread start, steering, resume, interruption, and terminal-process control.
 
 ## Endpoint Ownership
 
@@ -25,8 +25,47 @@ goal. Resume also does not detect or coordinate another app-server that may
 have loaded the same thread.
 
 Codex rejects direct app-server input to v2 subagents. Control those subagents
-through their native parent handle; threadctl start and steer apply to threads
-that accept direct input.
+through their native parent handle; threadctl wake, start, and steer apply to
+threads that accept direct input. Notification uses the separate raw-item
+injection method and does not provide lifecycle control.
+
+## Advisory Notification
+
+`notify` submits one raw `agent_message` through `thread/inject_items`. Its
+author defaults to `CODEX_THREAD_ID` and its recipient is the target thread id.
+The text is model-visible advisory context rather than a user message.
+
+The operation does not start a turn. When the target is active, Codex can hold
+the item in pending in-memory input until the next model step. When the target
+is idle, Codex records it in materialized conversation state. App-server
+returns no native disposition, so success means only that the injection request
+was accepted. It does not prove persistence, model receipt, or action.
+
+A connection failure after submission has an uncertain outcome. Do not retry
+automatically. Agent messages can be absorbed or retained by compaction, so
+`notify` is not an ephemeral event channel or a durable mailbox.
+
+## Empty Wake
+
+`wake` first observes the target on the selected app-server. If it is active,
+the command submits nothing and reports `notSubmittedActive`. If it is idle,
+the command calls `turn/start` with an empty input list. The model receives its
+existing context without a new user message.
+
+The idle check and turn start are not atomic. Threadctl confirms the exact turn
+returned by app-server through a start notification or materialized turn
+history. The machine outcomes are:
+
+- `confirmedStarted`: the returned turn was observed
+- `notSubmittedActive`: the target was already active
+- `notLoaded`: the selected app-server does not own the target
+- `rejected`: the observed state or app-server rejected the operation
+- `uncertain`: submission may have happened but the exact turn was not confirmed
+
+Only the first two outcomes exit successfully. Wake never resumes an unloaded
+thread, steers an active turn, adds instructions, or changes goal state.
+`notSubmittedActive` is a point-in-time result; it does not arrange another
+turn after the observed active turn ends.
 
 ## Starting Input
 

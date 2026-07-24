@@ -20,6 +20,8 @@ from .errors import (
     ThreadStateError,
 )
 
+TRACKED_TURN_NOTIFICATIONS = {"turn/started", "error"}
+
 
 class AppServer:
     def __init__(
@@ -39,6 +41,7 @@ class AppServer:
         self.next_id = 1
         self.ws: Any = None
         self.server_info: dict[str, Any] = {}
+        self.turn_notifications: list[dict[str, Any]] = []
 
     async def __aenter__(self) -> "AppServer":
         try:
@@ -105,6 +108,11 @@ class AppServer:
             if not isinstance(response, dict):
                 raise ThreadctlError("app-server returned a non-object message")
             if "method" in response:
+                if (
+                    "id" not in response
+                    and response.get("method") in TRACKED_TURN_NOTIFICATIONS
+                ):
+                    self.turn_notifications.append(response)
                 continue
             if response.get("id") != request_id:
                 continue
@@ -537,6 +545,27 @@ async def current_active_turn(app: AppServer, thread_id: str) -> dict[str, Any]:
     return turn
 
 
+def turn_notification(
+    app: AppServer,
+    method: str,
+    thread_id: str,
+    turn_id: str,
+) -> dict[str, Any] | None:
+    for notification in reversed(getattr(app, "turn_notifications", [])):
+        if notification.get("method") != method:
+            continue
+        params = notification.get("params")
+        if not isinstance(params, dict) or params.get("threadId") != thread_id:
+            continue
+        if method == "turn/started":
+            turn = params.get("turn")
+            if isinstance(turn, dict) and turn.get("id") == turn_id:
+                return params
+        elif params.get("turnId") == turn_id:
+            return params
+    return None
+
+
 def text_input(message: str) -> list[dict[str, Any]]:
     return [{"type": "text", "text": message, "textElements": []}]
 
@@ -658,6 +687,199 @@ async def start_turn(
         raise
     except (OSError, ThreadctlError, websockets.WebSocketException) as exc:
         raise DeliveryUncertain(turn_id, client_message_id) from exc
+
+
+async def notify_thread(
+    app: AppServer,
+    thread_id: str,
+    author: str,
+    message: str,
+) -> dict[str, Any]:
+    await require_loaded(app, thread_id)
+    item = {
+        "type": "agent_message",
+        "id": None,
+        "author": author,
+        "recipient": thread_id,
+        "content": [{"type": "input_text", "text": message}],
+    }
+    try:
+        require_object(
+            await app.request(
+                "thread/inject_items",
+                {"threadId": thread_id, "items": [item]},
+            ),
+            "thread/inject_items result",
+        )
+    except AppServerResponseError:
+        raise
+    except (OSError, ThreadctlError, websockets.WebSocketException) as exc:
+        raise ThreadctlError(
+            "notification outcome is uncertain; inspect the target before retrying"
+        ) from exc
+    return {
+        "threadId": thread_id,
+        "author": author,
+        "outcome": "accepted",
+    }
+
+
+def wake_result(
+    thread_id: str,
+    outcome: str,
+    *,
+    turn_id: str | None = None,
+    observed_status: str | None = None,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "threadId": thread_id,
+        "outcome": outcome,
+    }
+    if turn_id is not None:
+        result["turnId"] = turn_id
+    if observed_status is not None:
+        result["observedStatus"] = observed_status
+    if reason is not None:
+        result["reason"] = reason
+    return result
+
+
+async def confirm_wake(
+    app: AppServer,
+    thread_id: str,
+    turn_id: str,
+    timeout: float,
+) -> dict[str, Any]:
+    deadline = time.monotonic() + timeout
+    observed_status: str | None = None
+    observed_turn_id: str | None = None
+
+    while time.monotonic() < deadline:
+        started = turn_notification(app, "turn/started", thread_id, turn_id)
+        if started is not None:
+            turn = started["turn"]
+            return wake_result(
+                thread_id,
+                "confirmedStarted",
+                turn_id=turn_id,
+                observed_status=str(turn.get("status") or "unknown"),
+            )
+
+        error = turn_notification(app, "error", thread_id, turn_id)
+        if error is not None and not error.get("willRetry"):
+            return wake_result(
+                thread_id,
+                "rejected",
+                turn_id=turn_id,
+                reason=str(error.get("error") or "turn start failed"),
+            )
+
+        try:
+            page = await list_turn_page(
+                app,
+                thread_id,
+                limit=5,
+                items_view="notLoaded",
+            )
+        except (OSError, ThreadctlError, websockets.WebSocketException) as exc:
+            return wake_result(
+                thread_id,
+                "uncertain",
+                turn_id=turn_id,
+                observed_status=observed_status,
+                reason=str(exc),
+            )
+
+        for turn in page["data"]:
+            candidate_id = str(turn.get("id") or "")
+            candidate_status = str(turn.get("status") or "unknown")
+            if candidate_id == turn_id:
+                return wake_result(
+                    thread_id,
+                    "confirmedStarted",
+                    turn_id=turn_id,
+                    observed_status=candidate_status,
+                )
+            if candidate_status == "inProgress" and observed_turn_id is None:
+                observed_turn_id = candidate_id or None
+                observed_status = "active"
+
+        if time.monotonic() < deadline:
+            await asyncio.sleep(0.1)
+
+    return wake_result(
+        thread_id,
+        "uncertain",
+        turn_id=turn_id,
+        observed_status=observed_status,
+        reason=(
+            f"turn {turn_id} was not observed within {timeout:g}s"
+            + (
+                f"; another active turn was {observed_turn_id}"
+                if observed_turn_id is not None
+                else ""
+            )
+        ),
+    )
+
+
+async def wake_thread(
+    app: AppServer,
+    thread_id: str,
+    *,
+    confirmation_timeout: float | None = None,
+) -> dict[str, Any]:
+    if thread_id not in await list_loaded(app):
+        return wake_result(thread_id, "notLoaded")
+
+    status = await get_thread_status(app, thread_id)
+    name = status_name(status)
+    if name == "active":
+        turn_id = None
+        try:
+            turn_id = str((await current_active_turn(app, thread_id))["id"])
+        except (OSError, ThreadctlError, websockets.WebSocketException):
+            pass
+        return wake_result(
+            thread_id,
+            "notSubmittedActive",
+            turn_id=turn_id,
+            observed_status=name,
+        )
+    if name == "notLoaded":
+        return wake_result(thread_id, "notLoaded", observed_status=name)
+    if name != "idle":
+        return wake_result(
+            thread_id,
+            "rejected",
+            observed_status=name,
+            reason=f"thread status is {name}",
+        )
+
+    try:
+        result = require_object(
+            await app.request(
+                "turn/start",
+                {"threadId": thread_id, "input": []},
+            ),
+            "turn/start result",
+        )
+        turn = require_object(result.get("turn"), "turn/start turn")
+        turn_id = turn.get("id")
+        if not isinstance(turn_id, str) or not turn_id:
+            raise ThreadctlError("app-server returned turn/start without a turn id")
+    except AppServerResponseError as exc:
+        return wake_result(thread_id, "rejected", reason=str(exc))
+    except (OSError, ThreadctlError, websockets.WebSocketException) as exc:
+        return wake_result(thread_id, "uncertain", reason=str(exc))
+
+    return await confirm_wake(
+        app,
+        thread_id,
+        turn_id,
+        confirmation_timeout if confirmation_timeout is not None else app.timeout,
+    )
 
 
 async def steer_turn(

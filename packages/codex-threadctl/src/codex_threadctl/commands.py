@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 
 from .appserver import (
@@ -12,12 +13,14 @@ from .appserver import (
     list_loaded,
     list_threads,
     list_turn_page,
+    notify_thread,
     read_thread,
     resume_thread,
     search_threads,
     start_turn,
     steer_turn,
     terminate_background_terminal,
+    wake_thread,
 )
 from .context import read_context_state
 from .errors import ThreadctlError
@@ -280,6 +283,50 @@ async def cmd_start(args: argparse.Namespace) -> int:
     else:
         print(f"{result['delivery']}\t{result['turnId']}")
     return 0
+
+
+def current_identity(value: str | None, option: str) -> str:
+    identity = value or os.environ.get("CODEX_THREAD_ID")
+    if identity is None or not identity.strip():
+        raise ThreadctlError(
+            f"{option} is required when CODEX_THREAD_ID is not set"
+        )
+    return identity
+
+
+async def cmd_notify(args: argparse.Namespace) -> int:
+    author = current_identity(args.author, "--from")
+    async with AppServer(args.endpoint, args.timeout) as app:
+        result = await notify_thread(
+            app,
+            args.thread_id,
+            author,
+            args.message,
+        )
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print(f"{result['outcome']}\t{result['threadId']}")
+    return 0
+
+
+async def cmd_wake(args: argparse.Namespace) -> int:
+    async with AppServer(args.endpoint, args.timeout) as app:
+        result = await wake_thread(app, args.thread_id)
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        fields = [result["outcome"], result["threadId"]]
+        if "turnId" in result:
+            fields.append(f"turn={result['turnId']}")
+        if "observedStatus" in result:
+            fields.append(f"observed={result['observedStatus']}")
+        if "reason" in result:
+            fields.append(
+                f"reason={json.dumps(result['reason'], ensure_ascii=False)}"
+            )
+        print("\t".join(fields))
+    return 0 if result["outcome"] in {"confirmedStarted", "notSubmittedActive"} else 1
 
 
 async def cmd_steer(args: argparse.Namespace) -> int:

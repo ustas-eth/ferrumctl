@@ -80,6 +80,11 @@ limitctl() {
     "$PYTHON" -c 'import sys; from codex_limitctl.cli import main; raise SystemExit(main(sys.argv[1:]))' "$@"
 }
 
+streamctl() {
+  PYTHONPATH="$ROOT/packages/codex-streamctl/src${PYTHONPATH:+:$PYTHONPATH}" \
+    "$PYTHON" -c 'import sys; from codex_streamctl.cli import main; raise SystemExit(main(sys.argv[1:]))' "$@"
+}
+
 wakectl() {
   PYTHONPATH="$ROOT/packages/codex-threadctl/src:$ROOT/packages/codex-wakectl/src${PYTHONPATH:+:$PYTHONPATH}" \
     "$PYTHON" -c 'import sys; from codex_wakectl.cli import main; raise SystemExit(main(sys.argv[1:]))' "$@"
@@ -249,7 +254,7 @@ if [[ -n "$parser_tag" ]]; then
   printf 'codex-readcov parser dependency: codex-shell-command %s\n' "$parser_tag"
 fi
 
-log "limitctl app-server schema compatibility"
+log "app-server schema compatibility"
 schema_dir="$SMOKE_ROOT/app-server-schema"
 "$CODEX_BIN" app-server generate-json-schema --out "$schema_dir" >/dev/null
 "$PYTHON" - "$schema_dir/ClientRequest.json" \
@@ -323,8 +328,25 @@ bucket = definitions["AccountTokenUsageDailyBucket"]
 assert {"startDate", "tokens"} <= set(bucket["required"])
 assert bucket["properties"]["startDate"]["type"] == "string"
 assert bucket["properties"]["tokens"]["type"] == "integer"
+
+inject_requests = list(request_definitions(requests, "thread/inject_items"))
+assert len(inject_requests) == 1
+inject = definitions["ThreadInjectItemsParams"]
+assert set(inject["required"]) == {"threadId", "items"}
+assert inject["properties"]["items"]["type"] == "array"
+
+turn_start = definitions["TurnStartParams"]
+assert set(turn_start["required"]) == {"threadId", "input"}
+assert turn_start["properties"]["input"]["type"] == "array"
+
+response_items = definitions["ResponseItem"]["oneOf"]
+agent_message = next(
+    item for item in response_items if item.get("title") == "AgentMessageResponseItem"
+)
+assert set(agent_message["required"]) == {"type", "author", "recipient", "content"}
+assert agent_message["properties"]["type"]["enum"] == ["agent_message"]
 PY
-printf 'limitctl required account request and response shapes are present\n'
+printf 'required account, notification, and turn-start shapes are present\n'
 
 if limitctl --timeout 5 list \
   >"$SMOKE_ROOT/limit.out" 2>"$SMOKE_ROOT/limit.err"; then
@@ -395,6 +417,32 @@ grep -Eq 'thread not found|invalid thread id' "$SMOKE_ROOT/goal-clear.err" || {
   fail "unexpected token-budget clear error"
 }
 printf 'goalctl token-budget removal reached app-server\n'
+
+log "streamctl SQLite state transitions"
+stream=$(streamctl create --label smoke)
+streamctl append "$stream" --author a "first" >"$SMOKE_ROOT/stream-position.out"
+grep -Fqx '1' "$SMOKE_ROOT/stream-position.out" ||
+  fail "streamctl did not assign the first position"
+streamctl --json append "$stream" --author b --reply-to 1 "second" \
+  >"$SMOKE_ROOT/stream-append.json"
+streamctl --json list "$stream" --reader b --limit 0 \
+  >"$SMOKE_ROOT/stream-list.json"
+"$PYTHON" - "$SMOKE_ROOT/stream-list.json" "$stream" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    result = json.load(handle)
+assert result["streamId"] == sys.argv[2]
+assert result["lastPosition"] == 2
+assert [entry["position"] for entry in result["entries"]] == [1, 2]
+assert result["entries"][1]["replyTo"] == 1
+PY
+streamctl ack "$stream" --reader b --through 2 >"$SMOKE_ROOT/stream-ack.out"
+streamctl list "$stream" --reader b >"$SMOKE_ROOT/stream-unread.out"
+[[ ! -s "$SMOKE_ROOT/stream-unread.out" ]] ||
+  fail "streamctl returned acknowledged entries"
+printf 'streamctl persisted ordered entries and reader acknowledgement\n'
 
 log "threadctl and wakectl unix app-server compatibility"
 if command -v setsid >/dev/null 2>&1; then
@@ -572,6 +620,34 @@ assert result["status"]["type"] == "idle"
 assert result["goalContinuationAllowed"] is True
 PY
 printf 'threadctl required explicit goal-continuation acknowledgement for resume\n'
+
+CODEX_THREAD_ID=smoke-author threadctl --timeout 5 --json notify "$inspect_thread" \
+  "Advisory smoke notice." >"$SMOKE_ROOT/notify.json"
+"$PYTHON" - "$SMOKE_ROOT/notify.json" "$inspect_thread" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    result = json.load(handle)
+assert result == {
+    "threadId": sys.argv[2],
+    "author": "smoke-author",
+    "outcome": "accepted",
+}
+PY
+
+threadctl --timeout 5 --json wake "$inspect_thread" >"$SMOKE_ROOT/wake.json"
+"$PYTHON" - "$SMOKE_ROOT/wake.json" "$inspect_thread" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    result = json.load(handle)
+assert result["threadId"] == sys.argv[2]
+assert result["outcome"] == "confirmedStarted"
+assert result["turnId"]
+PY
+printf 'threadctl injected advisory context and confirmed an empty-turn wake\n'
 
 threadctl --timeout 5 --json terminals "$inspect_thread" \
   >"$SMOKE_ROOT/terminals.json"
