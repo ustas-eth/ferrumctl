@@ -49,6 +49,33 @@ codex plugin add codex-readcov@ferrumctl
 
 The marketplace manifest is [.agents/plugins/marketplace.json](.agents/plugins/marketplace.json).
 
+## Upgrade
+
+From an existing checkout, update the installed commands:
+
+```sh
+git pull
+for package in codex-goalctl codex-limitctl codex-streamctl codex-threadctl codex-wakectl; do
+  uv tool install --reinstall "./packages/$package"
+done
+cargo install --locked --force --path ./packages/codex-readcov
+```
+
+Refresh the marketplace, then rerun `codex plugin add NAME@ferrumctl` for each
+plugin you use:
+
+```sh
+codex plugin marketplace upgrade ferrumctl
+codex plugin add codex-threadctl@ferrumctl
+```
+
+For a persistent app-server at `unix://`, update all commands and plugins from
+the checkout without restarting the server:
+
+```sh
+uv run scripts/update-local.py --reload-threads
+```
+
 ## App Server
 
 `codex-threadctl` and `codex-wakectl` use sessions connected to a shared
@@ -83,15 +110,21 @@ codex-threadctl list --parent "$SELF" --limit 5
 codex-threadctl search "decision text" --limit 10
 ```
 
-Share a durable peer update, announce it without user input, and wake an idle
-recipient:
+Share a durable peer checkpoint and announce it without user input:
 
 ```sh
 STREAM=$(codex-streamctl create --label "review")
 POSITION=$(codex-streamctl append "$STREAM" --author "$A" \
-  "I reproduced the race; inspect commit abc123." --json | jq -r .position)
+  "The retry result rules out parser order. I will test transaction scope next." \
+  --json | jq -r .position)
 codex-threadctl notify "$B" --from "$A" \
-  "Stream $STREAM has unread entries through $POSITION."
+  "Stream $STREAM has a checkpoint through $POSITION; read after your current work step."
+```
+
+When the recipient is known to be loaded and idle, start its next turn without
+adding another message:
+
+```sh
 codex-threadctl wake "$B"
 ```
 

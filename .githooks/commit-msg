@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+ROOT=$(git rev-parse --show-toplevel)
+exec python3 "$ROOT/scripts/check_commit_message.py" "$1"

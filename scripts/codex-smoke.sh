@@ -420,12 +420,13 @@ printf 'goalctl token-budget removal reached app-server\n'
 
 log "streamctl SQLite state transitions"
 stream=$(streamctl create --label smoke)
-streamctl append "$stream" --author a "first" >"$SMOKE_ROOT/stream-position.out"
+CODEX_THREAD_ID=a streamctl append "$stream" "first" \
+  >"$SMOKE_ROOT/stream-position.out"
 grep -Fqx '1' "$SMOKE_ROOT/stream-position.out" ||
   fail "streamctl did not assign the first position"
 streamctl --json append "$stream" --author b --reply-to 1 "second" \
   >"$SMOKE_ROOT/stream-append.json"
-streamctl --json list "$stream" --reader b --limit 0 \
+CODEX_THREAD_ID=b streamctl --json list "$stream" --limit 0 \
   >"$SMOKE_ROOT/stream-list.json"
 "$PYTHON" - "$SMOKE_ROOT/stream-list.json" "$stream" <<'PY'
 import json
@@ -438,8 +439,9 @@ assert result["lastPosition"] == 2
 assert [entry["position"] for entry in result["entries"]] == [1, 2]
 assert result["entries"][1]["replyTo"] == 1
 PY
-streamctl ack "$stream" --reader b --through 2 >"$SMOKE_ROOT/stream-ack.out"
-streamctl list "$stream" --reader b >"$SMOKE_ROOT/stream-unread.out"
+CODEX_THREAD_ID=b streamctl ack "$stream" --through 2 \
+  >"$SMOKE_ROOT/stream-ack.out"
+CODEX_THREAD_ID=b streamctl list "$stream" >"$SMOKE_ROOT/stream-unread.out"
 [[ ! -s "$SMOKE_ROOT/stream-unread.out" ]] ||
   fail "streamctl returned acknowledged entries"
 printf 'streamctl persisted ordered entries and reader acknowledgement\n'
@@ -646,8 +648,10 @@ with open(sys.argv[1], encoding="utf-8") as handle:
 assert result["threadId"] == sys.argv[2]
 assert result["outcome"] == "confirmedStarted"
 assert result["turnId"]
+assert isinstance(result["observedStatus"], str)
+assert result["observedStatus"]
 PY
-printf 'threadctl injected advisory context and confirmed an empty-turn wake\n'
+printf 'threadctl confirmed the exact empty wake turn without asserting completion\n'
 
 threadctl --timeout 5 --json terminals "$inspect_thread" \
   >"$SMOKE_ROOT/terminals.json"

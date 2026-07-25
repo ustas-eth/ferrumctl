@@ -88,6 +88,10 @@ resets.
   helper functions that calculate each step.
 - Keep delegated review focused: use at most two reviewers at `xhigh` effort,
   and do not use `max`.
+- Use scoped commit headers in the form `type(scope): description`; use `repo`
+  for cross-package changes. Preserve intent or user-visible outcome instead
+  of narrating files, and use the body for non-obvious rationale or tradeoffs.
+  The tracked hook and accepted values are described in `CONTRIBUTING.md`.
 - Use `scripts/update-local.py` after changing locally installed commands or
   plugins. `codex plugin add` updates files on disk, but does not invalidate a
   separate persistent app-server's plugin cache.

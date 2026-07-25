@@ -15,13 +15,17 @@ run() {
 
 run "$PYTHON" scripts/sync-skill-references.py --check
 run "$UV" run scripts/check_skills.py
+run "$PYTHON" scripts/check_release_versions.py
 printf '\n==> %s\n' "$PYTHON -m json.tool scripts/skill-references.json"
 "$PYTHON" -m json.tool scripts/skill-references.json >/dev/null
 run bash -n scripts/check.sh
 run bash -n scripts/codex-smoke.sh
+run sh -n .githooks/commit-msg
+run "$PYTHON" -m unittest discover -s tests -v
 run "$PYTHON" scripts/update-local.py --help
 run test -x scripts/check.sh
 run test -x scripts/codex-smoke.sh
+run test -x .githooks/commit-msg
 run cmp LICENSE packages/codex-goalctl/LICENSE
 run cmp LICENSE packages/codex-limitctl/LICENSE
 run cmp LICENSE packages/codex-streamctl/LICENSE
@@ -84,14 +88,14 @@ run git diff --check
   run "$bin_dir/codex-threadctl" --version
   run "$bin_dir/codex-wakectl" --version
   run "$UV" pip check --python "$tool_dir/codex-wakectl/bin/python"
-  test "$("$bin_dir/codex-goalctl" --version)" = "codex-goalctl 0.1.3"
-  test "$("$bin_dir/codex-limitctl" --version)" = "codex-limitctl 0.2.0"
+  test "$("$bin_dir/codex-goalctl" --version)" = "codex-goalctl 0.1.4"
+  test "$("$bin_dir/codex-limitctl" --version)" = "codex-limitctl 0.2.1"
   test "$("$bin_dir/codex-streamctl" --version)" = "codex-streamctl 0.1.0"
   test "$("$bin_dir/codex-threadctl" --version)" = "codex-threadctl 0.5.0"
   test "$("$bin_dir/codex-wakectl" --version)" = "codex-wakectl 0.3.6"
 )
 
 run packages/codex-readcov/target/debug/codex-readcov --version
-test "$(packages/codex-readcov/target/debug/codex-readcov --version)" = "codex-readcov 0.1.2"
+test "$(packages/codex-readcov/target/debug/codex-readcov --version)" = "codex-readcov 0.1.3"
 
 printf '\nchecks passed\n'

@@ -11,7 +11,7 @@ from typing import Any, IO
 from .errors import GoalctlError
 
 
-CLIENT_VERSION = "0.1.3"
+CLIENT_VERSION = "0.1.4"
 
 
 class AppServer:
