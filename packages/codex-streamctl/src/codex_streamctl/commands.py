@@ -8,9 +8,16 @@ from .errors import StreamctlError
 from .state import acknowledge, append_entry, create_stream, list_entries
 
 
-def current_identity(value: str | None, option: str) -> str:
-    identity = value or os.environ.get("CODEX_THREAD_ID")
+def environment_identity() -> str | None:
+    identity = os.environ.get("CODEX_THREAD_ID")
     if identity is None or not identity.strip():
+        return None
+    return identity
+
+
+def current_identity(value: str | None, option: str) -> str:
+    identity = value or environment_identity()
+    if identity is None:
         raise StreamctlError(
             f"{option} is required when CODEX_THREAD_ID is not set"
         )
@@ -43,10 +50,13 @@ def cmd_append(args: argparse.Namespace) -> int:
 
 
 def cmd_list(args: argparse.Namespace) -> int:
+    reader = args.reader
+    if reader is None and args.after is None:
+        reader = environment_identity()
     result = list_entries(
         args.state,
         args.stream_id,
-        reader=args.reader,
+        reader=reader,
         after=args.after,
         limit=args.limit,
     )

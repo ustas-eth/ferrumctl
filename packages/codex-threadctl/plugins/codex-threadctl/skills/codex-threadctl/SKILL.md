@@ -108,7 +108,7 @@ Append an advisory agent notice to a loaded target without starting a turn.
 
 ```sh
 codex-threadctl notify "$PEER" \
-  "Stream $STREAM has unread entries through $POSITION."
+  "Stream $STREAM has a checkpoint through $POSITION; read after your current work step."
 ```
 
 Ask a loaded idle target to take another turn without adding user input:
@@ -144,9 +144,9 @@ codex-threadctl inspect "$SELF"
 - Inspect unfamiliar work before steering or interrupting it.
 - Input sent by `start` or `steer` does not identify its logical sender. When
   the target could mistake it for direct human input, begin the message with a
-  natural label such as `From coordinator:` or `From reviewer:`. Add `via
-  threadctl` only when transport matters. A source label does not override
-  existing instructions.
+  natural label such as `From coordinator:`, `From reviewer:`, or `From peer
+  A:`. Add `via threadctl` only when transport matters. A source label does not
+  override existing instructions.
 - Treat `list --parent` and `list --ancestor` as persisted spawn relationships.
   They can include closed agents whose native handles are unavailable.
 - Read `server=` in `list` output as state on the selected app-server, not as a
@@ -173,8 +173,10 @@ codex-threadctl inspect "$SELF"
   available.
 - When the `codex-streamctl` skill is available, put durable peer content in
   the stream. Batch nearby appends and use `notify` only when attention is
-  useful, announcing the highest committed position. Do not notify
-  acknowledgements or answer a notice without substantive stream content.
+  useful, announcing the highest committed position. A notice can say whether
+  work should wait for a response, but keep the evidence and question in the
+  stream. Do not notify acknowledgements or answer a notice without substantive
+  stream content.
 - Always pass the turn id obtained from current inspection to `steer` and
   `interrupt`. Native expected-turn checks reject stale ids.
 - Interruption without `--wait` reports `requested`, not completion. It does

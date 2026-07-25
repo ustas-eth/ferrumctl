@@ -81,19 +81,19 @@ codex-threadctl steer THREAD_ID TURN_ID \
 The target sees the message as ordinary input. Name the logical sender when it
 could be mistaken for direct human input.
 
-Append an advisory agent notice to a loaded target without waking it, then
-start an empty turn if that target is idle:
+Announce a durable checkpoint to a loaded target without waking it, then start
+an empty turn if that target is known to be idle:
 
 ```sh
 codex-threadctl notify THREAD_ID --from AUTHOR \
-  "Stream STREAM_ID has unread entries through POSITION."
+  "Stream STREAM_ID has a checkpoint through POSITION; read after your current work step."
 codex-threadctl wake THREAD_ID
 ```
 
 `notify` reports app-server acceptance, not timing, persistence, or model
 receipt. Its notice can enter active reasoning at a later model step, so use it
-sparingly. `wake` carries no message and is a successful no-op when the target
-is already active.
+only when attention is useful. `wake` carries no message and is a successful
+no-op when the target is already active.
 
 Resume a stored thread or request interruption of one exact turn:
 

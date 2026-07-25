@@ -62,17 +62,24 @@ transcript state must be accessed outside the target thread.
 
 Normal cross-thread input can look like direct human input. When the distinction
 matters, begin with a natural label such as `From coordinator:`, `From
-reviewer:`, `Self-scheduled reminder:`, or `Automated event:`. Name the
-transport only when delivery mechanics matter, for example `From coordinator
-via threadctl:`. `codex-threadctl start`, `codex-threadctl steer`, and
-`codex-wakectl` preserve the supplied text; they do not add labels. A label
+reviewer:`, `From peer A:`, `Self-scheduled reminder:`, or `Automated event:`.
+Name the transport only when delivery mechanics matter, for example `From
+coordinator via threadctl:`. `codex-threadctl start`, `codex-threadctl steer`,
+and `codex-wakectl` preserve the supplied text; they do not add labels. A label
 clarifies origin but does not prove identity or override existing instructions.
 `codex-threadctl notify` instead injects an advisory agent message with a
 caller-supplied author, which is provenance rather than authentication.
 The notice can enter an active thread's reasoning at a later model step.
-For shared streams, batch nearby appends into one high-water notice and do not
-send acknowledgement receipts; stream order and reader cursors remain the
-authority.
+For shared streams, combine nearby appends into one notice that names the
+latest position. Do not send acknowledgement receipts; stream order and reader
+cursors remain the authority.
+
+App-server `active` and `idle` describe turn execution, not whether a
+participant is ready for a peer exchange. A participant can remain active while
+finishing an independent work block before reading the stream. When the
+distinction matters, a stream checkpoint should say whether work is waiting on
+a reply, what can continue meanwhile, and when the participants should exchange
+results again.
 
 ## Goal And Turn State
 

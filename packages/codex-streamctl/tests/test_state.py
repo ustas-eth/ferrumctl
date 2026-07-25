@@ -129,6 +129,35 @@ class StateTests(unittest.TestCase):
         entries = state.list_entries(self.path, stream_id, limit=0)["entries"]
         self.assertEqual([entry["position"] for entry in entries], list(range(1, 13)))
 
+    def test_concurrent_acknowledgements_keep_the_highest_position(self):
+        stream_id = self.stream["streamId"]
+        for index in range(1, 21):
+            state.append_entry(self.path, stream_id, "a", str(index))
+
+        def acknowledge(through):
+            return state.acknowledge(
+                self.path,
+                stream_id,
+                "reader",
+                through,
+            )
+
+        requested = [20, 3, 17, 1, 12, 8, 19, 4]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(pool.map(acknowledge, requested))
+
+        self.assertTrue(
+            all(result["ackThrough"] >= result["requestedThrough"] for result in results)
+        )
+        final = state.list_entries(
+            self.path,
+            stream_id,
+            reader="reader",
+            limit=0,
+        )
+        self.assertEqual(final["ackThrough"], 20)
+        self.assertEqual(final["entries"], [])
+
     def test_list_uses_one_snapshot_when_an_append_interleaves(self):
         stream_id = self.stream["streamId"]
         state.append_entry(self.path, stream_id, "a", "first")

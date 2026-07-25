@@ -253,7 +253,7 @@ owns the other's handle. With only thread ids, use `codex-threadctl`:
 
 ```sh
 codex-threadctl start "$B" \
-  "From peer A, advisory request: Review the range semantics and reply in this turn."
+  "From peer A: Review the range semantics and reply before I choose the next implementation step."
 ```
 
 Retrieve B's answer through the native handle or from the exact turn returned
@@ -261,37 +261,62 @@ by `start`.
 
 For sustained peer work, use `codex-streamctl` when its skill is available.
 Create one stream during initialization and place its id in each participant's
-goal or existing context. Each append is durable shared content:
+goal or existing context.
+
+When the purpose is joint reasoning, alternate focused work with checkpoints.
+Begin with a short independent orientation, then agree on complementary work
+and what result or question should bring the participants back together. At a
+checkpoint, publish consolidated evidence and resolve the question or decision
+that affects the next work. Close the exchange by recording the revised next
+steps before returning to work.
+
+Make ownership of the next step explicit. State whether the sender will
+continue useful work, needs a peer decision before proceeding, or is ending its
+turn until a later signal. Independent work still happens in an active turn;
+app-server `idle` means that turn has ended.
+
+From A's thread, each append uses `CODEX_THREAD_ID` as its author:
 
 ```sh
 STREAM=$(codex-streamctl create --label "range review")
-POSITION=$(codex-streamctl append "$STREAM" --author "$A" \
-  "The half-open range avoids replaying the boundary item." --json |
+POSITION=$(codex-streamctl append "$STREAM" \
+  "The half-open range avoids replaying the boundary item. I will test rollback; check retry behavior before our next checkpoint." --json |
   jq -r .position)
 ```
 
 When `codex-threadctl` is also available, announce the highest committed
 position when B's attention is useful. Batch nearby appends into one notice.
 The notice can enter active reasoning at a later model step but does not start
-a turn; the empty wake is a no-op if B is active:
+a turn:
 
 ```sh
-codex-threadctl notify "$B" --from "$A" \
-  "Peer stream $STREAM has unread entries through $POSITION."
+codex-threadctl notify "$B" \
+  "Stream $STREAM has a checkpoint through $POSITION; read after your current work step."
+```
+
+If A cannot continue until B responds, the notice can say
+`Stream $STREAM needs a decision through $POSITION before the next work block.`
+Keep the question and evidence in the stream. A notice is not a demand to
+abandon a coherent work step.
+
+If B is known to be loaded and idle, an empty wake can start its next turn
+without adding another message:
+
+```sh
 codex-threadctl wake "$B"
 ```
 
-B reads every entry after its acknowledgement, processes the complete returned
-prefix, and only then advances its cursor:
+From B's thread, `CODEX_THREAD_ID` selects its reader cursor. B processes every
+entry returned by the command and only then advances that cursor:
 
 ```sh
-codex-streamctl list "$STREAM" --reader "$B" --limit 0 --json
+codex-streamctl list "$STREAM" --limit 0 --json
 ```
 
 After processing the result:
 
 ```sh
-codex-streamctl ack "$STREAM" --reader "$B" --through LAST_POSITION
+codex-streamctl ack "$STREAM" --through LAST_POSITION
 ```
 
 `LAST_POSITION` is `.lastPosition` from that exact list result, not
@@ -299,6 +324,15 @@ codex-streamctl ack "$STREAM" --reader "$B" --through LAST_POSITION
 durable processed-through receipt. Do not notify it or answer a notice without
 substantive stream content. B can append a response and later announce the
 newest committed position in the same way.
+
+Several substantive replies can occur while a checkpoint is open. Close it by
+recording what each participant will do next and what result or condition
+should bring them back together. Between checkpoints, continue useful work
+rather than repeatedly listing the stream only to wait. If later attention
+must survive the current turn, use an available native handle or wake
+mechanism. If no participant can signal later, agree on a later check instead
+of using a short polling loop.
+
 Without `codex-threadctl`, participants inspect the stream at natural
 milestones. Missing, delayed, reordered, or duplicate notices do not change the
 durable exchange; stream order and reader acknowledgements determine what

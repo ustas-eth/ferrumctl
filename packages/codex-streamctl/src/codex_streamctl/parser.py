@@ -48,14 +48,12 @@ def add_identity_option(
     option: str,
     *,
     dest: str,
-    default_current: bool = True,
 ) -> None:
-    suffix = " (default: CODEX_THREAD_ID)" if default_current else ""
     parser.add_argument(
         option,
         dest=dest,
         type=nonempty_text,
-        help=f"{dest} identity{suffix}",
+        help=f"{dest} identity (default: CODEX_THREAD_ID)",
     )
 
 
@@ -87,11 +85,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     list_parser = sub.add_parser("list", help="list entries in stream order")
     list_parser.add_argument("stream_id", help="stream to read")
-    add_identity_option(
-        list_parser,
+    list_parser.add_argument(
         "--reader",
         dest="reader",
-        default_current=False,
+        type=nonempty_text,
+        help=(
+            "reader identity "
+            "(default: CODEX_THREAD_ID unless --after is specified)"
+        ),
     )
     list_parser.add_argument(
         "--after",

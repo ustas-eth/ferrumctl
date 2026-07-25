@@ -23,7 +23,7 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(args.state, Path("/tmp/state"))
         self.assertTrue(args.json)
 
-    def test_list_without_reader_starts_from_the_stream_beginning(self):
+    def test_list_identity_is_resolved_when_the_command_runs(self):
         args = parser.build_parser().parse_args(["list", "stream"])
         self.assertIsNone(args.reader)
 
@@ -104,7 +104,7 @@ class CommandTests(unittest.TestCase):
         )
         self.assertEqual(output, "")
 
-    def test_current_thread_is_the_default_identity(self):
+    def test_current_thread_is_the_default_author_and_reader(self):
         _, stream_id, _ = self.run_cli("create")
         stream_id = stream_id.strip()
 
@@ -116,8 +116,75 @@ class CommandTests(unittest.TestCase):
         )
         self.assertEqual(status, 0)
 
+        _, output, _ = self.run_cli(
+            "list",
+            stream_id,
+            "--json",
+            env={"CODEX_THREAD_ID": "self"},
+        )
+        payload = json.loads(output)
+        self.assertEqual(payload["reader"], "self")
+        self.assertEqual(payload["entries"][0]["author"], "self")
+
+        status, _, _ = self.run_cli(
+            "ack",
+            stream_id,
+            "--through",
+            "1",
+            env={"CODEX_THREAD_ID": "self"},
+        )
+        self.assertEqual(status, 0)
+
+        _, output, _ = self.run_cli(
+            "list",
+            stream_id,
+            "--json",
+            env={"CODEX_THREAD_ID": "self"},
+        )
+        self.assertEqual(json.loads(output)["entries"], [])
+
+    def test_explicit_reader_overrides_current_thread(self):
+        _, stream_id, _ = self.run_cli("create")
+        stream_id = stream_id.strip()
+        self.run_cli("append", stream_id, "--author", "a", "first")
+
+        _, output, _ = self.run_cli(
+            "list",
+            stream_id,
+            "--reader",
+            "other",
+            "--json",
+            env={"CODEX_THREAD_ID": "self"},
+        )
+        self.assertEqual(json.loads(output)["reader"], "other")
+
+    def test_explicit_after_does_not_infer_a_reader(self):
+        _, stream_id, _ = self.run_cli("create")
+        stream_id = stream_id.strip()
+        self.run_cli("append", stream_id, "--author", "a", "first")
+
+        _, output, _ = self.run_cli(
+            "list",
+            stream_id,
+            "--after",
+            "0",
+            "--json",
+            env={"CODEX_THREAD_ID": "self"},
+        )
+        payload = json.loads(output)
+        self.assertIsNone(payload["reader"])
+        self.assertIsNone(payload["ackThrough"])
+        self.assertEqual([entry["position"] for entry in payload["entries"]], [1])
+
+    def test_list_without_current_identity_starts_from_the_beginning(self):
+        _, stream_id, _ = self.run_cli("create")
+        stream_id = stream_id.strip()
+        self.run_cli("append", stream_id, "--author", "a", "first")
+
         _, output, _ = self.run_cli("list", stream_id, "--json")
-        self.assertEqual(json.loads(output)["entries"][0]["author"], "self")
+        payload = json.loads(output)
+        self.assertIsNone(payload["reader"])
+        self.assertEqual([entry["position"] for entry in payload["entries"]], [1])
 
     def test_missing_identity_and_stream_fail_cleanly(self):
         status, _, error = self.run_cli("append", "missing", "hello")
@@ -132,3 +199,12 @@ class CommandTests(unittest.TestCase):
         )
         self.assertEqual(status, 1)
         self.assertIn("stream not found", error)
+
+        status, _, error = self.run_cli(
+            "ack",
+            "missing",
+            "--through",
+            "0",
+        )
+        self.assertEqual(status, 1)
+        self.assertIn("--reader is required", error)

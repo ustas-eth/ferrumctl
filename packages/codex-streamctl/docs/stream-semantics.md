@@ -22,7 +22,9 @@ Each `(stream, reader)` pair has one cumulative acknowledgement. `list
 --reader` begins after that position and returns entries in ascending order.
 It includes entries authored by the reader because an acknowledgement means
 the reader processed the complete stream through that position.
-Without `--reader` or `--after`, listing begins at the first entry.
+When both `--reader` and `--after` are omitted, `CODEX_THREAD_ID` supplies the
+reader if it is set; otherwise listing begins at the first entry. `--after`
+selects an explicit one-off range and does not infer a reader.
 
 `--after` overrides the saved acknowledgement for one list operation without
 changing it. `ack --through` advances the saved position monotonically.
