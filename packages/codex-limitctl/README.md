@@ -36,7 +36,7 @@ Test remaining capacity through the exit status:
 
 ```sh
 codex-limitctl test codex --window 7d --remaining-at-least 20
-codex-limitctl test codex --window 5h --remaining-at-most 10
+codex-limitctl test codex --window 7d --remaining-at-most 10
 ```
 
 `test` exits `0` when the predicate matches, `1` when it does not, and `2` when
