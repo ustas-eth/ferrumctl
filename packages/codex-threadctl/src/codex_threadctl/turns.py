@@ -5,7 +5,7 @@ from typing import Any
 
 from .appserver import AppServer
 from .errors import ThreadctlError
-from .history import MaterializedSelection, select_materialized_items
+from .history import MaterializedSelection, select_materialized_items, summary_items
 from .items import message_record, summarize_item
 
 
@@ -33,30 +33,8 @@ def summarize_turn(turn: dict[str, Any], item_limit: int) -> dict[str, Any]:
 
 
 def summary_view(turn: dict[str, Any]) -> dict[str, Any]:
-    items = turn.get("items", [])
-    first_user = next(
-        (item for item in items if item.get("type") == "userMessage"),
-        None,
-    )
-    final_agent = next(
-        (item for item in reversed(items) if item.get("type") == "agentMessage"),
-        None,
-    )
-    if (
-        first_user is not None
-        and final_agent is not None
-        and first_user.get("id") != final_agent.get("id")
-    ):
-        summary_items = [first_user, final_agent]
-    elif first_user is not None:
-        summary_items = [first_user]
-    elif final_agent is not None:
-        summary_items = [final_agent]
-    else:
-        summary_items = []
-
     summary = dict(turn)
-    summary["items"] = summary_items
+    summary["items"] = summary_items(turn.get("items", []))
     summary["itemsView"] = "summary"
     return summary
 
@@ -72,6 +50,9 @@ def build_inspection(
     context: dict[str, Any] | None,
     compaction: dict[str, Any] | None,
     context_error: str | None = None,
+    history_backend: str = "thread/turns/list",
+    history_error: str | None = None,
+    recent_items: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     latest = turns[0] if turns else None
     previous = next(
@@ -108,6 +89,11 @@ def build_inspection(
         "compaction": compaction,
         "goal": goal,
         "goalError": goal_error,
+        "historyBackend": history_backend,
+        "historyError": history_error,
+        "recentItems": [
+            summarize_item(item) for item in (recent_items or [])
+        ],
         "latestTurn": summarize_turn(latest, item_limit) if latest else None,
         "previousTurn": summarize_turn(previous, 0) if previous else None,
     }

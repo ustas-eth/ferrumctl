@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator, Collection
 from dataclasses import dataclass
 from typing import Any
 
-from .appserver import AppServer, list_item_page, list_turn_page
+from .appserver import AppServer, list_item_page, list_turn_page, unsupported_method
 from .errors import AppServerResponseError, ThreadctlError
 
 
@@ -27,6 +27,10 @@ class MaterializedSelection:
     backend: str
 
 
+class UnattributedNativeItems(Exception):
+    pass
+
+
 def turn_entries(turn: dict[str, Any]) -> list[MaterializedItem]:
     turn_id = turn.get("id")
     items = turn.get("items")
@@ -42,11 +46,16 @@ def turn_entries(turn: dict[str, Any]) -> list[MaterializedItem]:
     return [MaterializedItem(turn, item) for item in items]
 
 
-def unsupported_item_listing(error: AppServerResponseError) -> bool:
-    payload = error.payload
-    code = payload.get("code") if isinstance(payload, dict) else None
-    message = str(error).lower()
-    return code == -32601 or "not supported" in message or "method not found" in message
+def placeholder_turn(turn_id: str) -> dict[str, Any]:
+    return {
+        "id": turn_id,
+        "status": None,
+        "startedAt": None,
+        "completedAt": None,
+        "durationMs": None,
+        "itemsView": "full",
+        "items": [],
+    }
 
 
 def next_cursor(
@@ -142,7 +151,12 @@ async def native_turn_entries(
         if cursor is None:
             break
 
-    turn = await find_turn(app, thread_id, turn_id, items_view="summary")
+    try:
+        turn = await find_turn(app, thread_id, turn_id, items_view="summary")
+    except AppServerResponseError as exc:
+        if not unsupported_method(exc):
+            raise
+        turn = placeholder_turn(turn_id)
     materialized = dict(turn)
     materialized["items"] = items
     materialized["itemsView"] = "full"
@@ -157,13 +171,206 @@ async def exact_turn_entries(
     try:
         entries = await native_turn_entries(app, thread_id, turn_id)
     except AppServerResponseError as exc:
-        if not unsupported_item_listing(exc):
+        if not unsupported_method(exc):
             raise
     else:
         return MaterializedSelection(entries, "thread/items/list")
 
     turn = await find_turn(app, thread_id, turn_id, items_view="full")
     return MaterializedSelection(turn_entries(turn), "thread/turns/list")
+
+
+def wrapped_native_entry(entry: dict[str, Any]) -> MaterializedItem:
+    turn_id = entry.get("turnId")
+    item = entry.get("item")
+    if not isinstance(turn_id, str) or not isinstance(item, dict):
+        raise UnattributedNativeItems
+    return MaterializedItem(placeholder_turn(turn_id), item)
+
+
+async def native_thread_entries(
+    app: AppServer,
+    thread_id: str,
+    *,
+    after: Locator | None,
+    before: Locator | None,
+    types: Collection[str] | None,
+    limit: int,
+) -> list[MaterializedItem]:
+    newest_first: list[MaterializedItem] = []
+    cursor: str | None = None
+    seen: set[str] = set()
+
+    while True:
+        page = await list_item_page(
+            app,
+            thread_id,
+            cursor=cursor,
+            limit=100,
+            sort_direction="desc",
+        )
+        newest_first.extend(wrapped_native_entry(entry) for entry in page["data"])
+        entries = list(reversed(newest_first))
+        locators = {entry.locator for entry in entries}
+        found_after = after is None or after in locators
+        found_before = before is None or before in locators
+
+        if after is None and before is None:
+            if limit and sum(1 for entry in entries if matches_type(entry, types)) >= limit:
+                return entries
+        elif found_after and found_before:
+            if after is not None:
+                return entries
+            if limit:
+                selected = range_entries(entries, after=None, before=before)
+                if sum(1 for entry in selected if matches_type(entry, types)) >= limit:
+                    return entries
+
+        cursor = next_cursor(page, seen, label="item pagination")
+        if cursor is None:
+            return entries
+
+
+async def enrich_turn_metadata(
+    app: AppServer,
+    thread_id: str,
+    entries: list[MaterializedItem],
+) -> list[MaterializedItem]:
+    missing = {entry.locator[0] for entry in entries}
+    if not missing:
+        return entries
+
+    metadata: dict[str, dict[str, Any]] = {}
+    try:
+        async for turns in reverse_turn_pages(
+            app,
+            thread_id,
+            items_view="summary",
+            page_limit=50,
+        ):
+            for turn in turns:
+                turn_id = turn["id"]
+                if turn_id in missing:
+                    metadata[turn_id] = turn
+                    missing.remove(turn_id)
+            if not missing:
+                break
+    except AppServerResponseError as exc:
+        if not unsupported_method(exc):
+            raise
+
+    return [
+        MaterializedItem(metadata.get(entry.locator[0], entry.turn), entry.item)
+        for entry in entries
+    ]
+
+
+def summary_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    first_user = next(
+        (item for item in items if item.get("type") == "userMessage"),
+        None,
+    )
+    final_agent = next(
+        (item for item in reversed(items) if item.get("type") == "agentMessage"),
+        None,
+    )
+    if (
+        first_user is not None
+        and final_agent is not None
+        and first_user.get("id") != final_agent.get("id")
+    ):
+        return [first_user, final_agent]
+    if first_user is not None:
+        return [first_user]
+    if final_agent is not None:
+        return [final_agent]
+    return []
+
+
+async def native_inspection_history(
+    app: AppServer,
+    thread_id: str,
+    *,
+    turn_limit: int,
+    item_limit: int,
+    brief: bool,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    newest: list[tuple[str | None, dict[str, Any]]] = []
+    cursor: str | None = None
+    seen: set[str] = set()
+    attributed = True
+    target_items = item_limit if item_limit > 0 else None
+
+    while True:
+        page = await list_item_page(
+            app,
+            thread_id,
+            cursor=cursor,
+            limit=100,
+            sort_direction="desc",
+        )
+        for entry in page["data"]:
+            turn_id = entry.get("turnId")
+            item = entry.get("item")
+            if isinstance(turn_id, str) and isinstance(item, dict):
+                newest.append((turn_id, item))
+            else:
+                attributed = False
+                newest.append((None, entry))
+
+        if attributed:
+            seen_turns = list(dict.fromkeys(turn_id for turn_id, _ in newest))
+            if len(seen_turns) > turn_limit:
+                break
+        else:
+            matching = (
+                sum(
+                    1
+                    for _, item in newest
+                    if item.get("type") in {"userMessage", "agentMessage"}
+                )
+                if brief
+                else len(newest)
+            )
+            if target_items is not None and matching >= target_items:
+                break
+
+        cursor = next_cursor(page, seen, label="item pagination")
+        if cursor is None:
+            break
+
+    if not attributed:
+        items = [item for _, item in newest]
+        if brief:
+            items = [
+                item
+                for item in items
+                if item.get("type") in {"userMessage", "agentMessage"}
+            ]
+        if target_items is not None:
+            items = items[:target_items]
+        items.reverse()
+        return [], items
+
+    newest_turn_ids = list(
+        dict.fromkeys(turn_id for turn_id, _ in newest if turn_id is not None)
+    )[:turn_limit]
+    selected = [
+        MaterializedItem(placeholder_turn(turn_id), item)
+        for turn_id, item in reversed(newest)
+        if turn_id in newest_turn_ids
+    ]
+    selected = await enrich_turn_metadata(app, thread_id, selected)
+
+    turns: list[dict[str, Any]] = []
+    for turn_id in newest_turn_ids:
+        matching = [entry for entry in selected if entry.locator[0] == turn_id]
+        metadata = dict(matching[0].turn) if matching else placeholder_turn(turn_id)
+        items = [entry.item for entry in matching]
+        metadata["items"] = summary_items(items) if brief else items
+        metadata["itemsView"] = "summary" if brief else "full"
+        turns.append(metadata)
+    return turns, []
 
 
 async def all_turn_entries(
@@ -297,31 +504,63 @@ async def select_materialized_items(
     if limit < 0:
         raise ThreadctlError("item limit must be zero or greater")
 
-    if turn_id is not None:
-        selection = await exact_turn_entries(app, thread_id, turn_id)
-        entries = selection.entries
-        backend = selection.backend
-    elif after is not None or before is not None:
-        entries = await bounded_turn_entries(
-            app,
-            thread_id,
-            after=after,
-            before=before,
-            types=types,
-            limit=limit,
-        )
-        backend = "thread/turns/list"
-    elif limit == 0:
-        entries = await all_turn_entries(app, thread_id)
-        backend = "thread/turns/list"
-    else:
-        entries = await recent_turn_entries(
-            app,
-            thread_id,
-            types=types,
-            limit=limit,
-        )
-        return MaterializedSelection(entries, "thread/turns/list")
+    native_unattributed = False
+    if turn_id is None:
+        try:
+            entries = await native_thread_entries(
+                app,
+                thread_id,
+                after=after,
+                before=before,
+                types=types,
+                limit=limit,
+            )
+        except AppServerResponseError as exc:
+            if not unsupported_method(exc):
+                raise
+        except UnattributedNativeItems:
+            native_unattributed = True
+        else:
+            entries = range_entries(entries, after=after, before=before)
+            entries = [entry for entry in entries if matches_type(entry, types)]
+            if limit:
+                entries = entries[:limit] if after is not None else entries[-limit:]
+            entries = await enrich_turn_metadata(app, thread_id, entries)
+            return MaterializedSelection(entries, "thread/items/list")
+
+    try:
+        if turn_id is not None:
+            selection = await exact_turn_entries(app, thread_id, turn_id)
+            entries = selection.entries
+            backend = selection.backend
+        elif after is not None or before is not None:
+            entries = await bounded_turn_entries(
+                app,
+                thread_id,
+                after=after,
+                before=before,
+                types=types,
+                limit=limit,
+            )
+            backend = "thread/turns/list"
+        elif limit == 0:
+            entries = await all_turn_entries(app, thread_id)
+            backend = "thread/turns/list"
+        else:
+            entries = await recent_turn_entries(
+                app,
+                thread_id,
+                types=types,
+                limit=limit,
+            )
+            return MaterializedSelection(entries, "thread/turns/list")
+    except AppServerResponseError as exc:
+        if native_unattributed and unsupported_method(exc):
+            raise ThreadctlError(
+                "this Codex version does not expose turn ids for thread-wide "
+                "item history; select one turn with --turn"
+            ) from exc
+        raise
 
     entries = range_entries(entries, after=after, before=before)
     entries = [entry for entry in entries if matches_type(entry, types)]

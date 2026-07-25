@@ -179,6 +179,20 @@ def format_inspection(inspection: dict[str, Any]) -> str:
         )
         lines.append(f"objective\t{quoted(goal.get('objective', ''))}")
 
+    if inspection.get("historyError"):
+        lines.append(
+            "\t".join(
+                [
+                    "history",
+                    str(inspection.get("historyBackend") or "unknown"),
+                    quoted(inspection["historyError"]),
+                ]
+            )
+        )
+    lines.extend(
+        f"recent:{item_line(item)}" for item in inspection.get("recentItems", [])
+    )
+
     latest = inspection.get("latestTurn")
     if latest is not None:
         lines.append(turn_line("latest", latest))

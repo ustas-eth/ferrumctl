@@ -60,6 +60,25 @@ class FakeApp:
                 ],
                 "nextCursor": None,
             }
+        if method == "thread/items/list":
+            item = (
+                {
+                    "type": "userMessage",
+                    "id": "item",
+                    "clientId": self.client_message_id,
+                    "content": [{"type": "text", "text": "message"}],
+                }
+                if self.client_message_id is not None
+                else None
+            )
+            return {
+                "data": (
+                    [{"turnId": self.actual_turn_id, "item": item}]
+                    if item is not None
+                    else []
+                ),
+                "nextCursor": None,
+            }
         if method == "turn/start":
             self.client_message_id = params.get("clientUserMessageId")
             return {"turn": {"id": "submission", "status": "inProgress"}}
@@ -563,39 +582,24 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["turnId"], "other-turn")
         self.assertEqual(result["submittedTurnId"], "submission")
 
-    async def test_start_confirmation_follows_turn_pages(self):
+    async def test_start_confirmation_uses_recent_native_items(self):
         class PaginatedApp(FakeApp):
             async def request(self, method, params=None):
                 if (
-                    method == "thread/turns/list"
+                    method == "thread/items/list"
                     and self.client_message_id is not None
                 ):
                     self.calls.append((method, params))
-                    if params.get("cursor") is None:
-                        return {
-                            "data": [
-                                {
-                                    "id": f"newer-{index}",
-                                    "status": "completed",
-                                    "items": [],
-                                }
-                                for index in range(5)
-                            ],
-                            "nextCursor": "older",
-                        }
                     return {
                         "data": [
                             {
-                                "id": "submission",
-                                "status": "inProgress",
-                                "items": [
-                                    {
+                                "turnId": "submission",
+                                "item": {
                                         "type": "userMessage",
                                         "id": "item",
                                         "clientId": self.client_message_id,
                                         "content": [],
-                                    }
-                                ],
+                                },
                             }
                         ],
                         "nextCursor": None,
@@ -609,9 +613,112 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
         confirmation_calls = [
             params
             for method, params in app.calls
-            if method == "thread/turns/list"
+            if method == "thread/items/list"
         ]
-        self.assertEqual(confirmation_calls[-1]["cursor"], "older")
+        self.assertEqual(len(confirmation_calls), 1)
+        self.assertNotIn("cursor", confirmation_calls[0])
+
+    async def test_start_confirmation_falls_back_for_classic_history(self):
+        class ClassicApp(FakeApp):
+            async def request(self, method, params=None):
+                if method == "thread/items/list":
+                    raise AppServerResponseError(
+                        {
+                            "code": -32601,
+                            "message": "thread/items/list is not supported yet",
+                        }
+                    )
+                return await super().request(method, params)
+
+        app = ClassicApp()
+        result = await appserver.start_turn(app, "thread", "message")
+
+        self.assertEqual(result["delivery"], "started")
+        self.assertTrue(
+            any(method == "thread/turns/list" for method, _ in app.calls)
+        )
+
+    async def test_start_confirmation_waits_for_bare_item_attribution(self):
+        class BareItemApp(FakeApp):
+            def __init__(self):
+                super().__init__(actual_turn_id="other-turn")
+                self.notified = False
+
+            async def request(self, method, params=None):
+                if (
+                    method == "thread/items/list"
+                    and self.client_message_id is not None
+                ):
+                    if not self.notified:
+                        self.turn_notifications.append(
+                            {
+                                "method": "item/started",
+                                "params": {
+                                    "threadId": "thread",
+                                    "turnId": "other-turn",
+                                    "item": {
+                                        "type": "userMessage",
+                                        "clientId": self.client_message_id,
+                                    },
+                                },
+                            }
+                        )
+                        self.notified = True
+                    return {
+                        "data": [
+                            {
+                                "type": "userMessage",
+                                "id": "item",
+                                "clientId": self.client_message_id,
+                                "content": [],
+                            }
+                        ],
+                        "nextCursor": None,
+                    }
+                if method == "thread/turns/list":
+                    raise AppServerResponseError(
+                        {"code": -32601, "message": "paginated_threads is not supported yet"}
+                    )
+                return await super().request(method, params)
+
+        result = await appserver.start_turn(BareItemApp(), "thread", "message")
+
+        self.assertEqual(result["delivery"], "steered")
+        self.assertEqual(result["turnId"], "other-turn")
+
+    async def test_start_confirmation_does_not_invent_bare_item_attribution(self):
+        class BareItemApp(FakeApp):
+            async def request(self, method, params=None):
+                if (
+                    method == "thread/items/list"
+                    and self.client_message_id is not None
+                ):
+                    return {
+                        "data": [
+                            {
+                                "type": "userMessage",
+                                "id": "item",
+                                "clientId": self.client_message_id,
+                                "content": [],
+                            }
+                        ],
+                        "nextCursor": None,
+                    }
+                if method == "thread/turns/list":
+                    raise AppServerResponseError(
+                        {"code": -32601, "message": "paginated_threads is not supported yet"}
+                    )
+                return await super().request(method, params)
+
+        with self.assertRaises(DeliveryUncertain) as raised:
+            await appserver.start_turn(
+                BareItemApp(),
+                "thread",
+                "message",
+                confirmation_timeout=0.01,
+            )
+
+        self.assertEqual(raised.exception.turn_id, "submission")
 
     async def test_start_refuses_known_active_thread(self):
         with self.assertRaises(ThreadStateError):
@@ -647,7 +754,7 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
         original_request = app.request
 
         async def fail_confirmation(method, params=None):
-            if method == "thread/turns/list" and app.client_message_id is not None:
+            if method == "thread/items/list" and app.client_message_id is not None:
                 raise ThreadctlError("history unavailable")
             return await original_request(method, params)
 
@@ -815,6 +922,15 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result["outcome"], "confirmedStarted")
         self.assertEqual(result["turnId"], "turn")
+
+    async def test_wake_confirmation_does_not_claim_turn_completion(self):
+        app = FakeApp(actual_turn_id="turn", turn_status="interrupted")
+
+        result = await appserver.confirm_wake(app, "thread", "turn", 1)
+
+        self.assertEqual(result["outcome"], "confirmedStarted")
+        self.assertEqual(result["turnId"], "turn")
+        self.assertEqual(result["observedStatus"], "interrupted")
 
     async def test_wake_confirmation_reports_terminal_error_notification(self):
         app = FakeApp()

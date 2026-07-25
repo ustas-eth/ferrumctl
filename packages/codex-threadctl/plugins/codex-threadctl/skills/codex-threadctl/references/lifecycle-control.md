@@ -68,6 +68,8 @@ history. The machine outcomes are:
 
 Only the first two outcomes exit successfully. Wake never resumes an unloaded
 thread, steers an active turn, adds instructions, or changes goal state.
+`confirmedStarted` confirms the returned turn's identity, not successful model
+work or turn completion; observe the turn or goal separately when that matters.
 `notSubmittedActive` is a point-in-time result; it does not arrange another
 turn after the observed active turn ends.
 
@@ -90,6 +92,12 @@ The idle observation and `turn/start` request are not atomic. Confirmation
 makes the outcome visible but cannot undo input that raced into active work. If
 confirmation fails, the operation is uncertain: retrying can duplicate the
 message.
+
+Early Codex 0.144 item pagination omits turn attribution. A matching bare item
+proves persistence but not which turn accepted the message, so threadctl waits
+for an attributed item notification or turn view. If neither becomes
+available, `start` reports an uncertain outcome instead of substituting the
+submitted turn id.
 
 ## Steering
 

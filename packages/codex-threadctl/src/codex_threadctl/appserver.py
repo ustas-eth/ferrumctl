@@ -20,7 +20,12 @@ from .errors import (
     ThreadStateError,
 )
 
-TRACKED_TURN_NOTIFICATIONS = {"turn/started", "error"}
+TRACKED_NOTIFICATIONS = {
+    "turn/started",
+    "item/started",
+    "item/completed",
+    "error",
+}
 
 
 class AppServer:
@@ -110,7 +115,7 @@ class AppServer:
             if "method" in response:
                 if (
                     "id" not in response
-                    and response.get("method") in TRACKED_TURN_NOTIFICATIONS
+                    and response.get("method") in TRACKED_NOTIFICATIONS
                 ):
                     self.turn_notifications.append(response)
                 continue
@@ -135,6 +140,13 @@ def require_object(value: Any, label: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ThreadctlError(f"app-server returned invalid {label}")
     return value
+
+
+def unsupported_method(error: AppServerResponseError) -> bool:
+    payload = error.payload
+    code = payload.get("code") if isinstance(payload, dict) else None
+    message = str(error).lower()
+    return code == -32601 or "not supported" in message or "method not found" in message
 
 
 async def connect_websocket(endpoint: str) -> Any:
@@ -566,6 +578,28 @@ def turn_notification(
     return None
 
 
+def client_input_notification(
+    app: AppServer,
+    thread_id: str,
+    client_message_id: str,
+) -> dict[str, Any] | None:
+    for notification in reversed(getattr(app, "turn_notifications", [])):
+        if notification.get("method") not in {"item/started", "item/completed"}:
+            continue
+        params = notification.get("params")
+        if not isinstance(params, dict) or params.get("threadId") != thread_id:
+            continue
+        item = params.get("item")
+        if (
+            isinstance(item, dict)
+            and item.get("type") == "userMessage"
+            and item.get("clientId") == client_message_id
+            and isinstance(params.get("turnId"), str)
+        ):
+            return params
+    return None
+
+
 def text_input(message: str) -> list[dict[str, Any]]:
     return [{"type": "text", "text": message, "textElements": []}]
 
@@ -590,52 +624,80 @@ async def confirm_input(
     client_message_id: str,
     timeout: float,
 ) -> dict[str, Any]:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        cursor: str | None = None
-        seen_cursors: set[str] = set()
-        while time.monotonic() < deadline:
-            page = await list_turn_page(
-                app,
-                thread_id,
-                cursor=cursor,
-                limit=5,
-                items_view="full",
-            )
-            for turn in page["data"]:
-                for item in turn.get("items", []):
-                    if not isinstance(item, dict):
-                        continue
-                    if item.get("type") != "userMessage":
-                        continue
-                    if item.get("clientId") != client_message_id:
-                        continue
-                    actual_turn_id = str(turn.get("id") or submitted_turn_id)
-                    return {
-                        "threadId": thread_id,
-                        "turnId": actual_turn_id,
-                        "submittedTurnId": submitted_turn_id,
-                        "clientMessageId": client_message_id,
-                        "delivery": (
-                            "started"
-                            if actual_turn_id == submitted_turn_id
-                            else "steered"
-                        ),
-                        "turnStatus": turn.get("status"),
-                    }
+    def confirmed(actual_turn_id: str, turn_status: Any = None) -> dict[str, Any]:
+        return {
+            "threadId": thread_id,
+            "turnId": actual_turn_id,
+            "submittedTurnId": submitted_turn_id,
+            "clientMessageId": client_message_id,
+            "delivery": (
+                "started"
+                if actual_turn_id == submitted_turn_id
+                else "steered"
+            ),
+            "turnStatus": turn_status,
+        }
 
-            next_cursor = page.get("nextCursor")
-            if next_cursor is None:
-                break
-            if (
-                not isinstance(next_cursor, str)
-                or next_cursor in seen_cursors
-            ):
-                raise ThreadctlError(
-                    "app-server returned an invalid confirmation cursor"
+    deadline = time.monotonic() + timeout
+    native_supported = True
+    turn_listing_supported = True
+    while time.monotonic() < deadline:
+        notification = client_input_notification(
+            app,
+            thread_id,
+            client_message_id,
+        )
+        if notification is not None:
+            return confirmed(str(notification["turnId"]))
+
+        if native_supported:
+            try:
+                page = await list_item_page(
+                    app,
+                    thread_id,
+                    limit=100,
+                    sort_direction="desc",
                 )
-            seen_cursors.add(next_cursor)
-            cursor = next_cursor
+                for entry in page["data"]:
+                    wrapped = entry.get("item")
+                    item = wrapped if isinstance(wrapped, dict) else entry
+                    if (
+                        item.get("type") == "userMessage"
+                        and item.get("clientId") == client_message_id
+                    ):
+                        actual_turn_id = entry.get("turnId")
+                        if isinstance(actual_turn_id, str):
+                            return confirmed(actual_turn_id)
+            except AppServerResponseError as exc:
+                if not unsupported_method(exc):
+                    raise
+                native_supported = False
+
+        if turn_listing_supported:
+            try:
+                page = await list_turn_page(
+                    app,
+                    thread_id,
+                    limit=5,
+                    items_view="full",
+                )
+            except AppServerResponseError as exc:
+                if not unsupported_method(exc):
+                    raise
+                turn_listing_supported = False
+            else:
+                for turn in page["data"]:
+                    for item in turn.get("items", []):
+                        if not isinstance(item, dict):
+                            continue
+                        if (
+                            item.get("type") == "userMessage"
+                            and item.get("clientId") == client_message_id
+                        ):
+                            return confirmed(
+                                str(turn.get("id") or submitted_turn_id),
+                                turn.get("status"),
+                            )
         if time.monotonic() < deadline:
             await asyncio.sleep(0.1)
     raise DeliveryUncertain(submitted_turn_id, client_message_id)

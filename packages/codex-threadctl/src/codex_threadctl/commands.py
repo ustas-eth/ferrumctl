@@ -20,10 +20,11 @@ from .appserver import (
     start_turn,
     steer_turn,
     terminate_background_terminal,
+    unsupported_method,
     wake_thread,
 )
 from .context import read_context_state
-from .errors import ThreadctlError
+from .errors import AppServerResponseError, ThreadctlError
 from .formatting import (
     format_inspection,
     format_items,
@@ -31,7 +32,10 @@ from .formatting import (
     format_terminals,
     format_thread_list,
 )
-from .history import select_materialized_items
+from .history import (
+    native_inspection_history,
+    select_materialized_items,
+)
 from .items import item_record
 from .turns import build_inspection, find_message, recent_messages
 
@@ -156,14 +160,35 @@ async def cmd_status(args: argparse.Namespace) -> int:
 async def cmd_inspect(args: argparse.Namespace) -> int:
     async with AppServer(args.endpoint, args.timeout) as app:
         local_rollout = app.endpoint.startswith("unix://")
-        turns = (
-            await list_turn_page(
+        turn_limit = 1 if args.no_previous else 2
+        history_backend = "thread/turns/list"
+        history_error = None
+        recent_items: list[dict[str, object]] = []
+        try:
+            turns = (
+                await list_turn_page(
+                    app,
+                    args.thread_id,
+                    limit=turn_limit,
+                    items_view="summary" if args.brief else "full",
+                )
+            ).get("data", [])
+        except AppServerResponseError as exc:
+            if not unsupported_method(exc):
+                raise
+            turns, recent_items = await native_inspection_history(
                 app,
                 args.thread_id,
-                limit=1 if args.no_previous else 2,
-                items_view="summary" if args.brief else "full",
+                turn_limit=turn_limit,
+                item_limit=args.items,
+                brief=args.brief,
             )
-        ).get("data", [])
+            history_backend = "thread/items/list"
+            if recent_items:
+                history_error = (
+                    "this Codex version does not expose turn ids for paginated "
+                    "history; showing recent items without turn metadata"
+                )
         goal = None
         goal_error = None
         try:
@@ -189,6 +214,9 @@ async def cmd_inspect(args: argparse.Namespace) -> int:
         context=context,
         compaction=compaction,
         context_error=context_error,
+        history_backend=history_backend,
+        history_error=history_error,
+        recent_items=recent_items,
     )
     if args.json:
         print(json.dumps(inspection, indent=2))

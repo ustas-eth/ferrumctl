@@ -242,6 +242,57 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(inspection["latestTurn"]["id"], "latest")
         self.assertEqual(inspection["previousTurn"]["id"], "previous")
 
+    async def test_inspect_falls_back_to_unattributed_native_items(self):
+        args = parser.build_parser().parse_args(["inspect", "thread", "--json"])
+        unsupported = commands.AppServerResponseError(
+            {"code": -32601, "message": "paginated_threads is not supported yet"}
+        )
+        app = SimpleNamespace(endpoint="unix://")
+        recent = [{"id": "item", "type": "agentMessage", "text": "working"}]
+        with (
+            mock.patch.object(commands, "AppServer", return_value=FakeContext(app)),
+            mock.patch.object(
+                commands,
+                "list_turn_page",
+                mock.AsyncMock(side_effect=unsupported),
+            ),
+            mock.patch.object(
+                commands,
+                "native_inspection_history",
+                mock.AsyncMock(return_value=([], recent)),
+            ),
+            mock.patch.object(commands, "get_goal", mock.AsyncMock(return_value=None)),
+            mock.patch.object(
+                commands,
+                "read_thread",
+                mock.AsyncMock(
+                    return_value={
+                        "id": "thread",
+                        "status": {"type": "idle"},
+                        "path": None,
+                    }
+                ),
+            ),
+            mock.patch.object(
+                commands,
+                "list_loaded",
+                mock.AsyncMock(return_value=["thread"]),
+            ),
+            mock.patch.object(
+                commands,
+                "read_context_state",
+                return_value=(None, None),
+            ),
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            result = await commands.cmd_inspect(args)
+
+        self.assertEqual(result, 0)
+        inspection = json.loads(output.getvalue())
+        self.assertEqual(inspection["historyBackend"], "thread/items/list")
+        self.assertIn("does not expose turn ids", inspection["historyError"])
+        self.assertEqual(inspection["recentItems"][0]["text"], "working")
+
     async def test_list_passes_filters_and_prints_id_first(self):
         args = parser.build_parser().parse_args(
             ["list", "--parent", "parent", "--limit", "2", "--sort", "created"]

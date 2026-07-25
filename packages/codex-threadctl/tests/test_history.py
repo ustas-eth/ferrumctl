@@ -20,6 +20,18 @@ def turn(turn_id, *items):
 
 
 class HistorySelectionTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        unsupported = AppServerResponseError(
+            {"code": -32601, "message": "thread/items/list is not supported yet"}
+        )
+        patcher = mock.patch.object(
+            history,
+            "list_item_page",
+            mock.AsyncMock(side_effect=unsupported),
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     async def test_recent_tail_filters_before_applying_limit(self):
         pages = [
             {
@@ -52,6 +64,204 @@ class HistorySelectionTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(result.backend, "thread/turns/list")
         self.assertEqual(listed.await_count, 2)
+
+    async def test_thread_wide_native_items_keep_turn_attribution(self):
+        item_pages = [
+            {
+                "data": [
+                    {"turnId": "new", "item": item("reply")},
+                    {
+                        "turnId": "new",
+                        "item": item("command", "commandExecution"),
+                    },
+                ],
+                "nextCursor": "older",
+            },
+            {
+                "data": [
+                    {"turnId": "old", "item": item("request", "userMessage")}
+                ],
+                "nextCursor": None,
+            },
+        ]
+        listed_items = mock.AsyncMock(side_effect=item_pages)
+        listed_turns = mock.AsyncMock(
+            return_value={
+                "data": [turn("new"), turn("old")],
+                "nextCursor": None,
+            }
+        )
+        with (
+            mock.patch.object(history, "list_item_page", listed_items),
+            mock.patch.object(history, "list_turn_page", listed_turns),
+        ):
+            result = await history.select_materialized_items(
+                object(),
+                "thread",
+                types={"userMessage", "agentMessage"},
+                limit=2,
+            )
+
+        self.assertEqual(result.backend, "thread/items/list")
+        self.assertEqual(
+            [entry.locator for entry in result.entries],
+            [("old", "request"), ("new", "reply")],
+        )
+        self.assertEqual(
+            listed_turns.await_args.kwargs["items_view"],
+            "summary",
+        )
+        self.assertEqual(listed_items.await_count, 2)
+
+    async def test_unattributed_thread_items_require_an_exact_turn(self):
+        paginated = AppServerResponseError(
+            {"code": -32601, "message": "paginated_threads is not supported yet"}
+        )
+        with (
+            mock.patch.object(
+                history,
+                "list_item_page",
+                mock.AsyncMock(
+                    return_value={
+                        "data": [item("message", "userMessage")],
+                        "nextCursor": None,
+                    }
+                ),
+            ),
+            mock.patch.object(
+                history,
+                "list_turn_page",
+                mock.AsyncMock(side_effect=paginated),
+            ),
+        ):
+            with self.assertRaisesRegex(ThreadctlError, "select one turn"):
+                await history.select_materialized_items(
+                    object(),
+                    "thread",
+                    limit=1,
+                )
+
+    async def test_exact_turn_uses_bare_items_without_turn_metadata(self):
+        paginated = AppServerResponseError(
+            {"code": -32601, "message": "paginated_threads is not supported yet"}
+        )
+        with (
+            mock.patch.object(
+                history,
+                "list_item_page",
+                mock.AsyncMock(
+                    return_value={
+                        "data": [item("message", "userMessage")],
+                        "nextCursor": None,
+                    }
+                ),
+            ),
+            mock.patch.object(
+                history,
+                "list_turn_page",
+                mock.AsyncMock(side_effect=paginated),
+            ),
+        ):
+            result = await history.select_materialized_items(
+                object(),
+                "thread",
+                turn_id="turn",
+                limit=0,
+            )
+
+        self.assertEqual(result.backend, "thread/items/list")
+        self.assertEqual(result.entries[0].locator, ("turn", "message"))
+        self.assertIsNone(result.entries[0].turn["startedAt"])
+
+    async def test_native_inspection_groups_wrapped_items_without_turn_pages(self):
+        paginated = AppServerResponseError(
+            {"code": -32601, "message": "paginated_threads is not supported yet"}
+        )
+        listed_items = mock.AsyncMock(
+            return_value={
+                "data": [
+                    {"turnId": "new", "item": item("n2")},
+                    {"turnId": "new", "item": item("n1", "userMessage")},
+                    {"turnId": "old", "item": item("o1")},
+                ],
+                "nextCursor": None,
+            }
+        )
+        with (
+            mock.patch.object(history, "list_item_page", listed_items),
+            mock.patch.object(
+                history,
+                "list_turn_page",
+                mock.AsyncMock(side_effect=paginated),
+            ),
+        ):
+            turns, recent = await history.native_inspection_history(
+                object(),
+                "thread",
+                turn_limit=2,
+                item_limit=12,
+                brief=False,
+            )
+
+        self.assertEqual([entry["id"] for entry in turns], ["new", "old"])
+        self.assertEqual(
+            [entry["id"] for entry in turns[0]["items"]],
+            ["n1", "n2"],
+        )
+        self.assertEqual(recent, [])
+
+    async def test_native_inspection_reports_bare_recent_items(self):
+        with mock.patch.object(
+            history,
+            "list_item_page",
+            mock.AsyncMock(
+                return_value={
+                    "data": [item("new"), item("old", "userMessage")],
+                    "nextCursor": None,
+                }
+            ),
+        ):
+            turns, recent = await history.native_inspection_history(
+                object(),
+                "thread",
+                turn_limit=2,
+                item_limit=1,
+                brief=False,
+            )
+
+        self.assertEqual(turns, [])
+        self.assertEqual([entry["id"] for entry in recent], ["new"])
+
+    async def test_native_inspection_unlimited_bare_items_exhaust_pages(self):
+        for brief, expected_count in ((False, 101), (True, 1)):
+            with self.subTest(brief=brief):
+                pages = [
+                    {
+                        "data": [
+                            item(f"command-{index}", "commandExecution")
+                            for index in range(100)
+                        ],
+                        "nextCursor": "older",
+                    },
+                    {
+                        "data": [item("old-message", "userMessage")],
+                        "nextCursor": None,
+                    },
+                ]
+                listed = mock.AsyncMock(side_effect=pages)
+                with mock.patch.object(history, "list_item_page", listed):
+                    turns, recent = await history.native_inspection_history(
+                        object(),
+                        "thread",
+                        turn_limit=2,
+                        item_limit=0,
+                        brief=brief,
+                    )
+
+                self.assertEqual(turns, [])
+                self.assertEqual(len(recent), expected_count)
+                self.assertEqual(recent[0]["id"], "old-message")
+                self.assertEqual(listed.await_count, 2)
 
     async def test_filtered_items_and_messages_share_identity_and_order(self):
         page = {

@@ -53,17 +53,21 @@ error; it is never treated as the beginning or end of history.
 
 ## Backends
 
-Codex 0.144 defines experimental `thread/items/list` pagination, but classic
-rollout-backed histories report that method as unsupported. Its response also
-varies by Codex version: older servers return bare items, while newer servers
-include each item's containing turn ID. Threadctl accepts both forms for an
-exact `--turn` query and falls back to full `thread/turns/list` materialization
-when needed.
+Threadctl prefers `thread/items/list` for full item data. When each item carries
+its containing turn ID, thread-wide queries preserve composite locators and use
+summary turn pages only for status and timestamps. Classic rollout-backed
+histories report item listing as unsupported; threadctl then falls back to full
+`thread/turns/list` materialization.
 
-Thread-wide queries use turn pagination for consistent turn attribution across
-those versions. A paginated store that rejects full turn materialization and
-returns the older bare-item response therefore requires `--turn`. JSON output
-reports the selected `backend` and labels the `view` as `materialized`.
+Early Codex 0.144 paginated histories return bare items and do not expose turn
+pages. An exact `--turn` query remains usable because the caller supplies the
+missing attribution, although turn timestamps can be unavailable. Thread-wide
+`items` and `messages` reject that combination instead of inventing locators.
+`inspect` still reports thread, goal, and context state plus recent
+unattributed items, with the limitation named in `historyError`.
+
+JSON output reports the selected `backend` and labels item and message output
+as `materialized`.
 
 The fallback can transfer a large full turn even when compact output contains
 only a few records. Range scans stop after resolving the necessary history, but
