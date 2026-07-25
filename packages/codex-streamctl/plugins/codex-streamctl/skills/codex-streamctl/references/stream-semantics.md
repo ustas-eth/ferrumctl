@@ -36,7 +36,9 @@ no-op. A position beyond the current tail is rejected.
 One list operation reads the tail, reader cursor, and returned entries from the
 same SQLite snapshot. JSON distinguishes `lastPosition`, the last entry
 actually returned, from `tailPosition`, the stream tail in that snapshot.
-Acknowledge `lastPosition`; a limited result can end before the tail.
+`lastPosition` is null when no entries are returned; do not acknowledge in that
+case. Otherwise acknowledge `lastPosition`; a limited result can end before the
+tail.
 
 An acknowledgement is application state. It does not prove that a model saw,
 understood, or acted on an entry.

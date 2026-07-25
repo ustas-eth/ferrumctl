@@ -1,6 +1,6 @@
 {
   "name": "codex-wakectl",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "description": "Codex skill for scheduling thread input by time or condition.",
   "author": {
     "name": "ustas-eth"

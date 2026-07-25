@@ -40,12 +40,14 @@ entries after that reader's acknowledgement:
 codex-streamctl list "$STREAM" --json
 ```
 
-Process every returned entry in order, then acknowledge `.lastPosition` from
-that exact result:
+When entries are returned, process them in order, then acknowledge the non-null
+`.lastPosition` from that exact result:
 
 ```sh
 codex-streamctl ack "$STREAM" --through LAST_POSITION
 ```
+
+An empty result has nothing to acknowledge.
 
 Use `--after POSITION` for an explicit one-off range that neither infers nor
 changes a reader acknowledgement. Use `--limit 0` when the complete selected

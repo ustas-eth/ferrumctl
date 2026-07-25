@@ -35,9 +35,9 @@ For a short wait that may become ready before renewal, the same policy can be a
 queued command predicate:
 
 ```sh
-codex-wakectl add cmd --to "$SELF" \
+codex-wakectl add cmd --timeout 30 --to "$SELF" \
   "Automated event: Subscription capacity is available." -- \
-  codex-limitctl test codex --window 7d --remaining-at-least 20
+  codex-limitctl test codex --window 7d --remaining-at-least 20 --timeout 20
 ```
 
 Both false exit `1` and unavailable exit `2` remain pending. Keep the inner

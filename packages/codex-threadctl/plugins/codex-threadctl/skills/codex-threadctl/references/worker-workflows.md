@@ -127,8 +127,9 @@ Skip interruption when current inspection already shows the worker idle.
 
 ## Worker And Reviewer
 
-A reviewer can become the recipient of the worker's completion event, with the
-coordinator notified only after review:
+To insert a reviewer into the earlier sequence, omit its direct
+worker-to-coordinator wake. Keep the worker assignment and read snapshot, then
+arm the worker-to-reviewer and reviewer-to-coordinator wakes instead:
 
 ```sh
 REVIEWER=reviewer-thread-id

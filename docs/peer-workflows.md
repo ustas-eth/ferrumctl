@@ -47,18 +47,23 @@ idle, an empty wake can start its next turn without adding another message:
 codex-threadctl wake "$B"
 ```
 
-In B's thread, `CODEX_THREAD_ID` selects B's reader acknowledgement. B processes
-every returned entry in order and only then advances through `.lastPosition`
-from that exact result:
+In B's thread, `CODEX_THREAD_ID` selects B's reader acknowledgement:
 
 ```sh
 codex-streamctl list "$STREAM" --limit 0 --json
+```
+
+When entries are returned, B processes them in order and only then advances
+through the non-null `.lastPosition` from that exact result:
+
+```sh
 codex-streamctl ack "$STREAM" --through LAST_POSITION
 ```
 
-Acknowledgement is already durable reader state. It does not require a notice
-or a receipt entry. Missing, delayed, reordered, or duplicate notices are
-reconciled by listing after the saved acknowledgement.
+An empty result has nothing to acknowledge. Acknowledgement is already durable
+reader state. It does not require a notice or a receipt entry. Missing, delayed,
+reordered, or duplicate notices are reconciled by listing after the saved
+acknowledgement.
 
 ## Collaboration Cadence
 
