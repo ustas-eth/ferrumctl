@@ -14,7 +14,7 @@ class ParserTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 parser.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-streamctl 0.1.0\n")
+        self.assertEqual(output.getvalue(), "codex-streamctl 0.1.1\n")
 
     def test_global_options_work_after_subcommand(self):
         args = parser.build_parser().parse_args(

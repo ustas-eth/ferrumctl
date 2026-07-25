@@ -1,6 +1,6 @@
 interface:
   display_name: "Codex Streamctl"
-  short_description: "Share durable append-only agent streams"
-  default_prompt: "Use $codex-streamctl for a durable shared exchange between coding agents."
+  short_description: "Share durable append-only exchanges"
+  default_prompt: "Use $codex-streamctl to maintain a durable append-only exchange between coding agents."
 policy:
   allow_implicit_invocation: true

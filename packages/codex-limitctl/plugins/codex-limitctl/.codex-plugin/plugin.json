@@ -1,6 +1,6 @@
 {
   "name": "codex-limitctl",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Codex skill for inspecting subscription limits and usage signals.",
   "author": {
     "name": "ustas-eth"
@@ -17,7 +17,7 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Codex Limitctl",
-    "shortDescription": "Inspect Codex limits and usage signals.",
+    "shortDescription": "Inspect Codex limits and usage signals",
     "longDescription": "Codex Limitctl provides workflow guidance for current subscription capacity, daily account token activity, local rate-limit history, local thread activity, and capacity predicates.",
     "developerName": "ustas-eth",
     "category": "Productivity",

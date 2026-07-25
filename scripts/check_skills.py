@@ -52,7 +52,11 @@ def check_skill(path: Path) -> None:
         raise ValueError(f"{relative(path)}: description must be a nonempty string")
 
     agent_path = path.parent / "agents" / "openai.yaml"
-    agent = require_mapping(yaml.safe_load(agent_path.read_text()), agent_path, "document")
+    agent = require_mapping(
+        yaml.safe_load(agent_path.read_text()),
+        agent_path,
+        "document",
+    )
     interface = require_mapping(agent.get("interface"), agent_path, "interface")
     for key in ("display_name", "short_description", "default_prompt"):
         if not isinstance(interface.get(key), str) or not interface[key].strip():
@@ -75,6 +79,26 @@ def check_manifest(path: Path) -> None:
     skills_path = (path.parent.parent / manifest["skills"]).resolve()
     if not skills_path.is_dir():
         raise ValueError(f"{relative(path)}: skills path does not exist")
+
+    manifest_interface = require_mapping(
+        manifest.get("interface"),
+        path,
+        "interface",
+    )
+    agent_path = skills_path / expected_name / "agents" / "openai.yaml"
+    agent = require_mapping(yaml.safe_load(agent_path.read_text()), agent_path, "document")
+    agent_interface = require_mapping(agent.get("interface"), agent_path, "interface")
+    interface_fields = (
+        ("displayName", "display_name"),
+        ("shortDescription", "short_description"),
+        ("defaultPrompt", "default_prompt"),
+    )
+    for manifest_key, agent_key in interface_fields:
+        if manifest_interface.get(manifest_key) != agent_interface.get(agent_key):
+            raise ValueError(
+                f"{relative(path)}: interface.{manifest_key} must match "
+                f"{relative(agent_path)} interface.{agent_key}"
+            )
 
     package_dir = path.parents[3]
     metadata_path = package_dir / "pyproject.toml"

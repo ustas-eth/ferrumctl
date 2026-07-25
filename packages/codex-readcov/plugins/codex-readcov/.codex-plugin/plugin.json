@@ -1,6 +1,6 @@
 {
   "name": "codex-readcov",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Codex skill for inspecting transcript-recorded file-read actions.",
   "author": {
     "name": "ustas-eth"
@@ -17,7 +17,7 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Codex Readcov",
-    "shortDescription": "Inspect Codex transcript read actions.",
+    "shortDescription": "Inspect Codex transcript read actions",
     "longDescription": "Codex Readcov provides workflow guidance for using codex-readcov to inspect transcript-recorded file-read actions, compare snapshot deltas, filter paths, and compose path lists with Unix tools.",
     "developerName": "ustas-eth",
     "category": "Productivity",

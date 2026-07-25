@@ -1,7 +1,7 @@
 {
   "name": "codex-goalctl",
-  "version": "0.1.4",
-  "description": "Codex skill for coordinating Codex thread goals with codex-goalctl.",
+  "version": "0.1.5",
+  "description": "Codex skill for managing persisted thread goals with codex-goalctl.",
   "author": {
     "name": "ustas-eth"
   },
@@ -16,13 +16,13 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Codex Goalctl",
-    "shortDescription": "Coordinate Codex thread goals from an orchestrator.",
-    "longDescription": "Codex Goalctl provides workflow guidance for Codex sessions that assign, inspect, update, and clear persisted thread goals through the codex-goalctl host command.",
+    "shortDescription": "Manage persisted Codex thread goals",
+    "longDescription": "Codex Goalctl provides guidance for assigning, inspecting, updating, and clearing persisted Codex thread goals through the codex-goalctl host command.",
     "developerName": "ustas-eth",
     "category": "Productivity",
     "capabilities": [
-      "Thread goal management",
-      "Orchestrator workflow guidance"
+      "Persisted goal management",
+      "Goal lifecycle guidance"
     ],
     "defaultPrompt": "Use $codex-goalctl to assign a fresh goal to a Codex thread."
   }
