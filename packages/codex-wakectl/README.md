@@ -8,9 +8,6 @@ Use `add` to persist a wake that a runner will deliver later. The secondary
 process, sends no input, and persists no job. Immediate input, inspection, and
 interruption belong to `codex-threadctl`.
 
-Wakectl 0.3 moves its former `loaded`, `status`, `inspect`, and `interrupt`
-commands, along with immediate `send`, to that package.
-
 ## Install
 
 From the `ferrumctl` root:
@@ -39,17 +36,12 @@ Only threads loaded on that endpoint can receive input. When
 
 ## Examples
 
-Wake this thread later:
+Wake this thread later or wake a coordinator after worker progress:
 
 ```sh
 SELF=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
 codex-wakectl add time --after 10m --to "$SELF" \
   "Self-scheduled reminder: Review progress."
-```
-
-Wake a coordinator when a goal or later turn ends:
-
-```sh
 codex-wakectl add goal WORKER --status complete,blocked,budgetLimited,usageLimited \
   --to ORCH "Automated event: Worker goal reached a terminal status."
 codex-wakectl add stop WORKER --to ORCH \
@@ -60,18 +52,14 @@ An unqualified stop watch observes a completion after its creation boundary.
 When one particular turn is the target, use `--turn TURN_ID`; `--turn latest`
 explicitly binds the newest existing turn even if it has already ended.
 
-Wake when a host-visible condition becomes true:
+Host-visible conditions can also schedule input:
 
 ```sh
 codex-wakectl add cmd --to THREAD_ID \
   "Automated event: Input is ready." -- sh -c 'test -f done.txt'
 ```
 
-Messages arrive as ordinary thread input. Natural labels distinguish a
-self-reminder, condition notice, or coordinator message when the source would
-otherwise be ambiguous.
-
-Synchronously gate a script on a Codex condition:
+Use `wait` only when a script needs a synchronous exit status:
 
 ```sh
 codex-wakectl wait stop WORKER --max-wait 30m
@@ -84,10 +72,10 @@ codex-wakectl run
 codex-wakectl systemd install --interval 30s
 ```
 
-By default, wakectl starts input only when the target appears idle. With
-`--allow-active`, it uses native turn-scoped steering when a regular turn is
-active. The default queue is shared for the host user; keep job ids and cancel
-only jobs your workflow owns.
+Queued messages arrive as ordinary thread input. By default, delivery waits for
+the target to appear idle; `--allow-active` permits turn-scoped steering. The
+queue is shared by the host user, so retain job ids and cancel only jobs your
+workflow owns.
 
 More detail:
 

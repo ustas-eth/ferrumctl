@@ -11,6 +11,7 @@ HEADER = (
     "<!-- Generated from {source}. Do not edit directly. "
     "Run `python3 scripts/sync-skill-references.py`. -->\n\n"
 )
+GENERATED_PREFIX = "<!-- Generated from "
 
 
 def repo_root() -> Path:
@@ -40,10 +41,25 @@ def generated_text(source: str, text: str) -> str:
     return HEADER.format(source=source) + body
 
 
-def sync(*, check: bool) -> int:
-    root = repo_root()
+def generated_references(root: Path) -> set[Path]:
+    references = set()
+    pattern = "packages/*/plugins/*/skills/*/references/*.md"
+    for path in root.glob(pattern):
+        if path.read_text().startswith(GENERATED_PREFIX):
+            references.add(path.relative_to(root))
+    return references
+
+
+def sync(*, check: bool, root: Path | None = None) -> int:
+    root = root or repo_root()
     stale: list[str] = []
-    for source, targets in load_mapping(root):
+    mapping = load_mapping(root)
+    mapped_targets = {
+        target
+        for _, targets in mapping
+        for target in targets
+    }
+    for source, targets in mapping:
         source_path = root / source
         expected = generated_text(str(source), source_path.read_text())
         for target in targets:
@@ -56,6 +72,13 @@ def sync(*, check: bool) -> int:
             target_path.parent.mkdir(parents=True, exist_ok=True)
             target_path.write_text(expected)
             print(f"synced\t{target}")
+    orphans = sorted(generated_references(root) - mapped_targets)
+    if check:
+        stale.extend(str(path) for path in orphans)
+    else:
+        for path in orphans:
+            (root / path).unlink()
+            print(f"removed\t{path}")
     if stale:
         for target in stale:
             print(f"stale\t{target}", file=sys.stderr)
@@ -70,7 +93,7 @@ def main() -> int:
     parser.add_argument(
         "--check",
         action="store_true",
-        help="fail if generated references are stale",
+        help="fail if generated references are stale or no longer mapped",
     )
     args = parser.parse_args()
     return sync(check=args.check)

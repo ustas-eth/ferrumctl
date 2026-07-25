@@ -1,97 +1,110 @@
 # AGENTS
 
-`ferrumctl` is a small suite of host tools for Codex power users. The packages
-should feel like ordinary Unix commands: narrow purpose, predictable output,
-clear exit status, and easy composition with shell tools.
+`ferrumctl` is a small suite of host tools for Codex power users. Its packages
+should feel like ordinary Unix commands: narrow in purpose, predictable in
+output, explicit about failure, and easy to compose.
 
-## Design Posture
+## Engineering Posture
 
-Prefer boring primitives over orchestration frameworks. A command should expose
-one useful operation on one state surface; workflows belong in docs, skills, or
-the caller's script.
+Prefer simple primitives over orchestration frameworks. A command should expose
+one useful operation on one state surface; workflows belong in the caller,
+documentation, or an optional skill.
 
-A read-only orientation command may combine observations when that avoids
-guesswork, but it must preserve each source's label and freshness. Mutating
-commands should remain bound to one state surface.
+Let interfaces carry semantics. Prefer command structure, typed values, output
+fields, exit status, and tests over prose that tells an agent how to reason.
+Examples should clarify syntax or composition without making one workflow look
+mandatory.
 
-Keep the CLI layer neutral. Skills may recommend an opinionated Codex workflow,
-but the binaries should remain useful when installed and used separately.
+Use judgment where the codebase and surrounding context provide enough
+information. Add a durable rule only for a non-obvious invariant, product
+decision, or recurring failure that cannot be designed away. When misuse
+recurs, first ask whether the command boundary, naming, or output can make the
+correct choice clearer.
 
-Avoid convenience abstractions until the repeated use case is obvious. Do not
-introduce a suite wrapper, shared daemon, or common library just to make the
-repo look unified. A cross-package dependency must represent a real behavioral
-layer; wakectl depends on threadctl's client because deferred delivery must use
-the same turn-scoped app-server operations as immediate control.
+Keep each CLI useful on its own. Do not add a suite wrapper, shared daemon, or
+common library merely for uniformity. A cross-package dependency must represent
+a real behavioral dependency; wakectl uses threadctl's client because deferred
+and immediate delivery must share the same turn-scoped app-server operations.
+
+## Context Discipline
+
+Treat this file as durable workspace context, not a development manual. Keep
+project purpose, architectural boundaries, lasting preferences, and expensive
+gotchas here. Put command syntax in help, package mechanics in docs, and
+task-specific decisions in the relevant work.
+
+Do not repeat guidance across `AGENTS.md`, skills, references, and READMEs just
+to make it more forceful. Give each fact one natural home and reference it when
+needed. Preserve important constraints, but avoid blanket instructions that
+replace sound engineering judgment.
 
 ## System Boundaries
 
-The tools touch several independent Codex surfaces:
+The tools observe or mutate independent state surfaces:
 
 - live app-server state
-- account rate-limit snapshots
-- persisted goal state
-- the streamctl SQLite exchange store
 - materialized thread and turn history
+- persisted goal state
 - rollout transcript files
+- account rate-limit snapshots
+- the streamctl SQLite exchange store
 - the wakectl SQLite queue
 
-Those surfaces can be out of sync. Code and docs should not imply stronger
-consistency than Codex actually provides.
+These surfaces can differ in freshness and can disagree without either being
+corrupt. Code, output, and documentation must identify the source being
+reported and must not imply stronger consistency than Codex provides.
 
-`codex-wakectl` is the most stateful package because it coordinates queued jobs,
-condition cursors, leases, and delivery policy. Treat changes there as
-coordination changes, not simple CLI plumbing.
+A read-only orientation command may combine observations when that removes
+guesswork, provided each source retains its meaning and freshness. A mutating
+command should remain bound to one state surface.
 
-`codex-streamctl` owns only append-only stream entries and cumulative reader
-acknowledgements. Keep publication, notification, wake, and acknowledgement as
-separate operations. An acknowledgement is a processed-through cursor, not a
-delivery receipt. Advisory notices can interrupt active reasoning; batch nearby
-appends and do not create notification receipts or acknowledgement loops.
+## Package Contracts
 
-`codex-threadctl` depends on materialized turn pagination and selected rollout
-records. It owns synchronous app-server start, steer, resume, and interruption
-operations used by wakectl, plus advisory item injection and empty-turn wake.
-Keep message locators composite and preserve the distinction between accepted
-requests, confirmed delivery, and persisted history.
+- `codex-goalctl` manages persisted goal state. Goal writes do not wake a
+  thread, and `replace` is intentionally a fresh clear-then-set assignment.
+- `codex-threadctl` combines live app-server operations with selected persisted
+  history. Preserve composite message locators and distinguish request
+  acceptance, confirmed delivery, and materialized history.
+- `codex-wakectl` coordinates durable jobs, condition cursors, leases, and
+  delivery policy. It is the most stateful package; treat changes to it as
+  coordination changes rather than ordinary CLI plumbing.
+- `codex-streamctl` owns append-only entries and cumulative processed-through
+  acknowledgements. Publication, notification, wake, and acknowledgement are
+  separate operations; an acknowledgement is not a delivery receipt.
+- `codex-readcov` reports transcript-recorded read actions, not verified file
+  access or an operating-system audit log. Reject evidence that cannot be
+  resolved reliably rather than silently under-counting it.
+- `codex-limitctl` exposes read-only capacity and usage signals. Keep current
+  account reads distinct from account-unscoped rollout history, and do not
+  expose credit data or consumable resets.
 
-`codex-readcov` reports transcript-recorded read actions, not verified file
-access or an operating-system audit log. It must reject unresolved dynamic
-command envelopes instead of silently under-counting. Negative-coverage
-examples must choose an expected universe and use the rollout cwd path
-namespace. `codex-goalctl replace` is clear-then-set.
+## Documentation Roles
 
-`codex-limitctl` owns read-only account capacity and usage signals. Keep current
-account reads distinct from account-unscoped rollout history, normalize windows
-by limit id and duration, and never pass through credit data or consumable
-resets.
+- Package READMEs give humans a quick understanding of value and installation.
+- Command help is the primary syntax reference.
+- Package docs describe mechanics, tradeoffs, and failure modes in neutral
+  language.
+- Skill descriptions route an agent to the right capability and state only the
+  exclusions needed to prevent likely misuse.
+- Skill bodies explain primitive selection and operational invariants from the
+  acting agent's point of view.
+- Skill references add low-level semantics, edge cases, and troubleshooting;
+  they do not repeat the quickstart.
 
-## Working Rules
+Split a document when it starts mixing distinct purposes. Keep generated skill
+references synchronized with `python3 scripts/sync-skill-references.py`.
+Preserve explicit binary names such as `codex-goalctl`; `ferrumctl` is the
+repository and suite name, not a command.
 
-- Keep package READMEs short and user-facing.
-- Keep package docs neutral. They should describe package mechanics,
-  tradeoffs, and failure modes; they should not read like instructions to a
-  particular agent.
-- Keep skill bodies agent-facing and operational. Skills should teach when to
-  use a command, which primitive to choose, and what convention to follow.
-- Keep skill references additive. Do not copy the skill quickstart into
-  references; use references for low-level mechanics, edge cases, and
-  troubleshooting.
-- Split docs by purpose when a catch-all page starts mixing semantics,
-  practices, and troubleshooting.
-- Keep generated skill references in sync with
-  `python3 scripts/sync-skill-references.py`.
-- Preserve explicit binary names such as `codex-goalctl`; `ferrumctl` is the
-  repository and suite name, not a command.
-- When depending on Codex app-server methods, transcript schema, or parser
-  output, keep the dependency narrow and name it in docs or tests.
-- Test stateful workflows through persisted command transitions, not only the
-  helper functions that calculate each step.
-- Keep delegated review focused: use at most two reviewers at `xhigh` effort,
-  and do not use `max`.
-- Use scoped commit headers in the form `type(scope): description`; use `repo`
-  for cross-package changes. Preserve intent or user-visible outcome instead
-  of narrating files, and use the body for non-obvious rationale or tradeoffs.
-  The tracked hook and accepted values are described in `CONTRIBUTING.md`.
-- Use `scripts/update-local.py` after changing locally installed commands or
-  plugins. `codex plugin add` updates files on disk, but does not invalidate a
-  separate persistent app-server's plugin cache.
+## Development
+
+Keep dependencies on Codex app-server methods, transcript schemas, and parser
+output narrow and visible in documentation or tests. Test stateful behavior
+through persisted command transitions, not only helper functions.
+
+Follow `CONTRIBUTING.md` for verification and commit conventions. Keep delegated
+review focused: use at most two reviewers at `xhigh` effort, never `max`.
+
+Use `scripts/update-local.py` after changing locally installed commands or
+plugins. `codex plugin add` updates files on disk but does not invalidate a
+separate persistent app-server's plugin cache.

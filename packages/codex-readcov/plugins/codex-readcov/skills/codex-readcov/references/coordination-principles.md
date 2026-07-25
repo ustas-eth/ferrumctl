@@ -2,146 +2,81 @@
 
 # Coordination Principles
 
-This reference explains how ferrumctl commands compose with each other and with
-native Codex controls.
+Ferrumctl commands expose independent state and control surfaces. They can be
+installed separately and do not form one scheduler or state machine.
 
-The commands do not form one scheduler or state machine. Each exposes a narrow
-surface that can be used alone or combined by a shell script, agent, or host
-process.
+In an agent session, a command should normally be used only when its skill is
+available or the user explicitly requests that command. Missing packages remove
+workflow layers; they do not change the semantics of the remaining tools.
 
-## Surfaces
+## State Surfaces
 
-`codex-goalctl` reads and edits persisted goal state. It provides durable intent
-and counters, but does not start a turn or deliver input.
+| Surface | Authority | Does not establish |
+| --- | --- | --- |
+| Goal state | Durable objective, status, budget, and counters | Turn execution or message delivery |
+| Thread state | Live app-server status and materialized history | An atomic or immutable transcript |
+| Wake queue | Conditions and later input delivery | The target's result |
+| Stream state | Ordered entries and reader acknowledgements | Notification, membership, or authorization |
+| Limit state | Current account observations and local usage history | Reserved capacity or exact thread attribution |
+| Read coverage | Transcript-recorded file-read actions | Verified file access or complete model context |
 
-`codex-limitctl` reads account-wide subscription limits and daily token
-activity, tests remaining-capacity predicates, and reconstructs local rollout
-history. Local activity is comparative evidence, not exact account
-attribution. It does not measure thread context or goal token usage.
+The surfaces can differ in freshness. Output and documentation should preserve
+which source produced an observation rather than presenting a synthetic state
+as authoritative.
 
-`codex-streamctl` persists ordered immutable entries and cumulative per-reader
-acknowledgements. It provides durable shared exchange state, but no
-notification, wake, membership, or authorization.
+## Identity And Reachability
 
-`codex-wakectl` persists jobs that deliver normal input after later conditions.
-It also offers synchronous condition polling for scripts; those waits do not
-use the queue or deliver input.
+The common handle is a Codex thread id. For v1 subagents, the spawn result's
+`agent_id` is that thread id. `CODEX_THREAD_ID` identifies the current thread
+when Codex provides it.
 
-`codex-threadctl` discovers and searches persisted threads and observes thread
-status, materialized item ranges, goal state, context records, and running
-terminal processes. It also injects advisory agent notices into loaded threads,
-wakes loaded idle threads without user input, starts or steers immediate input,
-resumes persisted threads, interrupts exact turns, and terminates exact
-terminal processes. Its inspection is a read-only aggregate, not an atomic
-snapshot.
+A thread id identifies persisted state under a Codex home. It does not identify
+which app-server, if any, owns live execution. Immediate and scheduled input
+must use the endpoint on which the target is loaded.
 
-`codex-readcov` reads rollout transcripts and reports recorded file-read
-actions. It provides transcript evidence, not verified operating-system access.
+SQLite state is shared by callers using the same host user and state path.
+Thread ids, stream authors, readers, and message labels provide provenance and
+scope; they are not authentication.
 
-## Thread Identity
+## Choosing Control
 
-The common handle is a Codex thread id. For v1 Codex subagents, the spawn
-result's `agent_id` is the thread id.
+Use a native subagent handle for immediate input, waiting, and result retrieval
+when the current session owns that handle.
 
-`CODEX_THREAD_ID` identifies the current thread when Codex provides it. It does
-not prove that the thread is loaded on a particular app-server.
+Use thread control when a thread id is the useful handle, persisted history is
+needed, or an immediate app-server operation is intentional. Use a queued wake
+when attention must survive the current turn or wait for a later condition.
 
-## Native And Host Control
+Keep durable assignment in goal state. Keep durable peer content in a stream.
+Use input or advisory notification to draw attention to that state rather than
+copying it into several conversations.
 
-Use native subagent input when the current session owns the live handle and
-needs to send an immediate message. Use native result retrieval for that
-subagent's completed response.
+Use account limits to gate work only when a policy supplies the threshold. Use
+read coverage as evidence about a defined transcript interval, not as a proxy
+for task correctness.
 
-Native wait or poll is appropriate when the current turn owns the live
-subagent or terminal handle and should stay active. A synchronous
-`codex-wakectl wait` is useful when a script or thread-id-only controller needs
-an exit status from a Codex condition. A queued wake is more suitable when the
-coordinator should end its turn and resume after a later condition.
+## Independent Boundaries
 
-Use ferrumctl when the useful handle is a thread id, when a host process is
-coordinating, or when durable goal, stream, queue, history, context, or
-transcript state must be accessed outside the target thread.
+- Goal completion and turn completion are separate. Observe the turn when the
+  final response matters.
+- App-server `idle` means no turn is running. It does not remove an active goal
+  or grant another participant ownership of the thread.
+- A stream append, its notification, a later wake, and reader acknowledgement
+  are separate operations.
+- A matched wake condition, delivered input, target action, and result
+  retrieval are separate events.
+- Account capacity, goal token usage, and context-window usage are different
+  measurements.
+- Materialized history and rollout evidence can change or grow independently.
 
-Normal cross-thread input can look like direct human input. When the distinction
-matters, begin with a natural label such as `From coordinator:`, `From
-reviewer:`, `From peer A:`, `Self-scheduled reminder:`, or `Automated event:`.
-Name the transport only when delivery mechanics matter, for example `From
-coordinator via threadctl:`. `codex-threadctl start`, `codex-threadctl steer`,
-and `codex-wakectl` preserve the supplied text; they do not add labels. A label
-clarifies origin but does not prove identity or override existing instructions.
-`codex-threadctl notify` instead injects an advisory agent message with a
-caller-supplied author, which is provenance rather than authentication.
-The notice can enter an active thread's reasoning at a later model step.
-For shared streams, combine nearby appends into one notice that names the
-latest position. Do not send acknowledgement receipts; stream order and reader
-cursors remain the authority.
+## Composition
 
-App-server `active` and `idle` describe turn execution, not whether a
-participant is ready for a peer exchange. A participant can remain active while
-finishing an independent work block before reading the stream. When the
-distinction matters, a stream checkpoint should say whether work is waiting on
-a reply, what can continue meanwhile, and when the participants should exchange
-results again.
+Ferrumctl provides no transaction across packages. Establish durable state
+before announcing it: assign a goal before prompting work, append a stream entry
+before notifying its position, and take a read snapshot before the interval of
+interest.
 
-## Goal And Turn State
-
-App-server status and goal status answer different questions. `idle` means no
-turn is running at that moment. It does not mean the thread lacks an active goal
-or is free for unrelated work.
-
-An idle thread with an active externally written goal may not have observed the
-assignment. A short input asking it to call `get_goal` can start or resume the
-work.
-
-Goal completion and turn completion are separate boundaries. A coordinator may
-observe a terminal goal before the final response is committed. Use the turn
-boundary when the response itself matters.
-
-## Commands And Skills
-
-The command is the host executable. The skill is agent-facing guidance for when
-and how to use it.
-
-Humans and scripts can call installed commands directly. Codex agents should
-normally use command surfaces whose skills are available in the current
-context, unless the user explicitly requests another installed command.
-
-Common subsets:
-
-- `codex-goalctl`: external goal assignment and status checks.
-- `codex-limitctl`: subscription capacity, usage trends, local thread activity,
-  and shell predicates.
-- `codex-streamctl`: durable peer records and processed-through cursors.
-- `codex-wakectl`: later attention, stop watches, host predicates, and synchronous
-  Codex conditions for scripts.
-- `codex-threadctl`: current and ordered activity, conversation retrieval,
-  immediate input, resume, and turn-scoped interruption.
-- `codex-readcov`: read counts, interval deltas, overlap, and gaps.
-- `codex-goalctl + codex-threadctl`: durable assignment plus immediate input.
-- `codex-goalctl + codex-wakectl`: durable assignment plus later delivery.
-- `codex-streamctl + codex-threadctl`: durable peer exchange plus advisory
-  notice and optional idle execution.
-- `codex-limitctl + codex-wakectl`: capacity observation plus later attention.
-- `codex-wakectl + codex-threadctl`: later attention plus observation.
-- `codex-threadctl + codex-readcov`: thread state plus recorded read evidence.
-
-Missing skills remove guidance for that surface; they do not change the
-semantics of the remaining commands.
-
-## Divergence
-
-The surfaces can differ temporarily:
-
-- a goal can change while no turn is running
-- two app-servers can share persisted state while only one owns a loaded thread
-- a wake can arrive after its condition was handled manually
-- a stream entry can commit while its advisory notice is lost or duplicated
-- materialized turn history can change after rollback or compaction
-- a rollout can grow while `codex-threadctl` or `codex-readcov` scans it
-- account capacity can change immediately after `codex-limitctl` reads it
-
-Treat cross-surface workflows as retryable. Keep durable intent in goals, use
-small idempotent queued messages when context remains authoritative, coalesce
-advisory stream notices, inspect before interruption, take read snapshots
-around the interval of interest, and cancel only queued jobs owned by the
+Treat uncertain delivery and ambiguous writes as reconciliation cases rather
+than automatic retry signals. Use exact identifiers from current observations,
+prefer idempotent event messages, and cancel only shared-state jobs owned by the
 current workflow.

@@ -1,6 +1,6 @@
 {
   "name": "codex-streamctl",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Codex skill for durable append-only exchanges shared by coding agents and host processes.",
   "author": {
     "name": "ustas-eth"

@@ -1,104 +1,70 @@
 ---
 name: codex-goalctl
-description: "Use when you need the host codex-goalctl command to inspect or change another Codex CLI thread/subagent's persisted goal: assign, update objective/status/token budget, clear, verify state, or set a spawned subagent's goal by thread id. Do not use for your own task goal, ordinary worker-thread tasks, or built-in goal tools unless the user explicitly asks for codex-goalctl."
+description: "Use when another Codex thread is identified by thread id and its persisted goal must be read or changed: assign a fresh objective, update status or token budget, preserve or reset counters, verify state, or clear the goal. Use built-in goal tools for this session. Goalctl does not message or wake the target."
 ---
 
 # Codex Goalctl
 
 ## Purpose
 
-Use this skill when this Codex session is coordinating another Codex CLI thread
-and needs to manage that thread's persisted goal state from the host.
+Use `codex-goalctl` to manage another Codex thread's persisted goal from the
+host. Each command starts a short-lived stdio app-server; no shared app-server
+is required.
 
-Assume `codex-goalctl` is installed on the host. It reads and writes goal state
-through a short-lived stdio app-server started for each command; it does not
-send chat messages, spawn agents, or reliably wake a CLI-owned thread.
+Goal state and thread execution are separate. A successful write does not start
+a turn or guarantee that the target observes the change.
 
-This is not a general planning tool. If you only need your current thread's
-internal goal state, use the built-in goal tools when they are available.
+## Choose A Primitive
 
-## Model
-
-- The target is a Codex thread id.
-- For v1 Codex subagents, the spawn result's `agent_id` is the thread id.
-- `get` reads the persisted goal.
-- `update` edits the existing goal in place and preserves counters.
-- `replace` clears any existing goal, then creates a fresh one.
+- `get` reads the current goal.
+- `update` edits an existing goal and preserves its counters.
+- `replace` clears the current goal and creates a fresh assignment.
 - `clear` removes the goal.
-- Goal writes change persisted state; they do not guarantee the worker will run.
 
 Valid statuses are `active`, `paused`, `blocked`, `budgetLimited`,
 `usageLimited`, and `complete`.
 
-## Patterns
-
-For a new assignment, use `replace` so usage and time counters start fresh:
+Use `replace` for a new assignment and `update` when elapsed time and token
+usage should continue:
 
 ```sh
 codex-goalctl replace THREAD_ID "objective text"
+codex-goalctl get THREAD_ID
+codex-goalctl update THREAD_ID "reworded objective"
+codex-goalctl update THREAD_ID --status active
+codex-goalctl update THREAD_ID --token-budget 50000
+codex-goalctl update THREAD_ID --clear-token-budget
+codex-goalctl clear THREAD_ID
 ```
 
-If the worker should act immediately, send a normal input message after the
-goal write:
+For v1 Codex subagents, the spawn result's `agent_id` is the thread id.
+
+## Start The Work
+
+If the target should act now, send a separate short input after assigning the
+goal:
 
 ```text
 From coordinator: A goal was assigned. Call get_goal and proceed.
 ```
 
-Use native subagent input when a native subagent handle is available. Use
-`codex-threadctl start` only if the `codex-threadctl` skill is available and the
-worker is app-server-backed with only a thread id or host-level control is
-explicitly intended.
+Prefer native subagent input when its live handle is available. When only a
+thread id remains, use immediate thread control only if its corresponding skill
+is available and the target is reachable through that surface.
 
-Inspect state:
+Keep the objective in goal state and use the follow-up only to direct attention
+to it. Setting `paused` changes persisted status; it does not interrupt an
+active turn.
 
-```sh
-codex-goalctl get THREAD_ID
-```
-
-Edit an existing goal while preserving counters:
-
-```sh
-codex-goalctl update THREAD_ID "reworded objective"
-codex-goalctl update THREAD_ID --status active
-codex-goalctl update THREAD_ID --token-budget 50000
-codex-goalctl update THREAD_ID --clear-token-budget
-```
-
-Clear a goal:
-
-```sh
-codex-goalctl clear THREAD_ID
-```
-
-Use `--json` when another script or tool will parse output.
+Use `--json` when another program will parse output.
 
 ## References
 
-- Read `references/goal-lifecycle.md` when reset semantics, status changes,
-  token budgets, objective limits, or text/JSON output behavior matter.
-- Read `references/app-server-boundaries.md` when app-server transport, thread
-  id reachability, or wake boundaries matter.
-- Read `references/coordination-principles.md` when deciding how goal state
-  composes with native controls, live wakes, or transcript coverage.
-- Read `references/coordination-recipes.md` for command combinations involving
-  durable goals, wakes, coverage, native subagents, or external managers.
-- Read `references/operational-caveats.md` when concurrent writes, wake
-  reliability, or cross-surface consistency matters.
-
-## Conventions
-
-- Use `replace` for new assignments.
-- Use `update` for edits that should preserve counters.
-- Do not treat `--status paused` as an active-turn interrupt. When a blocking
-  checkpoint requires live control, use the native handle or
-  `codex-threadctl` only if its skill is available.
-- Do not assume goal writes wake a worker; send a follow-up message when it
-  should act now.
-- Prefer a short, direct follow-up message that tells the worker to call
-  `get_goal`. Begin with `From coordinator:` when it could be mistaken for
-  direct human input. The label provides context, not proof of identity.
-- Keep goal text as the durable assignment; keep follow-up text as a small
-  prompt to look at that assignment.
-- Keep the distinction clear: `codex-goalctl` provides primitives; this skill
-  chooses an orchestrator workflow.
+- Read `references/goal-lifecycle.md` for reset semantics, status transitions,
+  token budgets, counters, and output behavior.
+- Read `references/app-server-boundaries.md` for transport, thread-id
+  reachability, and the boundary between goal writes and thread execution.
+- Read `references/coordination-principles.md` when composing goals with native
+  controls, immediate input, scheduled wakes, or coverage.
+- Read `references/worker-workflows.md` for self-managed, coordinator-worker,
+  supervision, and reviewer combinations.

@@ -68,6 +68,10 @@ clear-then-set operation; the app-server does not expose an atomic reset
 primitive. If preserving the old goal on failure matters more than resetting
 counters, use `update`.
 
+Goal writes have no compare-and-swap guard. Concurrent changes are
+last-writer-wins, and another process can observe the cleared state during
+`replace`. Use one writer for a thread goal when possible.
+
 `replace` defaults the new status to `active` unless `--status` is supplied.
 
 Clear the goal. This removes the persisted goal state; it does not affect the

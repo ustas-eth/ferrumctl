@@ -12,25 +12,29 @@
       ]
     },
     {
-      "source": "docs/coordination-recipes.md",
+      "source": "docs/worker-workflows.md",
       "targets": [
-        "packages/codex-goalctl/plugins/codex-goalctl/skills/codex-goalctl/references/coordination-recipes.md",
-        "packages/codex-limitctl/plugins/codex-limitctl/skills/codex-limitctl/references/coordination-recipes.md",
-        "packages/codex-streamctl/plugins/codex-streamctl/skills/codex-streamctl/references/coordination-recipes.md",
-        "packages/codex-wakectl/plugins/codex-wakectl/skills/codex-wakectl/references/coordination-recipes.md",
-        "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/coordination-recipes.md",
-        "packages/codex-readcov/plugins/codex-readcov/skills/codex-readcov/references/coordination-recipes.md"
+        "packages/codex-goalctl/plugins/codex-goalctl/skills/codex-goalctl/references/worker-workflows.md",
+        "packages/codex-wakectl/plugins/codex-wakectl/skills/codex-wakectl/references/worker-workflows.md",
+        "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/worker-workflows.md",
+        "packages/codex-readcov/plugins/codex-readcov/skills/codex-readcov/references/worker-workflows.md"
       ]
     },
     {
-      "source": "docs/operational-caveats.md",
+      "source": "docs/peer-workflows.md",
       "targets": [
-        "packages/codex-goalctl/plugins/codex-goalctl/skills/codex-goalctl/references/operational-caveats.md",
-        "packages/codex-limitctl/plugins/codex-limitctl/skills/codex-limitctl/references/operational-caveats.md",
-        "packages/codex-streamctl/plugins/codex-streamctl/skills/codex-streamctl/references/operational-caveats.md",
-        "packages/codex-wakectl/plugins/codex-wakectl/skills/codex-wakectl/references/operational-caveats.md",
-        "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/operational-caveats.md",
-        "packages/codex-readcov/plugins/codex-readcov/skills/codex-readcov/references/operational-caveats.md"
+        "packages/codex-streamctl/plugins/codex-streamctl/skills/codex-streamctl/references/peer-workflows.md",
+        "packages/codex-wakectl/plugins/codex-wakectl/skills/codex-wakectl/references/peer-workflows.md",
+        "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/peer-workflows.md"
+      ]
+    },
+    {
+      "source": "docs/host-automation.md",
+      "targets": [
+        "packages/codex-limitctl/plugins/codex-limitctl/skills/codex-limitctl/references/host-automation.md",
+        "packages/codex-wakectl/plugins/codex-wakectl/skills/codex-wakectl/references/host-automation.md",
+        "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/host-automation.md",
+        "packages/codex-readcov/plugins/codex-readcov/skills/codex-readcov/references/host-automation.md"
       ]
     },
     {

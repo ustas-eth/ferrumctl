@@ -180,7 +180,11 @@ codex-wakectl systemd install --interval 30s
 The default wake queue is shared for the host user. Keep job ids for wakes you
 create, and do not cancel jobs owned by other workflows.
 
-More combinations are in [docs/coordination-recipes.md](docs/coordination-recipes.md).
+More combinations:
+
+- [Worker workflows](docs/worker-workflows.md)
+- [Peer workflows](docs/peer-workflows.md)
+- [Host automation](docs/host-automation.md)
 
 ## Layout
 
@@ -203,8 +207,9 @@ Package READMEs are short landing pages. Low-level docs live beside each
 package. Shared docs:
 
 - [docs/coordination-principles.md](docs/coordination-principles.md)
-- [docs/coordination-recipes.md](docs/coordination-recipes.md)
-- [docs/operational-caveats.md](docs/operational-caveats.md)
+- [docs/worker-workflows.md](docs/worker-workflows.md)
+- [docs/peer-workflows.md](docs/peer-workflows.md)
+- [docs/host-automation.md](docs/host-automation.md)
 - [docs/future-directions.md](docs/future-directions.md)
 
 Selected docs are copied into skill `references/` so installed Codex skills can
