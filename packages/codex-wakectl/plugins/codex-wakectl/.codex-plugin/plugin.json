@@ -1,6 +1,6 @@
 {
   "name": "codex-wakectl",
-  "version": "0.3.9",
+  "version": "0.4.0",
   "description": "Codex skill for scheduling thread input by time or condition.",
   "author": {
     "name": "ustas-eth"
@@ -18,11 +18,12 @@
   "interface": {
     "displayName": "Codex Wakectl",
     "shortDescription": "Schedule timed and conditional thread input",
-    "longDescription": "Codex Wakectl provides guidance for durable wakes by time or condition, queue runners, active-turn delivery, repeating milestones, and blocking waits for scripts and thread-id-only controllers.",
+    "longDescription": "Codex Wakectl provides guidance for durable wakes by time or condition, v2 agent-path conditions, queue runners, active-turn delivery, repeating milestones, and blocking waits for scripts and thread-id-only controllers.",
     "developerName": "ustas-eth",
     "category": "Productivity",
     "capabilities": [
       "Timed and conditional thread wakes",
+      "V2 agent-path condition resolution",
       "Durable wake-job management",
       "Systemd timer guidance",
       "Blocking condition waits for scripts"

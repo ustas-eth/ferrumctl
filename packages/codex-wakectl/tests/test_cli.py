@@ -28,7 +28,7 @@ class ParseTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 parser.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-wakectl 0.3.9\n")
+        self.assertEqual(output.getvalue(), "codex-wakectl 0.4.0\n")
 
     def test_parse_duration(self) -> None:
         self.assertEqual(parsing.parse_duration("10s"), 10)
@@ -191,6 +191,74 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(condition["type"], "stop")
         self.assertTrue(condition["repeat"])
         self.assertEqual(condition["maxFires"], 3)
+
+    def test_agent_tree_scope_is_available_for_path_conditions_and_targets(self) -> None:
+        add_args = parser.build_parser().parse_args(
+            [
+                "add",
+                "goal",
+                "/root/worker",
+                "--status",
+                "complete",
+                "--to",
+                "/root",
+                "worker complete",
+                "--tree",
+                "root-thread",
+            ]
+        )
+        wait_args = parser.build_parser().parse_args(
+            [
+                "wait",
+                "stop",
+                "/root/worker",
+                "--tree",
+                "root-thread",
+            ]
+        )
+
+        self.assertEqual(add_args.tree, "root-thread")
+        self.assertEqual(wait_args.tree, "root-thread")
+
+    def test_add_cmd_requires_wakectl_options_before_message(self) -> None:
+        valid = parser.build_parser().parse_args(
+            [
+                "add",
+                "cmd",
+                "--tree",
+                "root-thread",
+                "--to",
+                "thread",
+                "ready",
+                "--",
+                "test",
+                "-f",
+                "done",
+            ]
+        )
+        misplaced = parser.build_parser().parse_args(
+            [
+                "add",
+                "cmd",
+                "--to",
+                "thread",
+                "ready",
+                "--tree",
+                "root-thread",
+                "--",
+                "test",
+                "-f",
+                "done",
+            ]
+        )
+
+        self.assertEqual(valid.tree, "root-thread")
+        self.assertEqual(valid.argv, ["test", "-f", "done"])
+        with self.assertRaisesRegex(
+            WakectlError,
+            "--tree must appear before MESSAGE",
+        ):
+            commands._reject_misplaced_add_cmd_option(misplaced)
 
     def test_stop_accepts_exact_or_latest_turn(self) -> None:
         add_args = parser.build_parser().parse_args(
@@ -622,6 +690,52 @@ class ConditionTests(unittest.TestCase):
         self.assertEqual(result, 1)
         self.assertLess(elapsed, 0.5)
 
+    def test_wait_max_wait_includes_agent_path_resolution(self) -> None:
+        class FakeAppServer:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args: object) -> None:
+                return None
+
+        async def slow_resolution(*args: object, **kwargs: object) -> None:
+            await asyncio.sleep(1)
+
+        args = argparse.Namespace(
+            thread_id="/root/worker",
+            tree="root-thread",
+            condition_builder=lambda _: {
+                "type": "goal",
+                "threadId": "worker",
+                "statuses": ["complete"],
+            },
+            max_wait=0.05,
+            timeout=1.0,
+            endpoint="unix://",
+            poll_interval=0.01,
+            json=True,
+        )
+
+        started = time.monotonic()
+        with (
+            mock.patch.object(
+                commands,
+                "wakectl_appserver",
+                return_value=FakeAppServer(),
+            ),
+            mock.patch.object(
+                commands,
+                "resolve_condition_reference",
+                slow_resolution,
+            ),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            result = asyncio.run(commands.cmd_wait(args))
+        elapsed = time.monotonic() - started
+
+        self.assertEqual(result, 1)
+        self.assertLess(elapsed, 0.5)
+
     def test_wait_reconnects_for_each_appserver_poll(self) -> None:
         opened = 0
         closed = 0
@@ -728,6 +842,162 @@ class ConditionTests(unittest.TestCase):
             self.assertEqual(jobs[0]["endpoint"], f"unix://{expected_socket}")
             self.assertTrue(jobs[0]["allowActive"])
             self.assertEqual(jobs[0]["timeout"], 45.0)
+
+    def test_add_resolves_agent_paths_once_before_persisting(self) -> None:
+        class FakeAppServer:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args: object) -> None:
+                return None
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "jobs.sqlite3"
+            args = parser.build_parser().parse_args(
+                [
+                    "add",
+                    "goal",
+                    "/root/worker",
+                    "--status",
+                    "complete",
+                    "--to",
+                    "/root",
+                    "worker complete",
+                    "--tree",
+                    "root-thread",
+                    "--state",
+                    str(path),
+                ]
+            )
+
+            with (
+                mock.patch.object(
+                    commands,
+                    "wakectl_appserver",
+                    return_value=FakeAppServer(),
+                ),
+                mock.patch.object(
+                    commands,
+                    "resolve_thread_reference",
+                    mock.AsyncMock(return_value="worker-thread"),
+                ) as resolve_condition,
+                mock.patch.object(
+                    commands,
+                    "resolve_agent_path",
+                    mock.AsyncMock(
+                        return_value={
+                            "threadId": "root-thread",
+                            "inputOwner": "direct",
+                        }
+                    ),
+                ) as resolve_target,
+                mock.patch.object(commands, "seed_goal_job", mock.AsyncMock()),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                self.assertEqual(asyncio.run(args.func(args)), 0)
+
+            stored = state.list_jobs(path)[0]
+            self.assertEqual(stored["condition"]["threadId"], "worker-thread")
+            self.assertEqual(stored["targetThreadId"], "root-thread")
+            resolve_condition.assert_awaited_once_with(
+                mock.ANY,
+                "/root/worker",
+                tree_thread_id="root-thread",
+            )
+            resolve_target.assert_awaited_once_with(
+                mock.ANY,
+                "/root",
+                tree_thread_id="root-thread",
+            )
+
+    def test_add_rejects_parent_owned_agent_path_as_delivery_target(self) -> None:
+        class FakeAppServer:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args: object) -> None:
+                return None
+
+        args = parser.build_parser().parse_args(
+            [
+                "add",
+                "time",
+                "--after",
+                "1m",
+                "--to",
+                "/root/worker",
+                "wake",
+                "--tree",
+                "root-thread",
+            ]
+        )
+        with (
+            mock.patch.object(
+                commands,
+                "wakectl_appserver",
+                return_value=FakeAppServer(),
+            ),
+            mock.patch.object(
+                commands,
+                "resolve_agent_path",
+                mock.AsyncMock(
+                    return_value={
+                        "threadId": "worker-thread",
+                        "inputOwner": "parent",
+                    }
+                ),
+            ),
+        ):
+            with self.assertRaisesRegex(
+                WakectlError,
+                "cannot receive scheduled input",
+            ):
+                asyncio.run(args.func(args))
+
+    def test_wait_resolves_agent_path_before_evaluating_condition(self) -> None:
+        class FakeAppServer:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args: object) -> None:
+                return None
+
+        args = parser.build_parser().parse_args(
+            [
+                "wait",
+                "goal",
+                "/root/worker",
+                "--status",
+                "complete",
+                "--tree",
+                "root-thread",
+                "--max-wait",
+                "1m",
+            ]
+        )
+        ready = mock.AsyncMock(return_value=(True, {}, "goal predicate matched"))
+        with (
+            mock.patch.object(
+                commands,
+                "wakectl_appserver",
+                return_value=FakeAppServer(),
+            ),
+            mock.patch.object(
+                commands,
+                "resolve_thread_reference",
+                mock.AsyncMock(return_value="worker-thread"),
+            ) as resolve,
+            mock.patch.object(commands, "condition_ready", ready),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            self.assertEqual(asyncio.run(args.func(args)), 0)
+
+        resolve.assert_awaited_once_with(
+            mock.ANY,
+            "/root/worker",
+            tree_thread_id="root-thread",
+        )
+        self.assertEqual(ready.await_args.args[1]["threadId"], "worker-thread")
 
     def test_cmd_add_stop_seeds_persisted_turn_cursor(self) -> None:
         class FakeAppServer:

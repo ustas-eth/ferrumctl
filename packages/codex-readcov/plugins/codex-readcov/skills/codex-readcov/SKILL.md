@@ -38,6 +38,13 @@ Use `top` when the complete retained history is deliberately the window:
 codex-readcov top THREAD_ID PATH --limit 20
 ```
 
+A v2 agent path is not a rollout identifier. If the threadctl skill is
+available, resolve the path and pass its thread id to readcov:
+
+```sh
+codex-readcov top "$(codex-threadctl resolve /root/reviewer)" PATH --limit 20
+```
+
 ## Compose Paths
 
 Use `--paths-only --limit 0` to produce a complete selected path list for

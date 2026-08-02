@@ -92,13 +92,29 @@ def add_json_option(parser: argparse.ArgumentParser, *, defaults: bool) -> None:
 
 
 def add_target_message(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--to", dest="to_thread_id", required=True, help="thread to wake")
+    parser.add_argument(
+        "--to",
+        dest="to_thread_id",
+        required=True,
+        help="thread id or /root path to wake",
+    )
     parser.add_argument(
         "--allow-active",
         action="store_true",
         help="steer into the current regular turn if the target is active",
     )
     parser.add_argument("message", help="message to send when the wake fires")
+
+
+def add_tree_option(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--tree",
+        metavar="THREAD_ID",
+        help=(
+            "thread id that scopes /root path resolution "
+            "(default: CODEX_THREAD_ID)"
+        ),
+    )
 
 
 def add_time_condition_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -110,6 +126,7 @@ def add_time_condition_parser(sub: argparse._SubParsersAction[argparse.ArgumentP
     group.add_argument("--at", type=parse_at, help="ISO timestamp with timezone")
     parser.set_defaults(condition_builder=build_time_condition)
     add_target_message(parser)
+    add_tree_option(parser)
     add_global_options(parser, defaults=False)
 
 
@@ -118,7 +135,7 @@ def add_goal_condition_options(
     *,
     allow_max_fires: bool,
 ) -> None:
-    parser.add_argument("thread_id", help="goal thread to watch")
+    parser.add_argument("thread_id", help="goal thread id or /root path to watch")
     parser.add_argument("--status", type=parse_statuses, help="comma-separated goal statuses")
     parser.add_argument("--tokens-left-lte", type=parse_positive_int)
     parser.add_argument("--tokens-used-gte", type=parse_positive_int)
@@ -138,12 +155,21 @@ def add_goal_condition_parser(sub: argparse._SubParsersAction[argparse.ArgumentP
     parser = sub.add_parser("goal", help="goal-state condition")
     add_goal_condition_options(parser, allow_max_fires=True)
     add_target_message(parser)
+    add_tree_option(parser)
     add_global_options(parser, defaults=False)
 
 
 def add_cmd_condition_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    parser = sub.add_parser("cmd", help="shell command predicate")
+    parser = sub.add_parser(
+        "cmd",
+        help="shell command predicate",
+        description=(
+            "Persist a shell command predicate. Place wakectl options before "
+            "MESSAGE and the predicate command after --."
+        ),
+    )
     add_target_message(parser)
+    add_tree_option(parser)
     parser.add_argument("argv", nargs=argparse.REMAINDER, help="command after --")
     parser.set_defaults(condition_builder=build_cmd_condition)
     add_global_options(parser, defaults=False)
@@ -151,7 +177,7 @@ def add_cmd_condition_parser(sub: argparse._SubParsersAction[argparse.ArgumentPa
 
 def add_stop_condition_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = sub.add_parser("stop", help="thread turn-completion condition")
-    parser.add_argument("thread_id", help="thread to watch")
+    parser.add_argument("thread_id", help="thread id or /root path to watch")
     parser.add_argument(
         "--turn",
         metavar="TURN_ID",
@@ -169,6 +195,7 @@ def add_stop_condition_parser(sub: argparse._SubParsersAction[argparse.ArgumentP
     )
     parser.set_defaults(condition_builder=build_stop_condition)
     add_target_message(parser)
+    add_tree_option(parser)
     add_global_options(parser, defaults=False)
 
 
@@ -204,6 +231,7 @@ def add_wait_goal_condition_parser(
 ) -> None:
     parser = sub.add_parser("goal", help="block this process on goal state")
     add_goal_condition_options(parser, allow_max_fires=False)
+    add_tree_option(parser)
     add_wait_options(parser, defaults=False)
     add_global_options(parser, defaults=False, include_state=False)
 
@@ -229,13 +257,14 @@ def add_wait_stop_condition_parser(
     sub: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
     parser = sub.add_parser("stop", help="block this process until a thread turn ends")
-    parser.add_argument("thread_id", help="thread to watch")
+    parser.add_argument("thread_id", help="thread id or /root path to watch")
     parser.add_argument(
         "--turn",
         metavar="TURN_ID",
         help="exact turn id to observe, or 'latest'",
     )
     parser.set_defaults(condition_builder=build_stop_condition)
+    add_tree_option(parser)
     add_wait_options(parser, defaults=False)
     add_global_options(parser, defaults=False, include_state=False)
 

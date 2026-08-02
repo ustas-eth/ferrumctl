@@ -9,6 +9,7 @@ from codex_threadctl import appserver
 from codex_threadctl.errors import (
     AppServerResponseError,
     DeliveryUncertain,
+    DirectInputUnsupported,
     ThreadNotLoaded,
     ThreadStateError,
     ThreadctlError,
@@ -93,6 +94,35 @@ class FakeApp:
 
 
 class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_v2_direct_input_rejections_name_parent_ownership(self):
+        class ParentOwnedApp(FakeApp):
+            async def request(self, method, params=None):
+                if method in {"turn/start", "turn/steer"}:
+                    raise AppServerResponseError(
+                        {
+                            "message": (
+                                "direct app-server input is not allowed for "
+                                "multi-agent v2 sub-agents"
+                            )
+                        }
+                    )
+                return await super().request(method, params)
+
+        with self.assertRaisesRegex(DirectInputUnsupported, "native parent"):
+            await appserver.start_turn(ParentOwnedApp(), "thread", "work")
+
+        wake = await appserver.wake_thread(ParentOwnedApp(), "thread")
+        self.assertEqual(wake["outcome"], "rejected")
+        self.assertIn("native parent", wake["reason"])
+
+        with self.assertRaisesRegex(DirectInputUnsupported, "native parent"):
+            await appserver.steer_turn(
+                ParentOwnedApp(status="active"),
+                "thread",
+                "submission",
+                "change",
+            )
+
     async def test_default_endpoint_uses_codex_home(self):
         with tempfile.TemporaryDirectory() as tmp:
             with (

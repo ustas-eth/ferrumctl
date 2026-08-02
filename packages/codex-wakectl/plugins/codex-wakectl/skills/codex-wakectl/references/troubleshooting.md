@@ -29,6 +29,11 @@ If the target is active, wakectl defers delivery unless the job was created with
 `--allow-active`. That option uses expected-turn steering and remains suitable
 only for input valid during current work.
 
+A job with `status=failed` and a native-parent ownership error targeted a v2
+child that cannot accept direct app-server input. Keep the child as the goal or
+stop condition subject and target `/root` or another thread that accepts direct
+input.
+
 For goal predicates, verify that the goal exists and every predicate can match.
 `--tokens-left-lte` cannot match a goal without a token budget. Lower counters
 rebase repeating buckets; a replacement assignment makes the job

@@ -104,6 +104,12 @@
       ]
     },
     {
+      "source": "packages/codex-threadctl/docs/agent-trees.md",
+      "targets": [
+        "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/agent-trees.md"
+      ]
+    },
+    {
       "source": "packages/codex-readcov/docs/coverage-semantics.md",
       "targets": [
         "packages/codex-readcov/plugins/codex-readcov/skills/codex-readcov/references/coverage-semantics.md"

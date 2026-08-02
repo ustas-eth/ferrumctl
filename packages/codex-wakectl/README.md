@@ -48,6 +48,17 @@ codex-wakectl add stop WORKER --to ORCH \
   "Automated event: Worker turn ended."
 ```
 
+In a Codex v2 tree, a child path can be watched while delivery returns to the
+native parent:
+
+```sh
+codex-wakectl add goal /root/reviewer --status complete,blocked \
+  --to /root "Automated event: Reviewer goal ended."
+```
+
+`CODEX_THREAD_ID` scopes the paths; pass `--tree THREAD_ID` when needed. Jobs
+store the resolved thread ids. Parent-owned children cannot be delivery targets.
+
 An unqualified stop watch observes a completion after its creation boundary.
 When one particular turn is the target, use `--turn TURN_ID`; `--turn latest`
 explicitly binds the newest existing turn even if it has already ended.

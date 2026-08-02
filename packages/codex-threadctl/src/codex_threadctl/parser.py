@@ -4,6 +4,7 @@ import argparse
 import math
 
 from .commands import (
+    cmd_agents,
     cmd_inspect,
     cmd_interrupt,
     cmd_items,
@@ -13,6 +14,7 @@ from .commands import (
     cmd_messages,
     cmd_notify,
     cmd_resume,
+    cmd_resolve,
     cmd_search,
     cmd_start,
     cmd_status,
@@ -87,6 +89,17 @@ def add_item_range_options(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_tree_option(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--tree",
+        metavar="THREAD_ID",
+        help=(
+            "thread id that scopes /root path resolution "
+            "(default: CODEX_THREAD_ID)"
+        ),
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="codex-threadctl",
@@ -101,6 +114,28 @@ def build_parser() -> argparse.ArgumentParser:
     loaded = sub.add_parser("loaded", help="list loaded thread ids")
     add_global_options(loaded, defaults=False)
     loaded.set_defaults(func=cmd_loaded)
+
+    agents = sub.add_parser(
+        "agents",
+        help="list the spawned-agent tree containing a thread",
+    )
+    agents.add_argument(
+        "thread_id",
+        nargs="?",
+        help="any thread id or /root path in the tree (default: CODEX_THREAD_ID)",
+    )
+    add_tree_option(agents)
+    add_global_options(agents, defaults=False)
+    agents.set_defaults(func=cmd_agents)
+
+    resolve = sub.add_parser(
+        "resolve",
+        help="resolve one canonical agent path to a thread id",
+    )
+    resolve.add_argument("agent_path", metavar="AGENT_PATH")
+    add_tree_option(resolve)
+    add_global_options(resolve, defaults=False)
+    resolve.set_defaults(func=cmd_resolve)
 
     list_parser = sub.add_parser("list", help="list persisted threads")
     relation = list_parser.add_mutually_exclusive_group()
@@ -126,6 +161,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="recency",
         help="newest-first ordering (default: recency)",
     )
+    add_tree_option(list_parser)
     add_global_options(list_parser, defaults=False)
     list_parser.set_defaults(func=cmd_list)
 
@@ -148,11 +184,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     status = sub.add_parser("status", help="show loaded state and thread status")
     status.add_argument("thread_id")
+    add_tree_option(status)
     add_global_options(status, defaults=False)
     status.set_defaults(func=cmd_status)
 
     inspect = sub.add_parser("inspect", help="show current state and recent activity")
     inspect.add_argument("thread_id")
+    add_tree_option(inspect)
     inspect.add_argument(
         "--items",
         type=nonnegative_int,
@@ -174,6 +212,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     messages = sub.add_parser("messages", help="list recent conversation messages")
     messages.add_argument("thread_id")
+    add_tree_option(messages)
     messages.add_argument(
         "--limit",
         type=nonnegative_int,
@@ -189,6 +228,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="list compact materialized activity summaries",
     )
     items.add_argument("thread_id")
+    add_tree_option(items)
     items.add_argument(
         "--type",
         dest="types",
@@ -214,12 +254,14 @@ def build_parser() -> argparse.ArgumentParser:
     message.add_argument("thread_id")
     message.add_argument("turn_id")
     message.add_argument("item_id")
+    add_tree_option(message)
     add_global_options(message, defaults=False)
     message.set_defaults(func=cmd_message)
 
     start = sub.add_parser("start", help="send input as a new turn on an idle thread")
     start.add_argument("thread_id")
     start.add_argument("message")
+    add_tree_option(start)
     add_global_options(start, defaults=False)
     start.set_defaults(func=cmd_start)
 
@@ -234,6 +276,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="author identity (default: CODEX_THREAD_ID)",
     )
     notify.add_argument("message", type=nonempty_text, help="advisory notice text")
+    add_tree_option(notify)
     add_global_options(notify, defaults=False)
     notify.set_defaults(func=cmd_notify)
 
@@ -242,6 +285,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="start an empty turn if a loaded thread is idle",
     )
     wake.add_argument("thread_id", help="loaded thread to wake if idle")
+    add_tree_option(wake)
     add_global_options(wake, defaults=False)
     wake.set_defaults(func=cmd_wake)
 
@@ -249,6 +293,7 @@ def build_parser() -> argparse.ArgumentParser:
     steer.add_argument("thread_id")
     steer.add_argument("turn_id")
     steer.add_argument("message")
+    add_tree_option(steer)
     add_global_options(steer, defaults=False)
     steer.set_defaults(func=cmd_steer)
 
@@ -260,6 +305,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="wait for the turn to reach a terminal status",
     )
+    add_tree_option(interrupt)
     add_global_options(interrupt, defaults=False)
     interrupt.set_defaults(func=cmd_interrupt)
 
@@ -274,6 +320,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=20,
         help="terminals to return; 0 reads all",
     )
+    add_tree_option(terminals)
     add_global_options(terminals, defaults=False)
     terminals.set_defaults(func=cmd_terminals)
 
@@ -289,6 +336,7 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="expected item id from the current terminals listing",
     )
+    add_tree_option(terminate_terminal)
     add_global_options(terminate_terminal, defaults=False)
     terminate_terminal.set_defaults(func=cmd_terminate_terminal)
 
@@ -300,6 +348,7 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="acknowledge that resume can continue an active goal",
     )
+    add_tree_option(resume)
     add_global_options(resume, defaults=False)
     resume.set_defaults(func=cmd_resume)
 

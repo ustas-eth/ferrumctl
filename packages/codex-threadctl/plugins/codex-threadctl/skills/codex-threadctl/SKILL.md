@@ -1,6 +1,6 @@
 ---
 name: codex-threadctl
-description: "Use when a Codex thread id is the useful handle for persisted discovery or history, current app-server state, retained messages, context or terminal visibility, or immediate control such as notify, wake, start, steer, resume, interrupt, or exact terminal termination. Prefer native subagent tools when this session owns the live handle. Do not use for future conditions, goal editing, read coverage, terminal keystrokes, or spawning."
+description: "Use when a Codex thread id or v2 agent path is the useful handle for spawned-tree discovery, persisted history, current app-server state, retained messages, context or terminal visibility, or immediate control such as notify, wake, start, steer, resume, interrupt, or exact terminal termination. Prefer native subagent tools when this session owns the live handle. Do not use for future conditions, goal editing, read coverage, terminal keystrokes, or spawning."
 ---
 
 # Codex Threadctl
@@ -8,8 +8,9 @@ description: "Use when a Codex thread id is the useful handle for persisted disc
 ## Purpose
 
 Use `codex-threadctl` to observe persisted Codex thread state or apply an
-immediate operation through a thread id. It combines persisted relationships
-and materialized history with live state from a selected app-server.
+immediate operation through a thread id or v2 agent path. It combines persisted
+relationships and materialized history with live state from a selected
+app-server.
 
 Use native subagent tools for ordinary messaging, waiting, and result retrieval
 when this session owns the live handle. Use threadctl when only a thread id
@@ -24,6 +25,7 @@ spawn agents.
 Choose the narrowest useful view:
 
 - `list` and `search` discover persisted threads without loading them.
+- `agents` lists a spawned tree; `resolve` maps one v2 path to a thread id.
 - `loaded` and `status` report state on the selected app-server.
 - `inspect` gives a compact orientation across current state and recent work.
 - `items` lists ordered activity summaries.
@@ -34,6 +36,8 @@ Choose the narrowest useful view:
 ```sh
 codex-threadctl list --parent THREAD_ID --sort created --limit 5
 codex-threadctl search "decision text" --limit 10
+codex-threadctl agents
+codex-threadctl resolve /root/reviewer
 codex-threadctl inspect THREAD_ID --brief
 codex-threadctl items THREAD_ID --limit 10
 codex-threadctl messages THREAD_ID --limit 10
@@ -44,6 +48,12 @@ codex-threadctl terminals THREAD_ID
 Use `items --after TURN_ID ITEM_ID` or `messages --after TURN_ID ITEM_ID` for an
 exclusive range after a known composite locator. Use `--limit 0` when the full
 selected interval is required.
+
+Within the current spawn tree, `CODEX_THREAD_ID` scopes `/root` paths. Otherwise
+pass `--tree THREAD_ID`, where the id can belong to any member of that tree.
+Threadctl commands that take a thread id accept the same path form. If a path is
+missing or was reused by multiple persisted agents, resolution fails instead of
+guessing; keep the resolved thread id for durable state.
 
 ## Choose Immediate Control
 
@@ -107,8 +117,10 @@ Use `CODEX_THREAD_ID` for this thread's identity when available. Pass
   required.
 - Use process and item ids from the same current `terminals` result for
   `terminate-terminal`.
-- Codex rejects direct app-server input to v2 subagents. Use their native parent
-  handle for lifecycle control; `notify` remains advisory injection.
+- Codex rejects direct `start`, `steer`, and idle `wake` for parent-owned v2
+  agents. Use their native parent handle for lifecycle control. Path-based
+  inspection does not transfer that ownership. Advisory `notify` can affect
+  active reasoning, but does not start or steer the child.
 - When input could be mistaken for direct human instruction, label its logical
   source naturally. A label is context, not authentication or added authority.
 
@@ -123,6 +135,8 @@ Use `--json` when another program needs exact identifiers or outcomes.
   pagination backends, and mutable history.
 - Read `references/lifecycle-control.md` before relying on notification, wake,
   start, steering, resume, interruption, or terminal-process behavior.
+- Read `references/agent-trees.md` for path scope, path reuse, input ownership,
+  and scheduled conditions involving v2 agents.
 - Read `references/coordination-principles.md` when composing immediate control
   with native handles, goals, streams, wakes, or coverage.
 - Read `references/worker-workflows.md` for worker supervision, checkpoints, and

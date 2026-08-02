@@ -8,6 +8,11 @@ import sys
 import time
 from typing import Any
 
+from codex_threadctl.agents import (
+    is_agent_path,
+    resolve_agent_path,
+    resolve_thread_reference,
+)
 from codex_threadctl.appserver import (
     AppServer,
     deliver_input,
@@ -16,6 +21,7 @@ from codex_threadctl.appserver import (
 )
 from codex_threadctl.errors import (
     DeliveryUncertain,
+    DirectInputUnsupported,
     ThreadNotLoaded,
     ThreadStateError,
 )
@@ -49,6 +55,17 @@ from .systemd import build_systemd_units, resolve_wakectl_bin, run_systemctl, sy
 
 class LeaseLost(Exception):
     pass
+
+
+_ADD_CMD_OPTIONS = {
+    "--allow-active",
+    "--endpoint",
+    "--json",
+    "--state",
+    "--timeout",
+    "--to",
+    "--tree",
+}
 
 
 def wakectl_appserver(endpoint: str, timeout: float) -> AppServer:
@@ -88,7 +105,54 @@ async def seed_stop_job(args: argparse.Namespace, job: dict[str, Any]) -> None:
         job["condition"] = await seed_stop_condition(app, job["condition"])
 
 
+async def resolve_condition_reference(
+    app: AppServer,
+    args: argparse.Namespace,
+) -> None:
+    thread_id = getattr(args, "thread_id", None)
+    if isinstance(thread_id, str) and is_agent_path(thread_id):
+        args.thread_id = await resolve_thread_reference(
+            app,
+            thread_id,
+            tree_thread_id=getattr(args, "tree", None),
+        )
+
+
+async def resolve_add_references(args: argparse.Namespace) -> None:
+    condition_path = getattr(args, "thread_id", None)
+    target_path = args.to_thread_id
+    if not any(
+        isinstance(value, str) and is_agent_path(value)
+        for value in (condition_path, target_path)
+    ):
+        return
+    async with wakectl_appserver(args.endpoint, args.timeout) as app:
+        await resolve_condition_reference(app, args)
+        if is_agent_path(target_path):
+            target = await resolve_agent_path(
+                app,
+                target_path,
+                tree_thread_id=getattr(args, "tree", None),
+            )
+            if target["inputOwner"] == "parent":
+                raise WakectlError(
+                    f"parent-owned agent {target_path} cannot receive scheduled "
+                    "input; target /root or another thread that accepts direct input"
+                )
+            args.to_thread_id = target["threadId"]
+
+
+def _reject_misplaced_add_cmd_option(args: argparse.Namespace) -> None:
+    if args.condition != "cmd" or not args.argv or args.argv[0] == "--":
+        return
+    option = args.argv[0].partition("=")[0]
+    if option in _ADD_CMD_OPTIONS:
+        raise WakectlError(f"{option} must appear before MESSAGE for add cmd")
+
+
 async def cmd_add(args: argparse.Namespace) -> int:
+    _reject_misplaced_add_cmd_option(args)
+    await resolve_add_references(args)
     condition = args.condition_builder(args)
     endpoint = normalize_endpoint(args.endpoint)
     job = new_job(
@@ -114,27 +178,64 @@ def cmd_moved(args: argparse.Namespace) -> int:
 
 
 async def cmd_wait(args: argparse.Namespace) -> int:
+    deadline = (
+        time.monotonic() + args.max_wait
+        if args.max_wait is not None
+        else None
+    )
+
+    def timeout_result() -> int:
+        reason = "maximum wait elapsed"
+        if args.json:
+            print(json.dumps({"ready": False, "reason": reason}, indent=2))
+        else:
+            print(reason, file=sys.stderr)
+        return 1
+
+    thread_id = getattr(args, "thread_id", None)
+    if isinstance(thread_id, str) and is_agent_path(thread_id):
+
+        async def resolve_once() -> None:
+            async with wakectl_appserver(args.endpoint, args.timeout) as app:
+                await resolve_condition_reference(app, args)
+
+        if deadline is None:
+            await resolve_once()
+        else:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return timeout_result()
+            try:
+                await asyncio.wait_for(resolve_once(), timeout=remaining)
+            except TimeoutError:
+                return timeout_result()
     condition = args.condition_builder(args)
-    deadline = time.monotonic() + args.max_wait if args.max_wait is not None else None
     job_state: dict[str, Any] = {}
     reason = "maximum wait elapsed"
     if condition["type"] == "stop":
+        remaining = None if deadline is None else deadline - time.monotonic()
+        if remaining is not None and remaining <= 0:
+            return timeout_result()
         seed_timeout = (
-            min(args.timeout, float(args.max_wait))
-            if args.max_wait is not None
-            else args.timeout
+            args.timeout if remaining is None else min(args.timeout, remaining)
         )
-        async with wakectl_appserver(args.endpoint, seed_timeout) as app:
-            condition = await seed_stop_condition(app, condition)
+
+        async def seed_once() -> dict[str, Any]:
+            async with wakectl_appserver(args.endpoint, seed_timeout) as app:
+                return await seed_stop_condition(app, condition)
+
+        try:
+            if remaining is None:
+                condition = await seed_once()
+            else:
+                condition = await asyncio.wait_for(seed_once(), timeout=remaining)
+        except TimeoutError:
+            return timeout_result()
 
     while True:
         remaining = None if deadline is None else deadline - time.monotonic()
         if remaining is not None and remaining <= 0:
-            if args.json:
-                print(json.dumps({"ready": False, "reason": reason}, indent=2))
-            else:
-                print(reason, file=sys.stderr)
-            return 1
+            return timeout_result()
         predicate_timeout = (
             args.timeout if remaining is None else min(args.timeout, remaining)
         )
@@ -165,12 +266,7 @@ async def cmd_wait(args: argparse.Namespace) -> int:
                     timeout=remaining,
                 )
         except TimeoutError:
-            reason = "maximum wait elapsed"
-            if args.json:
-                print(json.dumps({"ready": False, "reason": reason}, indent=2))
-            else:
-                print(reason, file=sys.stderr)
-            return 1
+            return timeout_result()
         if ready:
             if args.json:
                 print(
@@ -329,6 +425,22 @@ async def cmd_run(args: argparse.Namespace) -> int:
             else:
                 had_error = True
                 skipped.append({"id": job["id"], "reason": "lease lost after wake"})
+        except DirectInputUnsupported as exc:
+            had_error = True
+            reason = str(exc)
+            committed = update_claimed_job(
+                args.state,
+                job["id"],
+                owner,
+                {"status": "failed", "lastError": reason},
+            )
+            skipped.append(
+                {
+                    "id": job["id"],
+                    "status": "failed",
+                    "reason": reason if committed else "lease lost after rejection",
+                }
+            )
         except (ThreadNotLoaded, ThreadStateError) as exc:
             reason = str(exc)
             committed = update_claimed_job(

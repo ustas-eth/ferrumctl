@@ -30,6 +30,12 @@ The common handle is a Codex thread id. For v1 subagents, the spawn result's
 `agent_id` is that thread id. `CODEX_THREAD_ID` identifies the current thread
 when Codex provides it.
 
+Codex v2 also exposes tree-local paths such as `/root/reviewer`. When the
+threadctl skill is available, those paths can be inspected directly or resolved
+to stable thread ids. Paths can be reused after an agent closes, so persisted
+goals, snapshots, and jobs remain bound to thread ids. A path does not transfer
+lifecycle ownership from the native parent.
+
 A thread id identifies persisted state under a Codex home. It does not identify
 which app-server, if any, owns live execution. Immediate and scheduled input
 must use the endpoint on which the target is loaded.
