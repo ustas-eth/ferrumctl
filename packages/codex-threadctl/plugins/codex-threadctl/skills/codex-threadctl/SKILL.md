@@ -1,16 +1,16 @@
 ---
 name: codex-threadctl
-description: "Use when a Codex thread id or v2 agent path is the useful handle for spawned-tree discovery, persisted history, current app-server state, retained messages, context or terminal visibility, or immediate control such as notify, wake, start, steer, resume, interrupt, or exact terminal termination. Prefer native subagent tools when this session owns the live handle. Do not use for future conditions, goal editing, read coverage, terminal keystrokes, or spawning."
+description: "Use when a Codex thread id or v2 agent path is the useful handle for spawned-tree discovery, persisted history, current app-server state, retained messages, context or terminal visibility, or immediate control within native input-ownership boundaries, such as notify, wake, start, steer, resume, interrupt, or exact terminal termination. Prefer native subagent tools when this session owns the live handle. Do not use for future conditions, goal editing, read coverage, terminal keystrokes, or spawning."
 ---
 
 # Codex Threadctl
 
 ## Purpose
 
-Use `codex-threadctl` to observe persisted Codex thread state or apply an
-immediate operation through a thread id or v2 agent path. It combines persisted
-relationships and materialized history with live state from a selected
-app-server.
+Use `codex-threadctl` to observe persisted Codex thread state or apply a
+supported immediate operation through a thread id or v2 agent path. It combines
+persisted relationships and materialized history with live state from a
+selected app-server.
 
 Use native subagent tools for ordinary messaging, waiting, and result retrieval
 when this session owns the live handle. Use threadctl when only a thread id

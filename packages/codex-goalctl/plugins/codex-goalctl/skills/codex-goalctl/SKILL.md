@@ -1,6 +1,6 @@
 ---
 name: codex-goalctl
-description: "Use when another Codex thread's persisted goal must be read or changed and the target is known by thread id or a resolvable v2 agent path: assign a fresh objective, update status or token budget, preserve or reset counters, verify state, or clear the goal. Use built-in goal tools for this session. Goalctl does not resolve paths, message, or wake the target."
+description: "Use when another Codex thread's persisted goal must be read or changed: assign a fresh objective, update status or token budget, preserve or reset counters, verify state, or clear the goal. Use built-in goal tools for this session. Goalctl requires a thread id; resolve a v2 agent path through the threadctl skill first. It does not message or wake the target."
 ---
 
 # Codex Goalctl
@@ -45,6 +45,9 @@ resolve it first and pass the returned thread id to goalctl:
 WORKER=$(codex-threadctl resolve /root/reviewer)
 codex-goalctl replace "$WORKER" "objective text"
 ```
+
+`CODEX_THREAD_ID` supplies the tree scope. Otherwise pass `--tree THREAD_ID` to
+`resolve`.
 
 ## Start The Work
 

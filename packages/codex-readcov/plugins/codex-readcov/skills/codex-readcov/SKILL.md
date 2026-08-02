@@ -45,6 +45,9 @@ available, resolve the path and pass its thread id to readcov:
 codex-readcov top "$(codex-threadctl resolve /root/reviewer)" PATH --limit 20
 ```
 
+`CODEX_THREAD_ID` supplies the tree scope. Otherwise pass `--tree THREAD_ID` to
+`resolve`.
+
 ## Compose Paths
 
 Use `--paths-only --limit 0` to produce a complete selected path list for
