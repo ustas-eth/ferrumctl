@@ -64,9 +64,9 @@ command should remain bound to one state surface.
   thread, and `replace` is intentionally a fresh clear-then-set assignment.
 - `codex-threadctl` combines live app-server operations with selected persisted
   history. Preserve composite message locators and distinguish request
-  acceptance, confirmed delivery, and materialized history. Agent paths are
-  tree-scoped aliases; they do not transfer v2 lifecycle ownership from the
-  native parent.
+  acceptance, confirmed delivery, and materialized history. Canonical task
+  names are tree-scoped routing aliases; they do not transfer lifecycle
+  ownership from the native parent.
 - `codex-wakectl` coordinates durable jobs, condition cursors, leases, and
   delivery policy. It is the most stateful package; treat changes to it as
   coordination changes rather than ordinary CLI plumbing.

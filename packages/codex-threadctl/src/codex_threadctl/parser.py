@@ -94,7 +94,7 @@ def add_tree_option(parser: argparse.ArgumentParser) -> None:
         "--tree",
         metavar="THREAD_ID",
         help=(
-            "thread id that scopes /root path resolution "
+            "thread id that scopes canonical task name resolution "
             "(default: CODEX_THREAD_ID)"
         ),
     )
@@ -122,7 +122,10 @@ def build_parser() -> argparse.ArgumentParser:
     agents.add_argument(
         "thread_id",
         nargs="?",
-        help="any thread id or /root path in the tree (default: CODEX_THREAD_ID)",
+        help=(
+            "any thread id or canonical task name in the tree "
+            "(default: CODEX_THREAD_ID)"
+        ),
     )
     add_tree_option(agents)
     add_global_options(agents, defaults=False)
@@ -130,9 +133,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     resolve = sub.add_parser(
         "resolve",
-        help="resolve one canonical agent path to a thread id",
+        help="resolve one canonical task name to a thread id",
     )
-    resolve.add_argument("agent_path", metavar="AGENT_PATH")
+    resolve.add_argument(
+        "agent_path",
+        metavar="TASK_NAME",
+        help="canonical task name such as /root/reviewer",
+    )
     add_tree_option(resolve)
     add_global_options(resolve, defaults=False)
     resolve.set_defaults(func=cmd_resolve)

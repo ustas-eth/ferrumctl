@@ -96,7 +96,7 @@ def add_target_message(parser: argparse.ArgumentParser) -> None:
         "--to",
         dest="to_thread_id",
         required=True,
-        help="thread id or /root path to wake",
+        help="thread id or canonical task name to wake",
     )
     parser.add_argument(
         "--allow-active",
@@ -111,7 +111,7 @@ def add_tree_option(parser: argparse.ArgumentParser) -> None:
         "--tree",
         metavar="THREAD_ID",
         help=(
-            "thread id that scopes /root path resolution "
+            "thread id that scopes canonical task name resolution "
             "(default: CODEX_THREAD_ID)"
         ),
     )
@@ -135,7 +135,9 @@ def add_goal_condition_options(
     *,
     allow_max_fires: bool,
 ) -> None:
-    parser.add_argument("thread_id", help="goal thread id or /root path to watch")
+    parser.add_argument(
+        "thread_id", help="goal thread id or canonical task name to watch"
+    )
     parser.add_argument("--status", type=parse_statuses, help="comma-separated goal statuses")
     parser.add_argument("--tokens-left-lte", type=parse_positive_int)
     parser.add_argument("--tokens-used-gte", type=parse_positive_int)
@@ -177,7 +179,9 @@ def add_cmd_condition_parser(sub: argparse._SubParsersAction[argparse.ArgumentPa
 
 def add_stop_condition_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = sub.add_parser("stop", help="thread turn-completion condition")
-    parser.add_argument("thread_id", help="thread id or /root path to watch")
+    parser.add_argument(
+        "thread_id", help="thread id or canonical task name to watch"
+    )
     parser.add_argument(
         "--turn",
         metavar="TURN_ID",
@@ -257,7 +261,9 @@ def add_wait_stop_condition_parser(
     sub: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
     parser = sub.add_parser("stop", help="block this process until a thread turn ends")
-    parser.add_argument("thread_id", help="thread id or /root path to watch")
+    parser.add_argument(
+        "thread_id", help="thread id or canonical task name to watch"
+    )
     parser.add_argument(
         "--turn",
         metavar="TURN_ID",

@@ -41,8 +41,8 @@ codex-goalctl update THREAD_ID --clear-token-budget
 codex-goalctl clear THREAD_ID
 ```
 
-Codex v2 agent paths are not goal identifiers. When threadctl is available,
-resolve the path first:
+Canonical task names returned by native subagent tools are not goal identifiers.
+When threadctl is available, resolve the task name first:
 
 ```sh
 WORKER=$(codex-threadctl resolve /root/reviewer)
@@ -53,7 +53,7 @@ Goal writes do not reliably wake a CLI-owned thread. Send a short follow-up
 message through the native subagent handle when you have one. If only the
 thread id remains, `codex-threadctl start` can deliver the follow-up when
 threadctl is installed and the worker accepts direct app-server input.
-Parent-owned v2 children must be continued through their native handle:
+Parent-owned children must be continued through their native parent handle:
 
 ```text
 From coordinator: A goal was assigned. Call get_goal and proceed.

@@ -15,13 +15,15 @@ An append transaction records the entry and advances the stream tail together.
 `--reply-to` can name only an existing position in the same stream. It is a
 reference, not a branch or delivery instruction.
 
-The default database is private to the host user. `--state` can select another
-database; participants using different databases do not share state.
+Commands under the same host user share the default database. `--state` can
+select another database; participants using different databases do not share
+state. When a known stream is not found, verify both its exact id and the
+selected database before creating a replacement.
 
 ## Reader Acknowledgements
 
-Each `(stream, reader)` pair has one cumulative acknowledgement. `list
---reader` begins after that position and returns entries in ascending order.
+Each `(stream, reader)` pair has one cumulative acknowledgement. `list --reader`
+begins after that position and returns entries in ascending order.
 It includes entries authored by the reader because an acknowledgement means
 the reader processed the complete stream through that position.
 When both `--reader` and `--after` are omitted, `CODEX_THREAD_ID` supplies the
@@ -48,6 +50,12 @@ understood, or acted on an entry.
 Authors and readers are caller-supplied provenance strings, not authenticated
 principals. Thread ids are useful identities, but the database does not verify
 ownership, membership, or access.
+
+When `CODEX_THREAD_ID` is available, the CLI uses it as the default author and
+reader. This gives each thread its own acknowledgement without additional
+configuration. Every distinct reader string has a separate acknowledgement;
+reusing a role string across replacement threads deliberately continues that
+role's prior position.
 
 Streams impose no participant count, topic model, or turn-taking protocol.
 Their entries can represent peer discussion, review findings, handoffs, or

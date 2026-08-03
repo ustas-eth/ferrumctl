@@ -233,7 +233,7 @@ async def cmd_status(args: argparse.Namespace) -> int:
                     thread_id,
                 ]
                 + (
-                    [f"path={result['agentPath']}"]
+                    [f"task-name={result['agentPath']}"]
                     if result["agentPath"] is not None
                     else []
                 )

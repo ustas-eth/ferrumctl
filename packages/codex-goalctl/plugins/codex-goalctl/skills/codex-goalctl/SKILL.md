@@ -1,6 +1,6 @@
 ---
 name: codex-goalctl
-description: "Use when another Codex thread's persisted goal must be read or changed: assign a fresh objective, update status or token budget, preserve or reset counters, verify state, or clear the goal. Use built-in goal tools for this session. Goalctl requires a thread id; resolve a v2 agent path through the threadctl skill first. It does not message or wake the target."
+description: "Use when another Codex thread's persisted goal must be read or changed: assign a fresh objective, update status or token budget, preserve or reset counters, verify state, or clear the goal. Use built-in goal tools for this session. Goalctl requires a thread id; resolve a canonical task name such as /root/reviewer through the threadctl skill first. It does not message or wake the target."
 ---
 
 # Codex Goalctl
@@ -37,9 +37,10 @@ codex-goalctl update THREAD_ID --clear-token-budget
 codex-goalctl clear THREAD_ID
 ```
 
-For v1 Codex subagents, the spawn result's `agent_id` is the thread id. A v2
-agent path is not a goal identifier. If the threadctl skill is available,
-resolve it first and pass the returned thread id to goalctl:
+For v1 Codex subagents, the spawn result's `agent_id` is the thread id.
+Some native subagent tools instead return a canonical task name such as
+`/root/reviewer`; it is not a goal identifier. If the threadctl skill is
+available, resolve it first and pass the returned thread id to goalctl:
 
 ```sh
 WORKER=$(codex-threadctl resolve /root/reviewer)

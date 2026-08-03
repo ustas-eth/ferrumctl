@@ -69,10 +69,11 @@ terminal turn. Use `--turn TURN_ID` when one exact turn is the subject,
 especially when watch creation can race completion. A goal watch binds to one
 assignment; replacing that goal supersedes the watch.
 
-V2 agent paths can be condition subjects. `CODEX_THREAD_ID` scopes `/root`
-paths; otherwise pass `--tree THREAD_ID`. Wakectl resolves paths once and stores
-thread ids. A parent-owned child cannot be a delivery target, so direct the wake
-to `/root` or another thread that accepts app-server input.
+Canonical task names such as `/root/reviewer` can be condition subjects.
+`CODEX_THREAD_ID` supplies their tree scope; otherwise pass `--tree THREAD_ID`.
+Wakectl resolves each name once and stores the thread id. A parent-owned child
+cannot be a delivery target, so direct the wake to `/root` or another thread
+that accepts app-server input.
 
 Goal completion and turn completion are separate. Observe the turn boundary
 when the final response matters.
@@ -108,8 +109,8 @@ that original process directly.
 - Delivery is at-least-once. A message may be late or duplicated; an
   unconfirmed submission becomes `uncertain` instead of being retried
   automatically.
-- A not-loaded target remains pending. A parent-owned v2 child can be watched,
-  but cannot receive scheduled input; its native parent controls lifecycle.
+- A not-loaded target remains pending. A parent-owned child can be watched, but
+  cannot receive scheduled input; its native parent controls lifecycle.
 - A wake is input to the target, not a result returned to the sender. Retrieve
   results through a native handle, thread history, or a shared artifact.
 

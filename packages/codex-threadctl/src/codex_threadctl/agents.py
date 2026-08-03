@@ -26,8 +26,8 @@ def validate_agent_path(value: str) -> str:
         for segment in segments
     ):
         raise ThreadctlError(
-            "agent path must be /root or use lowercase letters, digits, and "
-            "underscores in each non-root segment"
+            "canonical task name must be /root or use lowercase letters, "
+            "digits, and underscores in each non-root segment"
         )
     return value
 
@@ -180,10 +180,10 @@ def one_match(agent_path_value: str, matches: list[dict[str, Any]]) -> dict[str,
     if len(matches) == 1:
         return matches[0]
     if not matches:
-        raise ThreadctlError(f"agent path not found: {agent_path_value}")
+        raise ThreadctlError(f"canonical task name not found: {agent_path_value}")
     ids = ", ".join(str(match["threadId"]) for match in matches)
     raise ThreadctlError(
-        f"agent path is ambiguous: {agent_path_value}; matching threads: {ids}"
+        f"canonical task name is ambiguous: {agent_path_value}; matching threads: {ids}"
     )
 
 

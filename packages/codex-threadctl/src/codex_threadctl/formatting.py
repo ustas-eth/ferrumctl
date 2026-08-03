@@ -273,7 +273,7 @@ def format_thread_list(threads: list[dict[str, Any]]) -> str:
             ("name", "name"),
             ("agentNickname", "nickname"),
             ("agentRole", "role"),
-            ("agentPath", "agent-path"),
+            ("agentPath", "task-name"),
             ("agentDepth", "agent-depth"),
             ("cwd", "cwd"),
         ):

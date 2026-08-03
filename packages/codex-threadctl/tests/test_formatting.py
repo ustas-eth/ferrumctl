@@ -88,6 +88,7 @@ class FormattingTests(unittest.TestCase):
                     "parentThreadId": "parent",
                     "agentNickname": "Ada",
                     "agentRole": "explorer",
+                    "agentPath": "/root/reviewer",
                     "cwd": "/work",
                     "preview": "first\nsecond",
                 }
@@ -98,4 +99,5 @@ class FormattingTests(unittest.TestCase):
         self.assertIn("flags=waiting", output)
         self.assertIn('parent="parent"', output)
         self.assertIn('nickname="Ada"', output)
+        self.assertIn('task-name="/root/reviewer"', output)
         self.assertIn('preview="first second"', output)

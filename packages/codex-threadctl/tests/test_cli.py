@@ -307,6 +307,7 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
             result = await commands.cmd_status(args)
 
         self.assertEqual(result, 0)
+        self.assertIn("task-name=/root/worker", output.getvalue())
         self.assertIn("input=parent", output.getvalue())
 
     async def test_notify_uses_current_thread_identity_and_prints_acceptance(self):

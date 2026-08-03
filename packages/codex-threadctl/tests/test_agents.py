@@ -77,7 +77,7 @@ class AgentMetadataTests(unittest.TestCase):
             "/root/root",
         ):
             with self.subTest(value=value):
-                with self.assertRaisesRegex(ThreadctlError, "agent path"):
+                with self.assertRaisesRegex(ThreadctlError, "canonical task name"):
                     agents.validate_agent_path(value)
 
 

@@ -18,18 +18,19 @@ it under another cwd or `CODEX_HOME`.
 If the server is down, the endpoint changed, or the target is not loaded,
 queued jobs remain pending.
 
-Codex rejects direct app-server input to parent-owned v2 agents. They can be the
+Codex rejects direct app-server input to parent-owned agents. They can be the
 subject of goal or stop conditions, but scheduled input must target the root
 thread (`/root`) or another thread that accepts direct input. A nested native
 parent may itself be parent-owned.
 
-Wakectl accepts `/root` paths for condition subjects and delivery targets.
-`CODEX_THREAD_ID` supplies the tree scope, or `--tree THREAD_ID` can name any
-member of the intended tree. Paths are resolved during job creation and the
-thread ids are stored, so later path reuse does not retarget a job. A
-parent-owned path is rejected as a delivery target. If the same child is passed
-as a raw thread id, a later native direct-input rejection makes the job
-`failed` rather than leaving it pending forever.
+Wakectl accepts canonical task names beginning with `/root` for condition
+subjects and delivery targets. `CODEX_THREAD_ID` supplies the tree scope, or
+`--tree THREAD_ID` can name any member of the intended tree. Task names are
+resolved during job creation and the thread ids are stored, so later name reuse
+does not retarget a job. A parent-owned child is rejected as a delivery target
+when selected by canonical task name. If the same child is passed as a raw
+thread id, a later native direct-input rejection makes the job `failed` rather
+than leaving it pending forever.
 
 ## Synchronous Waiting
 

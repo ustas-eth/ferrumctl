@@ -22,7 +22,7 @@ flag acknowledges possible continuation; it does not activate or change the
 goal. Resume also does not detect or coordinate another app-server that may
 have loaded the same thread.
 
-Codex rejects direct app-server input to v2 subagents. Control those subagents
+Codex rejects direct app-server input to parent-owned subagents. Control them
 through their native parent handle; threadctl wake, start, and steer apply to
 threads that accept direct input. Notification uses the separate raw-item
 injection method and does not provide lifecycle control.
@@ -33,6 +33,11 @@ injection method and does not provide lifecycle control.
 `thread/inject_items`. Its author defaults to `CODEX_THREAD_ID` and its
 recipient is the target thread id. The text is advisory agent context rather
 than a user message.
+
+Notification is useful when authoritative content already exists in another
+state surface and an active target only needs a short pointer to it. It is not a
+replacement for a native message whose content is itself the exchange or whose
+purpose is lifecycle control.
 
 The operation does not start a turn. A notice can become available at a later
 model step, including during active reasoning, but app-server returns no native
@@ -46,6 +51,10 @@ automatically. Agent messages can be absorbed or retained by compaction, so
 `notify` is neither an ephemeral event channel nor a durable mailbox. Batch
 nearby announcements to the latest useful high-water position, and do not send
 notifications merely to acknowledge another notice.
+
+A later response or state change does not reveal which channel prompted it.
+When transport choice matters, verify the operation that was actually submitted
+rather than inferring it from the recipient's behavior.
 
 ## Empty Wake
 
