@@ -14,7 +14,7 @@ def main(argv: list[str] | None = None) -> int:
     except BrokenPipeError:
         return 1
     except (OSError, sqlite3.Error, StreamctlError) as exc:
-        print(f"codex-streamctl: {exc}", file=sys.stderr)
+        print(f"streamctl: {exc}", file=sys.stderr)
         return 1
 
 

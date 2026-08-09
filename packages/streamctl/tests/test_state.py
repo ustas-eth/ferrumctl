@@ -4,8 +4,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from codex_streamctl import state
-from codex_streamctl.errors import StreamctlError
+from streamctl import state
+from streamctl.errors import StreamctlError
 
 
 class StateTests(unittest.TestCase):
@@ -206,13 +206,36 @@ class StateTests(unittest.TestCase):
 
     def test_default_state_permissions_are_private(self):
         with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "state" / "codex-streamctl" / "streams.sqlite3"
+            path = Path(tmp) / "state" / "streamctl" / "streams.sqlite3"
             with mock.patch.object(state, "default_state_path", return_value=path):
                 conn = state.open_state(path)
                 conn.close()
 
             self.assertEqual(path.parent.stat().st_mode & 0o777, 0o700)
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+
+    def test_default_state_path_reuses_the_legacy_database(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            legacy = root / "codex-streamctl" / "streams.sqlite3"
+            legacy.parent.mkdir()
+            legacy.touch()
+
+            with mock.patch.dict("os.environ", {"XDG_STATE_HOME": tmp}):
+                self.assertEqual(state.default_state_path(), legacy)
+
+    def test_default_state_path_prefers_the_current_database(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            legacy = root / "codex-streamctl" / "streams.sqlite3"
+            current = root / "streamctl" / "streams.sqlite3"
+            legacy.parent.mkdir()
+            legacy.touch()
+            current.parent.mkdir()
+            current.touch()
+
+            with mock.patch.dict("os.environ", {"XDG_STATE_HOME": tmp}):
+                self.assertEqual(state.default_state_path(), current)
 
     def test_existing_custom_state_permissions_are_preserved(self):
         with tempfile.TemporaryDirectory() as tmp:

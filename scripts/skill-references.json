@@ -5,7 +5,7 @@
       "targets": [
         "packages/codex-goalctl/plugins/codex-goalctl/skills/codex-goalctl/references/coordination-principles.md",
         "packages/codex-limitctl/plugins/codex-limitctl/skills/codex-limitctl/references/coordination-principles.md",
-        "packages/codex-streamctl/plugins/codex-streamctl/skills/codex-streamctl/references/coordination-principles.md",
+        "packages/streamctl/plugins/streamctl/skills/streamctl/references/coordination-principles.md",
         "packages/codex-wakectl/plugins/codex-wakectl/skills/codex-wakectl/references/coordination-principles.md",
         "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/coordination-principles.md",
         "packages/codex-readcov/plugins/codex-readcov/skills/codex-readcov/references/coordination-principles.md"
@@ -23,7 +23,7 @@
     {
       "source": "docs/peer-workflows.md",
       "targets": [
-        "packages/codex-streamctl/plugins/codex-streamctl/skills/codex-streamctl/references/peer-workflows.md",
+        "packages/streamctl/plugins/streamctl/skills/streamctl/references/peer-workflows.md",
         "packages/codex-wakectl/plugins/codex-wakectl/skills/codex-wakectl/references/peer-workflows.md",
         "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/peer-workflows.md"
       ]
@@ -62,9 +62,9 @@
       ]
     },
     {
-      "source": "packages/codex-streamctl/docs/stream-semantics.md",
+      "source": "packages/streamctl/docs/stream-semantics.md",
       "targets": [
-        "packages/codex-streamctl/plugins/codex-streamctl/skills/codex-streamctl/references/stream-semantics.md"
+        "packages/streamctl/plugins/streamctl/skills/streamctl/references/stream-semantics.md"
       ]
     },
     {

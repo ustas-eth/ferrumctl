@@ -12,7 +12,11 @@ from .errors import StreamctlError
 
 def default_state_path() -> Path:
     root = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state"))
-    return root / "codex-streamctl" / "streams.sqlite3"
+    current = root / "streamctl" / "streams.sqlite3"
+    legacy = root / "codex-streamctl" / "streams.sqlite3"
+    if not current.exists() and legacy.exists():
+        return legacy
+    return current
 
 
 def prepare_state_path(path: Path) -> None:

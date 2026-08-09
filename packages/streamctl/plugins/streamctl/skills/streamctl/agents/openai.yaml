@@ -1,0 +1,6 @@
+interface:
+  display_name: "Streamctl"
+  short_description: "Share durable append-only exchanges"
+  default_prompt: "Use $streamctl to maintain a durable append-only exchange between coding agents."
+policy:
+  allow_implicit_invocation: true
