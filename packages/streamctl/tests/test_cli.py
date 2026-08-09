@@ -6,7 +6,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
-from codex_streamctl import cli, parser
+from streamctl import cli, parser
 
 
 class ParserTests(unittest.TestCase):
@@ -14,7 +14,7 @@ class ParserTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 parser.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-streamctl 0.1.4\n")
+        self.assertEqual(output.getvalue(), "streamctl 0.2.0\n")
 
     def test_global_options_work_after_subcommand(self):
         args = parser.build_parser().parse_args(

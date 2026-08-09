@@ -70,7 +70,7 @@ command should remain bound to one state surface.
 - `codex-wakectl` coordinates durable jobs, condition cursors, leases, and
   delivery policy. It is the most stateful package; treat changes to it as
   coordination changes rather than ordinary CLI plumbing.
-- `codex-streamctl` owns append-only entries and cumulative processed-through
+- `streamctl` owns append-only entries and cumulative processed-through
   acknowledgements. Publication, notification, wake, and acknowledgement are
   separate operations; an acknowledgement is not a delivery receipt.
 - `codex-readcov` reports transcript-recorded read actions, not verified file

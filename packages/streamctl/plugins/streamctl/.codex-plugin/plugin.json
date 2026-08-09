@@ -1,11 +1,11 @@
 {
-  "name": "codex-streamctl",
-  "version": "0.1.4",
+  "name": "streamctl",
+  "version": "0.2.0",
   "description": "Codex skill for durable append-only exchanges shared by coding agents and host processes.",
   "author": {
     "name": "ustas-eth"
   },
-  "homepage": "https://github.com/ustas-eth/ferrumctl/tree/main/packages/codex-streamctl",
+  "homepage": "https://github.com/ustas-eth/ferrumctl/tree/main/packages/streamctl",
   "repository": "https://github.com/ustas-eth/ferrumctl",
   "license": "MIT",
   "keywords": [
@@ -17,9 +17,9 @@
   ],
   "skills": "./skills/",
   "interface": {
-    "displayName": "Codex Streamctl",
+    "displayName": "Streamctl",
     "shortDescription": "Share durable append-only exchanges",
-    "longDescription": "Codex Streamctl provides guidance for using generic append-only streams with stable positions, immutable entries, replies, and independent reader acknowledgements.",
+    "longDescription": "Streamctl provides guidance for using generic append-only streams with stable positions, immutable entries, replies, and independent reader acknowledgements.",
     "developerName": "ustas-eth",
     "category": "Productivity",
     "capabilities": [
@@ -28,6 +28,6 @@
       "Per-reader acknowledgements",
       "Cross-agent coordination"
     ],
-    "defaultPrompt": "Use $codex-streamctl to maintain a durable append-only exchange between coding agents."
+    "defaultPrompt": "Use $streamctl to maintain a durable append-only exchange between coding agents."
   }
 }

@@ -25,8 +25,8 @@ Use one stream when substantive peer records must survive individual
 conversations:
 
 ```sh
-STREAM=$(codex-streamctl create --label "range review")
-POSITION=$(codex-streamctl append "$STREAM" \
+STREAM=$(streamctl create --label "range review")
+POSITION=$(streamctl append "$STREAM" \
   "The half-open range avoids replaying the boundary. I will test rollback; check retry behavior." \
   --json | jq -r .position)
 ```
@@ -54,14 +54,14 @@ codex-threadctl wake "$B"
 In B's thread, `CODEX_THREAD_ID` selects B's reader acknowledgement:
 
 ```sh
-codex-streamctl list "$STREAM" --limit 0 --json
+streamctl list "$STREAM" --limit 0 --json
 ```
 
 When entries are returned, B processes them in order and only then advances
 through the non-null `.lastPosition` from that exact result:
 
 ```sh
-codex-streamctl ack "$STREAM" --through LAST_POSITION
+streamctl ack "$STREAM" --through LAST_POSITION
 ```
 
 An empty result has nothing to acknowledge. Acknowledgement is already durable

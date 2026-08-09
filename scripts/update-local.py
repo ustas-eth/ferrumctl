@@ -19,11 +19,13 @@ MARKETPLACE = ROOT / ".agents" / "plugins" / "marketplace.json"
 PYTHON_PACKAGES = (
     "codex-goalctl",
     "codex-limitctl",
-    "codex-streamctl",
+    "streamctl",
     "codex-threadctl",
     "codex-wakectl",
 )
 PLUGIN_NAMES = (*PYTHON_PACKAGES, "codex-readcov")
+LEGACY_STREAM_PACKAGE = "codex-streamctl"
+LEGACY_STREAM_PLUGIN = "codex-streamctl@ferrumctl"
 
 
 def run(command: list[str]) -> None:
@@ -44,6 +46,22 @@ def install_commands() -> None:
             "./packages/codex-readcov",
         ]
     )
+
+
+def remove_legacy_streamctl() -> None:
+    for command in (
+        ["uv", "tool", "uninstall", LEGACY_STREAM_PACKAGE],
+        ["codex", "plugin", "remove", LEGACY_STREAM_PLUGIN, "--json"],
+    ):
+        result = subprocess.run(
+            command,
+            cwd=ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        if result.returncode == 0:
+            print("-", shlex.join(command[:-1] if command[-1] == "--json" else command))
 
 
 def expected_versions() -> dict[str, str]:
@@ -143,6 +161,7 @@ def main() -> int:
     args = parse_args()
     try:
         install_commands()
+        remove_legacy_streamctl()
         asyncio.run(refresh_plugins(args.endpoint, args.reload_threads))
     except (OSError, subprocess.CalledProcessError, RuntimeError) as exc:
         print(f"update-local: {exc}", file=sys.stderr)

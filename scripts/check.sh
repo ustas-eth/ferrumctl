@@ -28,7 +28,7 @@ run test -x scripts/codex-smoke.sh
 run test -x .githooks/commit-msg
 run cmp LICENSE packages/codex-goalctl/LICENSE
 run cmp LICENSE packages/codex-limitctl/LICENSE
-run cmp LICENSE packages/codex-streamctl/LICENSE
+run cmp LICENSE packages/streamctl/LICENSE
 run cmp LICENSE packages/codex-wakectl/LICENSE
 run cmp LICENSE packages/codex-threadctl/LICENSE
 run cmp LICENSE packages/codex-readcov/LICENSE
@@ -46,7 +46,7 @@ run git diff --check
 )
 
 (
-  cd packages/codex-streamctl
+  cd packages/streamctl
   run env PYTHONPATH=src "$PYTHON" -m unittest discover -s tests -v
 )
 
@@ -79,18 +79,18 @@ run git diff --check
 
   run "$UV" tool install ./packages/codex-goalctl
   run "$UV" tool install ./packages/codex-limitctl
-  run "$UV" tool install ./packages/codex-streamctl
+  run "$UV" tool install ./packages/streamctl
   run "$UV" tool install ./packages/codex-threadctl
   run "$UV" tool install ./packages/codex-wakectl
   run "$bin_dir/codex-goalctl" --version
   run "$bin_dir/codex-limitctl" --version
-  run "$bin_dir/codex-streamctl" --version
+  run "$bin_dir/streamctl" --version
   run "$bin_dir/codex-threadctl" --version
   run "$bin_dir/codex-wakectl" --version
   run "$UV" pip check --python "$tool_dir/codex-wakectl/bin/python"
   test "$("$bin_dir/codex-goalctl" --version)" = "codex-goalctl 0.1.8"
   test "$("$bin_dir/codex-limitctl" --version)" = "codex-limitctl 0.2.6"
-  test "$("$bin_dir/codex-streamctl" --version)" = "codex-streamctl 0.1.4"
+  test "$("$bin_dir/streamctl" --version)" = "streamctl 0.2.0"
   test "$("$bin_dir/codex-threadctl" --version)" = "codex-threadctl 0.6.0"
   test "$("$bin_dir/codex-wakectl" --version)" = "codex-wakectl 0.4.0"
 )

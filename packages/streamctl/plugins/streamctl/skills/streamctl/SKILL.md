@@ -1,13 +1,13 @@
 ---
-name: codex-streamctl
-description: "Use when coding agents or host processes need an ordered durable exchange with stable positions and independent processed-through acknowledgements, including peer checkpoints that must remain available independently of native message history. Do not use when an ordinary direct message is sufficient, or for waking or starting a Codex thread, retrieving thread history, assigning work, scheduling input, or storing normal project artifacts."
+name: streamctl
+description: "Use when coding agents or host processes need an ordered durable exchange with stable positions and independent processed-through acknowledgements, including peer checkpoints that must remain available independently of native message history. Do not use when an ordinary direct message is sufficient, or for waking or starting an agent, retrieving conversation history, assigning work, scheduling input, or storing normal project artifacts."
 ---
 
-# Codex Streamctl
+# Streamctl
 
 ## Purpose
 
-Use `codex-streamctl` when an exchange needs a durable record independent of its
+Use `streamctl` when an exchange needs a durable record independent of its
 delivery channel, not merely because several agents are involved. A stream is
 an ordered sequence of immutable entries with one cumulative acknowledgement
 per reader. It does not notify participants, start turns, authenticate
@@ -22,8 +22,8 @@ channels for attention or lifecycle control.
 Create a stream and append a record:
 
 ```sh
-STREAM=$(codex-streamctl create --label "design review")
-POSITION=$(codex-streamctl append "$STREAM" \
+STREAM=$(streamctl create --label "design review")
+POSITION=$(streamctl append "$STREAM" \
   "The retry rules out parser order; I will test transaction scope next." \
   --json | jq -r .position)
 ```
@@ -31,7 +31,7 @@ POSITION=$(codex-streamctl append "$STREAM" \
 Reply to a known entry:
 
 ```sh
-codex-streamctl append "$STREAM" --reply-to "$POSITION" \
+streamctl append "$STREAM" --reply-to "$POSITION" \
   "I will test cancellation while you check the public contract."
 ```
 
@@ -43,14 +43,14 @@ continuity across replacement threads are part of the workflow.
 List entries after the current reader's acknowledgement:
 
 ```sh
-codex-streamctl list "$STREAM" --json
+streamctl list "$STREAM" --json
 ```
 
 When entries are returned, process them in order, then acknowledge the non-null
 `.lastPosition` from that exact result:
 
 ```sh
-codex-streamctl ack "$STREAM" --through LAST_POSITION
+streamctl ack "$STREAM" --through LAST_POSITION
 ```
 
 An empty result has nothing to acknowledge.
