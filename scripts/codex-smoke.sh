@@ -540,7 +540,8 @@ printf 'threadctl reached app-server; loaded threads: %s\n' "$(wc -l <"$SMOKE_RO
 threadctl --timeout 5 --json list --limit 1 >"$SMOKE_ROOT/thread-list.json"
 threadctl --timeout 5 --json list --parent "$inspect_thread" --limit 1 \
   >"$SMOKE_ROOT/child-list.json"
-"$PYTHON" - "$SMOKE_ROOT/thread-list.json" "$SMOKE_ROOT/child-list.json" "$inspect_thread" <<'PY'
+"$PYTHON" - "$SMOKE_ROOT/thread-list.json" "$SMOKE_ROOT/child-list.json" \
+  "$inspect_thread" "$agent_thread" <<'PY'
 import json
 import sys
 
@@ -549,9 +550,10 @@ with open(sys.argv[1], encoding="utf-8") as handle:
 with open(sys.argv[2], encoding="utf-8") as handle:
     children = json.load(handle)["threads"]
 assert [thread["id"] for thread in threads] == [sys.argv[3]]
-assert children == []
+assert [thread["id"] for thread in children] == [sys.argv[4]]
+assert children[0]["parentThreadId"] == sys.argv[3]
 PY
-printf 'threadctl listed persisted threads and accepted spawn-relation filters\n'
+printf 'threadctl listed persisted threads and selected a v2 child by parent\n'
 
 threadctl --timeout 5 --json search "Smoke complete" --limit 1 \
   >"$SMOKE_ROOT/thread-search.json"
