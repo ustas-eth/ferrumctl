@@ -59,7 +59,7 @@ def add_identity_option(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="codex-streamctl",
+        prog="streamctl",
         description="Share durable append-only streams between coding agents.",
     )
     parser.add_argument(

@@ -1,6 +1,8 @@
+<!-- Generated from packages/streamctl/docs/stream-semantics.md. Do not edit directly. Run `python3 scripts/sync-skill-references.py`. -->
+
 # Stream Semantics
 
-This reference describes the durable state exposed by `codex-streamctl`.
+This reference describes the durable state exposed by `streamctl`.
 
 ## Storage And Ordering
 

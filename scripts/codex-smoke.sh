@@ -81,8 +81,8 @@ limitctl() {
 }
 
 streamctl() {
-  PYTHONPATH="$ROOT/packages/codex-streamctl/src${PYTHONPATH:+:$PYTHONPATH}" \
-    "$PYTHON" -c 'import sys; from codex_streamctl.cli import main; raise SystemExit(main(sys.argv[1:]))' "$@"
+  PYTHONPATH="$ROOT/packages/streamctl/src${PYTHONPATH:+:$PYTHONPATH}" \
+    "$PYTHON" -c 'import sys; from streamctl.cli import main; raise SystemExit(main(sys.argv[1:]))' "$@"
 }
 
 wakectl() {

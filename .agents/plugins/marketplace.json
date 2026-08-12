@@ -29,10 +29,10 @@
       "category": "Productivity"
     },
     {
-      "name": "codex-streamctl",
+      "name": "streamctl",
       "source": {
         "source": "local",
-        "path": "./packages/codex-streamctl/plugins/codex-streamctl"
+        "path": "./packages/streamctl/plugins/streamctl"
       },
       "policy": {
         "installation": "AVAILABLE",

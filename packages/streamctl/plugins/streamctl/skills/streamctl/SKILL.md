@@ -1,15 +1,15 @@
 ---
-name: codex-streamctl
-description: "Use when coding agents or host processes need a durable append-only exchange with stable positions and independent processed-through acknowledgements. Do not use for ordinary native subagent messaging, waking or starting a Codex thread, retrieving thread history, assigning work, scheduling input, or storing normal project artifacts."
+name: streamctl
+description: "Use when coding agents or host processes need a durable append-only exchange with stable positions and independent processed-through acknowledgements. Do not use for ordinary direct agent messaging, waking or starting an agent, retrieving conversation history, assigning work, scheduling input, or storing normal project artifacts."
 ---
 
-# Codex Streamctl
+# Streamctl
 
 ## Purpose
 
-Use `codex-streamctl` when shared records must outlive any one agent
-conversation. A stream is an ordered sequence of immutable entries with one
-cumulative acknowledgement per reader.
+Use `streamctl` when shared records must outlive any one agent conversation. A
+stream is an ordered sequence of immutable entries with one cumulative
+acknowledgement per reader.
 
 Streams provide publication and reading only. They do not notify participants,
 start turns, authenticate identities, or decide how collaborators should
@@ -20,8 +20,8 @@ respond.
 Create a stream and append a record:
 
 ```sh
-STREAM=$(codex-streamctl create --label "design review")
-POSITION=$(codex-streamctl append "$STREAM" \
+STREAM=$(streamctl create --label "design review")
+POSITION=$(streamctl append "$STREAM" \
   "The retry rules out parser order; I will test transaction scope next." \
   --json | jq -r .position)
 ```
@@ -29,7 +29,7 @@ POSITION=$(codex-streamctl append "$STREAM" \
 Reply to a known entry:
 
 ```sh
-codex-streamctl append "$STREAM" --reply-to "$POSITION" \
+streamctl append "$STREAM" --reply-to "$POSITION" \
   "I will test cancellation while you check the public contract."
 ```
 
@@ -37,14 +37,14 @@ When `CODEX_THREAD_ID` is set, it supplies the default author and reader. List
 entries after that reader's acknowledgement:
 
 ```sh
-codex-streamctl list "$STREAM" --json
+streamctl list "$STREAM" --json
 ```
 
 When entries are returned, process them in order, then acknowledge the non-null
 `.lastPosition` from that exact result:
 
 ```sh
-codex-streamctl ack "$STREAM" --through LAST_POSITION
+streamctl ack "$STREAM" --through LAST_POSITION
 ```
 
 An empty result has nothing to acknowledge.

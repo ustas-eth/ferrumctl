@@ -7,7 +7,7 @@ Use the tools separately and compose them with the shell:
 
 - `codex-goalctl` reads and changes persisted Codex thread goals.
 - `codex-limitctl` reads Codex subscription limits and usage signals.
-- `codex-streamctl` provides durable append-only exchanges with per-reader
+- `streamctl` provides durable append-only exchanges with per-reader
   acknowledgements.
 - `codex-threadctl` discovers threads, inspects ordered activity, sends
   advisory agent notices, and applies immediate control.
@@ -25,7 +25,7 @@ cd ferrumctl
 
 uv tool install ./packages/codex-goalctl
 uv tool install ./packages/codex-limitctl
-uv tool install ./packages/codex-streamctl
+uv tool install ./packages/streamctl
 uv tool install ./packages/codex-threadctl
 uv tool install ./packages/codex-wakectl
 cargo install --locked --path ./packages/codex-readcov
@@ -41,7 +41,7 @@ Install the optional skills from the root marketplace:
 codex plugin marketplace add ustas-eth/ferrumctl
 codex plugin add codex-goalctl@ferrumctl
 codex plugin add codex-limitctl@ferrumctl
-codex plugin add codex-streamctl@ferrumctl
+codex plugin add streamctl@ferrumctl
 codex plugin add codex-threadctl@ferrumctl
 codex plugin add codex-wakectl@ferrumctl
 codex plugin add codex-readcov@ferrumctl
@@ -55,10 +55,18 @@ From an existing checkout, update the installed commands:
 
 ```sh
 git pull
-for package in codex-goalctl codex-limitctl codex-streamctl codex-threadctl codex-wakectl; do
+for package in codex-goalctl codex-limitctl streamctl codex-threadctl codex-wakectl; do
   uv tool install --reinstall "./packages/$package"
 done
 cargo install --locked --force --path ./packages/codex-readcov
+```
+
+When upgrading from `codex-streamctl`, remove the old command and plugin after
+installing `streamctl`:
+
+```sh
+uv tool uninstall codex-streamctl
+codex plugin remove codex-streamctl@ferrumctl
 ```
 
 Refresh the marketplace, then rerun `codex plugin add NAME@ferrumctl` for each
@@ -113,8 +121,8 @@ codex-threadctl search "decision text" --limit 10
 Share a durable peer checkpoint and announce it without user input:
 
 ```sh
-STREAM=$(codex-streamctl create --label "review")
-POSITION=$(codex-streamctl append "$STREAM" --author "$A" \
+STREAM=$(streamctl create --label "review")
+POSITION=$(streamctl append "$STREAM" --author "$A" \
   "The retry result rules out parser order. I will test transaction scope next." \
   --json | jq -r .position)
 codex-threadctl notify "$B" --from "$A" \
@@ -192,7 +200,7 @@ More combinations:
 packages/
   codex-goalctl/
   codex-limitctl/
-  codex-streamctl/
+  streamctl/
   codex-threadctl/
   codex-wakectl/
   codex-readcov/

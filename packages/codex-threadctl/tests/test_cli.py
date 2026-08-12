@@ -24,7 +24,7 @@ class ParserTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 parser.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-threadctl 0.5.3\n")
+        self.assertEqual(output.getvalue(), "codex-threadctl 0.5.4\n")
 
     def test_default_timeout_allows_for_history_reconstruction(self):
         self.assertEqual(parser.build_parser().parse_args(["loaded"]).timeout, 30.0)
