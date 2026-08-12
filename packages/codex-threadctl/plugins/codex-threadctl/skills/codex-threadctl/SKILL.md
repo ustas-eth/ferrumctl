@@ -1,20 +1,23 @@
 ---
 name: codex-threadctl
-description: "Use when a Codex thread id is the useful handle for persisted discovery or history, current app-server state, retained messages, context or terminal visibility, or immediate control such as notify, wake, start, steer, resume, interrupt, or exact terminal termination. Prefer native subagent tools when this session owns the live handle. Do not use for future conditions, goal editing, read coverage, terminal keystrokes, or spawning."
+description: "Use when a Codex thread id or canonical task name such as /root/reviewer is the useful handle for spawned-tree discovery, persisted history, current app-server state, retained messages, context or terminal visibility, or supported immediate control within native input-ownership boundaries, such as advisory notification, wake, start, steer, resume, interrupt, or exact terminal termination. Prefer native subagent tools for direct messages, lifecycle control, waiting, and result retrieval when this session owns the live handle. Do not use for future conditions, goal editing, read coverage, terminal keystrokes, or spawning."
 ---
 
 # Codex Threadctl
 
 ## Purpose
 
-Use `codex-threadctl` to observe persisted Codex thread state or apply an
-immediate operation through a thread id. It combines persisted relationships
-and materialized history with live state from a selected app-server.
+Use `codex-threadctl` to observe persisted Codex thread state or apply a
+supported immediate operation through a thread id or canonical task name such
+as `/root/reviewer`. It combines persisted relationships and materialized
+history with live state from a selected app-server.
 
-Use native subagent tools for ordinary messaging, waiting, and result retrieval
-when this session owns the live handle. Use threadctl when only a thread id
-remains, host-level control is intentional, or retained state beyond the native
-result is needed.
+Use native subagent tools for ordinary direct messages, lifecycle control,
+waiting, and result retrieval when this session owns the live handle. Use
+`notify` when authoritative content already exists elsewhere and a loaded target
+only needs advisory context without starting or steering a turn. Use other
+threadctl operations when only a thread id remains, host-level control is
+intentional, or retained state beyond the native result is needed.
 
 Threadctl does not schedule future input, edit goals, measure read coverage, or
 spawn agents.
@@ -24,6 +27,8 @@ spawn agents.
 Choose the narrowest useful view:
 
 - `list` and `search` discover persisted threads without loading them.
+- `agents` lists a spawned tree; `resolve` maps one canonical task name to a
+  thread id.
 - `loaded` and `status` report state on the selected app-server.
 - `inspect` gives a compact orientation across current state and recent work.
 - `items` lists ordered activity summaries.
@@ -34,6 +39,8 @@ Choose the narrowest useful view:
 ```sh
 codex-threadctl list --parent THREAD_ID --sort created --limit 5
 codex-threadctl search "decision text" --limit 10
+codex-threadctl agents
+codex-threadctl resolve /root/reviewer
 codex-threadctl inspect THREAD_ID --brief
 codex-threadctl items THREAD_ID --limit 10
 codex-threadctl messages THREAD_ID --limit 10
@@ -44,6 +51,15 @@ codex-threadctl terminals THREAD_ID
 Use `items --after TURN_ID ITEM_ID` or `messages --after TURN_ID ITEM_ID` for an
 exclusive range after a known composite locator. Use `--limit 0` when the full
 selected interval is required.
+
+Within the current spawn tree, `CODEX_THREAD_ID` scopes canonical task names
+beginning with `/root`. Otherwise pass `--tree THREAD_ID`, where the id can
+belong to any member of that tree. Threadctl commands that take a thread id
+accept the same canonical name form. If a name is missing or was reused by
+multiple persisted agents, resolution fails instead of guessing. Use an
+unambiguous name directly for an immediate threadctl operation; resolve and
+retain the thread id when another package requires one or the reference must
+remain attached to that conversation.
 
 ## Choose Immediate Control
 
@@ -72,8 +88,10 @@ codex-threadctl terminate-terminal THREAD_ID PROCESS_ID --item ITEM_ID
 codex-threadctl resume THREAD_ID --continue-goal
 ```
 
-Use `CODEX_THREAD_ID` for this thread's identity when available. Pass
-`--endpoint unix://PATH` when the target is loaded on a non-default server.
+Use `CODEX_THREAD_ID` for this thread's identity when available. For `notify`,
+omit `--from` unless a host process or deliberate role identity needs another
+label. Pass `--endpoint unix://PATH` when the target is loaded on a non-default
+server.
 
 ## Observation Boundaries
 
@@ -107,8 +125,10 @@ Use `CODEX_THREAD_ID` for this thread's identity when available. Pass
   required.
 - Use process and item ids from the same current `terminals` result for
   `terminate-terminal`.
-- Codex rejects direct app-server input to v2 subagents. Use their native parent
-  handle for lifecycle control; `notify` remains advisory injection.
+- Codex rejects direct `start`, `steer`, and idle `wake` for parent-owned agents.
+  Use their native parent handle for lifecycle control. Task-name inspection
+  does not transfer that ownership. Advisory `notify` can affect active
+  reasoning, but does not start or steer the child.
 - When input could be mistaken for direct human instruction, label its logical
   source naturally. A label is context, not authentication or added authority.
 
@@ -117,16 +137,22 @@ Use `--json` when another program needs exact identifiers or outcomes.
 
 ## References
 
-- Read `references/observation-semantics.md` for discovery, search, app-server
-  status, timestamps, context freshness, and snapshot consistency.
-- Read `references/materialized-history.md` for item projections, ranges,
-  pagination backends, and mutable history.
-- Read `references/lifecycle-control.md` before relying on notification, wake,
-  start, steering, resume, interruption, or terminal-process behavior.
-- Read `references/coordination-principles.md` when composing immediate control
-  with native handles, goals, streams, wakes, or coverage.
-- Read `references/worker-workflows.md` for worker supervision, checkpoints, and
-  reviewer chains.
-- Read `references/peer-workflows.md` for direct exchanges, durable discussion,
-  and handoffs.
-- Read `references/host-automation.md` for scripts and external managers.
+Routine observation and one confirmed immediate operation need no further
+reference.
+
+- Read `references/observation-semantics.md` when interpreting freshness,
+  timestamps, context observations, or a multi-source snapshot.
+- Read `references/materialized-history.md` when exact ranges, pagination,
+  mutable item ids, or complete retained text matter.
+- Read `references/lifecycle-control.md` when automating immediate control or
+  reconciling an ambiguous control outcome.
+- Read `references/agent-trees.md` when task name resolution, name reuse, or
+  native input ownership affects a decision.
+- Read `references/coordination-principles.md` when designing a workflow across
+  multiple ferrumctl state or control surfaces.
+- Read `references/worker-workflows.md` when designing sustained worker
+  supervision, checkpoints, or reviewer chains.
+- Read `references/peer-workflows.md` when setting up durable peer discussion or
+  handoff.
+- Read `references/host-automation.md` when a script or external process manages
+  threads.

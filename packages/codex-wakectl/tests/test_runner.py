@@ -10,7 +10,11 @@ from unittest import mock
 
 from codex_wakectl import commands
 from codex_wakectl import conditions
-from codex_threadctl.errors import DeliveryUncertain, ThreadStateError
+from codex_threadctl.errors import (
+    DeliveryUncertain,
+    DirectInputUnsupported,
+    ThreadStateError,
+)
 from codex_wakectl.conditions import new_job
 from codex_wakectl.state import insert_job
 from codex_wakectl.state import list_jobs
@@ -225,6 +229,40 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(pending["status"], "pending")
             self.assertEqual(pending["lastReason"], "thread is active")
             self.assertNotIn("lastError", pending)
+
+    async def test_parent_owned_delivery_fails_permanently(self) -> None:
+        async def ready(*args: object, **kwargs: object):
+            return True, {}, "ready"
+
+        async def reject(*args: object, **kwargs: object):
+            raise DirectInputUnsupported("thread is controlled by its native parent")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp) / "jobs.sqlite3"
+            insert_job(
+                state,
+                new_job(
+                    {"type": "time", "at": 1},
+                    "v2-child",
+                    "message",
+                    "unix:///tmp/codex.sock",
+                ),
+            )
+
+            with (
+                mock.patch.object(commands, "AppServer", FakeAppServer),
+                mock.patch.object(commands, "condition_ready", ready),
+                mock.patch.object(commands, "deliver_input", reject),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                self.assertEqual(await commands.cmd_run(runner_args(state)), 1)
+
+            stored = list_jobs(state, include_all=True)[0]
+            self.assertEqual(stored["status"], "failed")
+            self.assertEqual(
+                stored["lastError"],
+                "thread is controlled by its native parent",
+            )
 
     async def test_operational_error_makes_runner_fail_and_remains_visible(self) -> None:
         class BrokenAppServer(FakeAppServer):

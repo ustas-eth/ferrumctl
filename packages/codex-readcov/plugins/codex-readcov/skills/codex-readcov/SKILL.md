@@ -38,6 +38,17 @@ Use `top` when the complete retained history is deliberately the window:
 codex-readcov top THREAD_ID PATH --limit 20
 ```
 
+A canonical task name returned by a native subagent tool is not a rollout
+identifier. If the threadctl skill is available, resolve the task name and pass
+its thread id to readcov:
+
+```sh
+codex-readcov top "$(codex-threadctl resolve /root/reviewer)" PATH --limit 20
+```
+
+`CODEX_THREAD_ID` supplies the tree scope. Otherwise pass `--tree THREAD_ID` to
+`resolve`.
+
 ## Compose Paths
 
 Use `--paths-only --limit 0` to produce a complete selected path list for

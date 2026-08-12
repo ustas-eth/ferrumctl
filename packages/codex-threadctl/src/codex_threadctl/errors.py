@@ -28,6 +28,10 @@ class ThreadStateError(ThreadctlError):
     """The requested operation does not match the current thread state."""
 
 
+class DirectInputUnsupported(ThreadStateError):
+    """The target's owner does not permit direct app-server input."""
+
+
 class DeliveryUncertain(ThreadctlError):
     """An input request was submitted but its outcome could not be confirmed."""
 

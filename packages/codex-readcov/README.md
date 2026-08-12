@@ -29,6 +29,13 @@ Show the top read files for a thread:
 codex-readcov top THREAD_ID
 ```
 
+For a canonical task name returned by a native subagent tool, resolve its stable
+thread id first when threadctl is available:
+
+```sh
+codex-readcov top "$(codex-threadctl resolve /root/reviewer)"
+```
+
 Snapshot before work, then inspect recorded read actions afterward:
 
 ```sh

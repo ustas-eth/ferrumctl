@@ -1,7 +1,7 @@
 {
   "name": "codex-threadctl",
-  "version": "0.5.4",
-  "description": "Codex skill for finding, inspecting, notifying, and controlling app-server-backed threads.",
+  "version": "0.6.0",
+  "description": "Codex skill for finding agent trees, inspecting threads, and applying app-server-backed control.",
   "author": {
     "name": "ustas-eth"
   },
@@ -18,17 +18,20 @@
   "interface": {
     "displayName": "Codex Threadctl",
     "shortDescription": "Find, inspect, and control Codex threads",
-    "longDescription": "Codex Threadctl provides guidance for discovering and searching persisted threads, inspecting activity, item ranges, context, messages, and terminal processes, delivering advisory agent notices, waking idle threads without user input, starting or steering input, resuming stored threads, interrupting exact turns, and terminating exact terminal processes.",
+    "longDescription": "Codex Threadctl provides guidance for discovering persisted threads and spawned-agent trees, resolving v2 paths, inspecting activity, context, messages, and terminal processes, and applying immediate app-server control within native ownership boundaries.",
     "developerName": "ustas-eth",
     "category": "Productivity",
     "capabilities": [
       "Persisted thread discovery",
+      "Spawned-agent tree discovery",
+      "V2 agent-path resolution",
       "Persisted thread search",
       "Thread activity inspection",
       "Materialized activity ranges",
       "Running terminal inspection",
       "Conversation message retrieval",
       "Context and compaction visibility",
+      "Direct-input ownership visibility",
       "Advisory agent notification",
       "Empty-turn wake",
       "Turn start and steering",

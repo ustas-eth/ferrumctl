@@ -115,10 +115,14 @@ def format_inspection(inspection: dict[str, Any]) -> str:
             "name",
             "agentNickname",
             "agentRole",
+            "agentPath",
+            "agentDepth",
             "parentThreadId",
             "forkedFromId",
             "cwd",
             "source",
+            "canAcceptDirectInput",
+            "inputOwner",
         )
         if thread.get(key) is not None
     }
@@ -269,14 +273,48 @@ def format_thread_list(threads: list[dict[str, Any]]) -> str:
             ("name", "name"),
             ("agentNickname", "nickname"),
             ("agentRole", "role"),
+            ("agentPath", "task-name"),
+            ("agentDepth", "agent-depth"),
             ("cwd", "cwd"),
         ):
             if thread.get(key) is not None:
                 fields.append(f"{label}={quoted(thread[key])}")
+        if thread.get("canAcceptDirectInput") is not None:
+            fields.append(
+                "direct-input="
+                + str(thread["canAcceptDirectInput"]).lower()
+            )
+        if thread.get("inputOwner") is not None:
+            fields.append(f"input={thread['inputOwner']}")
         if thread.get("preview") is not None:
             fields.append(f"preview={quoted(message_preview(thread['preview']))}")
         if thread.get("snippet") is not None:
             fields.append(f"snippet={quoted(message_preview(thread['snippet']))}")
+        lines.append("\t".join(fields))
+    return "\n".join(lines)
+
+
+def format_agents(agents: list[dict[str, Any]]) -> str:
+    lines = []
+    for agent in agents:
+        status = agent.get("status")
+        if not isinstance(status, dict):
+            status = {"type": "unknown"}
+        fields = [
+            str(agent.get("agentPath") or "-"),
+            str(agent.get("threadId") or "-"),
+            f"server={status_name(status)}",
+            f"loaded={'yes' if agent.get('loaded') else 'no'}",
+            f"input={agent.get('inputOwner') or 'unknown'}",
+        ]
+        if agent.get("parentThreadId") is not None:
+            fields.append(f"parent={agent['parentThreadId']}")
+        if agent.get("depth") is not None:
+            fields.append(f"depth={agent['depth']}")
+        if agent.get("nickname") is not None:
+            fields.append(f"nickname={quoted(agent['nickname'])}")
+        if agent.get("role") is not None:
+            fields.append(f"role={quoted(agent['role'])}")
         lines.append("\t".join(fields))
     return "\n".join(lines)
 

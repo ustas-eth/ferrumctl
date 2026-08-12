@@ -15,6 +15,7 @@ from .constants import CLIENT_VERSION, MAX_WEBSOCKET_MESSAGE_BYTES
 from .errors import (
     AppServerResponseError,
     DeliveryUncertain,
+    DirectInputUnsupported,
     ThreadctlError,
     ThreadNotLoaded,
     ThreadStateError,
@@ -26,6 +27,14 @@ TRACKED_NOTIFICATIONS = {
     "item/completed",
     "error",
 }
+
+DIRECT_INPUT_TO_V2_SUBAGENT = (
+    "direct app-server input is not allowed for multi-agent v2 sub-agents"
+)
+PARENT_OWNED_INPUT_ERROR = (
+    "thread is controlled by its native parent; direct start, steer, and wake "
+    "are unavailable"
+)
 
 
 class AppServer:
@@ -617,6 +626,10 @@ def is_steer_state_error(error: AppServerResponseError) -> bool:
     )
 
 
+def is_parent_owned_input_error(error: AppServerResponseError) -> bool:
+    return DIRECT_INPUT_TO_V2_SUBAGENT in str(error)
+
+
 async def confirm_input(
     app: AppServer,
     thread_id: str,
@@ -733,7 +746,9 @@ async def start_turn(
         turn_id = turn.get("id")
         if not isinstance(turn_id, str) or not turn_id:
             raise ThreadctlError("app-server returned turn/start without a turn id")
-    except AppServerResponseError:
+    except AppServerResponseError as exc:
+        if is_parent_owned_input_error(exc):
+            raise DirectInputUnsupported(PARENT_OWNED_INPUT_ERROR) from exc
         raise
     except (OSError, ThreadctlError, websockets.WebSocketException) as exc:
         raise DeliveryUncertain(None, client_message_id) from exc
@@ -932,7 +947,12 @@ async def wake_thread(
         if not isinstance(turn_id, str) or not turn_id:
             raise ThreadctlError("app-server returned turn/start without a turn id")
     except AppServerResponseError as exc:
-        return wake_result(thread_id, "rejected", reason=str(exc))
+        reason = (
+            PARENT_OWNED_INPUT_ERROR
+            if is_parent_owned_input_error(exc)
+            else str(exc)
+        )
+        return wake_result(thread_id, "rejected", reason=reason)
     except (OSError, ThreadctlError, websockets.WebSocketException) as exc:
         return wake_result(thread_id, "uncertain", reason=str(exc))
 
@@ -969,6 +989,8 @@ async def steer_turn(
         if accepted_turn_id != turn_id:
             raise ThreadctlError("app-server returned an unexpected steered turn id")
     except AppServerResponseError as exc:
+        if is_parent_owned_input_error(exc):
+            raise DirectInputUnsupported(PARENT_OWNED_INPUT_ERROR) from exc
         if is_steer_state_error(exc):
             raise ThreadStateError(str(exc)) from exc
         raise

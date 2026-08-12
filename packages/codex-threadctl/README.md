@@ -4,8 +4,9 @@
 shared `codex app-server`.
 
 Use it to find or search stored sessions and spawned threads, inspect recent
-work and retained messages, or apply immediate control through a thread id. It
-does not edit goals, schedule future input, or measure file-read coverage.
+work and retained messages, or apply immediate control through a thread id or
+canonical task name such as `/root/reviewer`. It does not edit goals, schedule
+future input, or measure file-read coverage.
 
 ## Install
 
@@ -42,6 +43,18 @@ codex-threadctl search "decision text" --limit 10
 codex-threadctl inspect THREAD_ID
 ```
 
+List a spawned-agent tree or address a member by its canonical task name:
+
+```sh
+codex-threadctl agents
+codex-threadctl inspect /root/reviewer
+codex-threadctl resolve /root/reviewer
+```
+
+`CODEX_THREAD_ID` scopes canonical task names beginning with `/root` to the
+current tree. Outside that tree, pass `--tree THREAD_ID`. Task names are reusable
+routing aliases; `resolve` prints the stable thread id.
+
 Retrieve retained activity or one exact message:
 
 ```sh
@@ -71,6 +84,10 @@ codex-threadctl notify THREAD_ID --from AUTHOR \
 codex-threadctl wake THREAD_ID
 ```
 
+When a native subagent tool returns canonical task names, the parent retains
+lifecycle input for its children. Threadctl can inspect them by task name, but
+direct `start`, `steer`, and idle `wake` are rejected.
+
 Other immediate operations include resuming persisted state, interrupting one
 turn, and inspecting or terminating a tracked terminal process:
 
@@ -88,6 +105,7 @@ More detail:
 - [docs/observation-semantics.md](docs/observation-semantics.md)
 - [docs/materialized-history.md](docs/materialized-history.md)
 - [docs/lifecycle-control.md](docs/lifecycle-control.md)
+- [docs/agent-trees.md](docs/agent-trees.md)
 
 ## Codex Skill
 

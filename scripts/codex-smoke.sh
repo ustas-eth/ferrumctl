@@ -114,6 +114,8 @@ mkdir -p "$CODEX_HOME" "$XDG_STATE_HOME"
 inspect_thread="00000000-0000-4000-8000-000000000010"
 inspect_turn="00000000-0000-4000-8000-000000000011"
 inspect_rollout="$CODEX_HOME/sessions/2026/01/02/rollout-2026-01-02T03-04-05-$inspect_thread.jsonl"
+agent_thread="00000000-0000-4000-8000-000000000012"
+agent_rollout="$CODEX_HOME/sessions/2026/01/02/rollout-2026-01-02T03-03-00-$agent_thread.jsonl"
 mkdir -p "$(dirname "$inspect_rollout")"
 "$PYTHON" - "$inspect_rollout" "$inspect_thread" "$inspect_turn" "$SMOKE_ROOT" <<'PY'
 import json
@@ -244,6 +246,48 @@ with open(rollout, "w", encoding="utf-8") as handle:
         handle.write(json.dumps(event, separators=(",", ":")) + "\n")
 PY
 
+"$PYTHON" - "$agent_rollout" "$agent_thread" "$inspect_thread" "$SMOKE_ROOT" <<'PY'
+import json
+import sys
+
+rollout, thread_id, parent_id, cwd = sys.argv[1:]
+timestamp = "2026-01-02T03:03:00Z"
+event = {
+    "timestamp": timestamp,
+    "type": "session_meta",
+    "payload": {
+        "session_id": parent_id,
+        "id": thread_id,
+        "parent_thread_id": parent_id,
+        "timestamp": timestamp,
+        "cwd": cwd,
+        "originator": "ferrumctl-codex-smoke",
+        "cli_version": "0.0.0",
+        "source": {
+            "subagent": {
+                "thread_spawn": {
+                    "parent_thread_id": parent_id,
+                    "depth": 1,
+                    "agent_path": "/root/reviewer",
+                    "agent_nickname": "Reviewer",
+                    "agent_role": "reviewer",
+                }
+            }
+        },
+        "thread_source": "subagent",
+        "agent_nickname": "Reviewer",
+        "agent_path": "/root/reviewer",
+        "agent_role": "reviewer",
+        "model_provider": "openai",
+        "history_mode": "legacy",
+        "multi_agent_version": "v2",
+    },
+}
+
+with open(rollout, "w", encoding="utf-8") as handle:
+    handle.write(json.dumps(event, separators=(",", ":")) + "\n")
+PY
+
 log "Codex version"
 codex_version=$("$CODEX_BIN" --version)
 printf '%s\n' "$codex_version"
@@ -293,6 +337,26 @@ assert set(request["required"]) == {"id", "method"}
 assert request["properties"]["params"] == {"type": "null"}
 
 definitions = protocol["definitions"]
+thread = definitions["Thread"]["properties"]
+assert {"parentThreadId", "source", "status"} <= set(thread)
+
+spawn_source = next(
+    entry
+    for entry in definitions["SubAgentSource"]["oneOf"]
+    if entry.get("title") == "ThreadSpawnSubAgentSource"
+)
+spawn = spawn_source["properties"]["thread_spawn"]["properties"]
+assert {"parent_thread_id", "depth", "agent_path"} <= set(spawn)
+
+subagent_activity = next(
+    entry
+    for entry in definitions["ThreadItem"]["oneOf"]
+    if entry.get("title") == "SubAgentActivityThreadItem"
+)
+assert {"agentThreadId", "agentPath"} <= set(
+    subagent_activity["properties"]
+)
+
 response = definitions["GetAccountRateLimitsResponse"]
 snapshot = definitions["RateLimitSnapshot"]["properties"]
 window = definitions["RateLimitWindow"]["properties"]
@@ -346,7 +410,7 @@ agent_message = next(
 assert set(agent_message["required"]) == {"type", "author", "recipient", "content"}
 assert agent_message["properties"]["type"]["enum"] == ["agent_message"]
 PY
-printf 'required account, notification, and turn-start shapes are present\n'
+printf 'required account, agent-tree, notification, and turn-start shapes are present\n'
 
 if limitctl --timeout 5 list \
   >"$SMOKE_ROOT/limit.out" 2>"$SMOKE_ROOT/limit.err"; then
@@ -501,6 +565,72 @@ assert [thread["id"] for thread in threads] == [sys.argv[2]]
 assert "Smoke complete" in threads[0]["snippet"]
 PY
 printf 'threadctl searched persisted thread content and returned a snippet\n'
+
+threadctl --timeout 5 --json agents "$agent_thread" \
+  >"$SMOKE_ROOT/agents.json"
+threadctl --timeout 5 --json agents /root/reviewer --tree "$agent_thread" \
+  >"$SMOKE_ROOT/agents-by-path.json"
+threadctl --timeout 5 resolve /root/reviewer --tree "$agent_thread" \
+  >"$SMOKE_ROOT/resolved-agent.out"
+threadctl --timeout 5 --json status /root/reviewer --tree "$agent_thread" \
+  >"$SMOKE_ROOT/agent-status.json"
+"$PYTHON" - "$SMOKE_ROOT/agents.json" "$SMOKE_ROOT/agents-by-path.json" \
+  "$SMOKE_ROOT/agent-status.json" "$inspect_thread" "$agent_thread" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    tree = json.load(handle)
+with open(sys.argv[2], encoding="utf-8") as handle:
+    tree_by_path = json.load(handle)
+with open(sys.argv[3], encoding="utf-8") as handle:
+    status = json.load(handle)
+
+root_id, agent_id = sys.argv[4:]
+assert tree["rootThreadId"] == root_id
+assert tree_by_path == tree
+assert [(entry["agentPath"], entry["threadId"]) for entry in tree["agents"]] == [
+    ("/root", root_id),
+    ("/root/reviewer", agent_id),
+]
+child = tree["agents"][1]
+assert child["parentThreadId"] == root_id
+assert child["depth"] == 1
+assert child["inputOwner"] == "parent"
+assert status["threadId"] == agent_id
+assert status["agentPath"] == "/root/reviewer"
+assert status["inputOwner"] == "parent"
+PY
+grep -Fqx "$agent_thread" "$SMOKE_ROOT/resolved-agent.out" ||
+  fail "threadctl did not resolve the v2 agent path"
+printf 'threadctl reconstructed, resolved, and inspected a persisted v2 agent tree\n'
+
+agent_watch=$(wakectl --timeout 5 add goal /root/reviewer --status complete \
+  --to /root "smoke" --tree "$agent_thread")
+wakectl --json list >"$SMOKE_ROOT/agent-watch.json"
+"$PYTHON" - "$SMOKE_ROOT/agent-watch.json" "$agent_watch" \
+  "$inspect_thread" "$agent_thread" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    jobs = json.load(handle)["jobs"]
+job = next(entry for entry in jobs if entry["id"] == sys.argv[2])
+assert job["condition"]["threadId"] == sys.argv[4]
+assert job["targetThreadId"] == sys.argv[3]
+PY
+wakectl cancel "$agent_watch" >"$SMOKE_ROOT/agent-watch-cancel.out"
+
+if wakectl --timeout 5 add time --after 1h --to /root/reviewer \
+  "smoke" --tree "$agent_thread" >"$SMOKE_ROOT/agent-target.out" \
+  2>"$SMOKE_ROOT/agent-target.err"; then
+  fail "expected a v2 child wake target to be rejected"
+fi
+grep -Fq 'cannot receive scheduled input' "$SMOKE_ROOT/agent-target.err" || {
+  sed -n '1,40p' "$SMOKE_ROOT/agent-target.err" >&2
+  fail "wakectl did not explain v2 parent-owned delivery"
+}
+printf 'wakectl observed a v2 child and stored its parent as the delivery target\n'
 
 threadctl --timeout 5 inspect "$inspect_thread" \
   --no-previous >"$SMOKE_ROOT/inspect.out"

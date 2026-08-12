@@ -37,6 +37,12 @@ limited to goal state.
 The caller must already know the target thread id. For v1 Codex subagents, the
 spawn result's `agent_id` is the thread id.
 
+Some native subagent tools return a canonical task name such as
+`/root/reviewer`. It is a tree-local routing handle rather than a goal
+identifier. Resolve the task name through a tree-aware tool when available,
+then retain the thread id for goal operations. Goalctl deliberately does not
+depend on a shared app-server or resolve canonical task names itself.
+
 The target must be reachable to the Codex instance started by the command. In
 practice, that means the same Codex home/configuration and a valid persisted
 thread id.

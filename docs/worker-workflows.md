@@ -77,6 +77,34 @@ codex-readcov delta worker.before.json packages --limit 20
 A terminal goal can precede the final response. Retrieve the native result or
 observe the worker's turn boundary when that response matters.
 
+## Native Agent Tree
+
+Some native subagent tools identify each member by a canonical task name such as
+`/root/reviewer`. Use threadctl to inspect the mapping, then keep the resolved
+thread id for packages that require one:
+
+```sh
+codex-threadctl agents
+WORKER=$(codex-threadctl resolve /root/reviewer)
+codex-goalctl replace "$WORKER" \
+  "Review this package and mark the goal complete."
+```
+
+A scheduled condition can use canonical task names directly and return
+attention to the root:
+
+```sh
+codex-wakectl add goal /root/reviewer \
+  --status complete,blocked,budgetLimited,usageLimited \
+  --to /root \
+  "Automated event: Reviewer goal reached a terminal status."
+```
+
+Start or continue the child through the native parent handle. Canonical task
+names are valid observation handles, but direct threadctl start, steer, and idle
+wake do not replace native lifecycle control. Outside the tree, add
+`--tree THREAD_ID` when resolving a task name.
+
 ## Ongoing Supervision
 
 Repeating milestones can return a coordinator to a long-running worker without

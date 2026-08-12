@@ -28,6 +28,15 @@ The common handle is a Codex thread id. For v1 subagents, the spawn result's
 `agent_id` is that thread id. `CODEX_THREAD_ID` identifies the current thread
 when Codex provides it.
 
+Some native subagent tools expose a canonical task name such as
+`/root/reviewer`. It is a tree-local routing handle, not the persisted identity,
+and can be reused after an agent closes. When the threadctl skill is available,
+an unambiguous canonical task name can be used directly for an immediate
+operation or resolved to its thread id. Resolve it when another package requires
+a thread id or when the reference must remain attached to that conversation.
+Persisted goals, snapshots, and jobs remain bound to thread ids. A canonical
+task name does not transfer lifecycle ownership from the native parent.
+
 A thread id identifies persisted state under a Codex home. It does not identify
 which app-server, if any, owns live execution. Immediate and scheduled input
 must use the endpoint on which the target is loaded.
@@ -38,16 +47,18 @@ scope; they are not authentication.
 
 ## Choosing Control
 
-Use a native subagent handle for immediate input, waiting, and result retrieval
-when the current session owns that handle.
+Use a native subagent handle for direct input, lifecycle control, waiting, and
+result retrieval when the current session owns that handle.
 
 Use thread control when a thread id is the useful handle, persisted history is
 needed, or an immediate app-server operation is intentional. Use a queued wake
 when attention must survive the current turn or wait for a later condition.
 
 Keep durable assignment in goal state. Keep durable peer content in a stream.
-Use input or advisory notification to draw attention to that state rather than
-copying it into several conversations.
+When a stream is authoritative, use native input or advisory notification only
+to draw attention to its committed position rather than copying its content into
+several conversations. Notification does not start an idle recipient; lifecycle
+control remains with the native owner or a target that accepts direct input.
 
 Use account limits to gate work only when a policy supplies the threshold. Use
 read coverage as evidence about a defined transcript interval, not as a proxy

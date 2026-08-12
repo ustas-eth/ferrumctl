@@ -24,7 +24,7 @@ class ParserTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 parser.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-threadctl 0.5.4\n")
+        self.assertEqual(output.getvalue(), "codex-threadctl 0.6.0\n")
 
     def test_default_timeout_allows_for_history_reconstruction(self):
         self.assertEqual(parser.build_parser().parse_args(["loaded"]).timeout, 30.0)
@@ -32,6 +32,8 @@ class ParserTests(unittest.TestCase):
     def test_parses_all_commands(self):
         cases = [
             ["loaded"],
+            ["agents", "thread"],
+            ["resolve", "/root/worker", "--tree", "thread"],
             ["list", "--parent", "thread", "--limit", "0", "--sort", "created"],
             ["search", "decision text", "--limit", "0", "--sort", "updated"],
             ["status", "thread"],
@@ -117,6 +119,196 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
             result = await commands.cmd_loaded(args)
         self.assertEqual(result, 0)
         self.assertEqual(output.getvalue(), "")
+
+    async def test_agents_prints_path_and_capability(self):
+        args = parser.build_parser().parse_args(["agents", "root"])
+        records = [
+            {
+                "threadId": "root",
+                "agentPath": "/root",
+                "parentThreadId": None,
+                "depth": 0,
+                "loaded": True,
+                "status": {"type": "active"},
+                "canAcceptDirectInput": True,
+                "inputOwner": "direct",
+                "nickname": None,
+                "role": None,
+            },
+            {
+                "threadId": "worker",
+                "agentPath": "/root/worker",
+                "parentThreadId": "root",
+                "depth": 1,
+                "loaded": True,
+                "status": {"type": "active"},
+                "canAcceptDirectInput": False,
+                "inputOwner": "parent",
+                "nickname": "Ada",
+                "role": "worker",
+            },
+        ]
+        with (
+            mock.patch.object(commands, "AppServer", return_value=FakeContext()),
+            mock.patch.object(
+                commands,
+                "list_agent_tree",
+                mock.AsyncMock(return_value=records),
+            ) as list_tree,
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            result = await commands.cmd_agents(args)
+
+        self.assertEqual(result, 0)
+        list_tree.assert_awaited_once_with(mock.ANY, "root")
+        self.assertIn("/root/worker\tworker\tserver=active", output.getvalue())
+        self.assertIn("input=parent", output.getvalue())
+
+    async def test_agents_resolves_path_in_place(self):
+        args = parser.build_parser().parse_args(
+            ["agents", "/root/worker", "--tree", "root"]
+        )
+        with (
+            mock.patch.object(commands, "AppServer", return_value=FakeContext()),
+            mock.patch.object(
+                commands,
+                "resolve_thread_reference",
+                mock.AsyncMock(return_value="worker"),
+            ) as resolve,
+            mock.patch.object(
+                commands,
+                "list_agent_tree",
+                mock.AsyncMock(return_value=[]),
+            ) as list_tree,
+            redirect_stdout(io.StringIO()),
+        ):
+            result = await commands.cmd_agents(args)
+
+        self.assertEqual(result, 0)
+        resolve.assert_awaited_once_with(
+            mock.ANY,
+            "/root/worker",
+            tree_thread_id="root",
+        )
+        list_tree.assert_awaited_once_with(mock.ANY, "worker")
+
+    async def test_resolve_prints_only_thread_id(self):
+        args = parser.build_parser().parse_args(
+            ["resolve", "/root/worker", "--tree", "root"]
+        )
+        with (
+            mock.patch.object(commands, "AppServer", return_value=FakeContext()),
+            mock.patch.object(
+                commands,
+                "resolve_agent_path",
+                mock.AsyncMock(
+                    return_value={
+                        "threadId": "worker",
+                        "agentPath": "/root/worker",
+                    }
+                ),
+            ) as resolve,
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            result = await commands.cmd_resolve(args)
+
+        self.assertEqual(result, 0)
+        resolve.assert_awaited_once_with(
+            mock.ANY,
+            "/root/worker",
+            tree_thread_id="root",
+        )
+        self.assertEqual(output.getvalue(), "worker\n")
+
+    async def test_status_resolves_agent_path_in_place(self):
+        args = parser.build_parser().parse_args(
+            ["status", "/root/worker", "--tree", "root", "--json"]
+        )
+        with (
+            mock.patch.object(commands, "AppServer", return_value=FakeContext()),
+            mock.patch.object(
+                commands,
+                "resolve_thread_reference",
+                mock.AsyncMock(return_value="worker"),
+            ) as resolve,
+            mock.patch.object(
+                commands,
+                "read_thread",
+                mock.AsyncMock(
+                    return_value={
+                        "id": "worker",
+                        "status": {"type": "active"},
+                        "source": {
+                            "subAgent": {
+                                "thread_spawn": {
+                                    "parent_thread_id": "root",
+                                    "depth": 1,
+                                    "agent_path": "/root/worker",
+                                }
+                            }
+                        },
+                        "canAcceptDirectInput": False,
+                    }
+                ),
+            ),
+            mock.patch.object(
+                commands,
+                "list_loaded",
+                mock.AsyncMock(return_value=["worker"]),
+            ),
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            result = await commands.cmd_status(args)
+
+        self.assertEqual(result, 0)
+        resolve.assert_awaited_once_with(
+            mock.ANY,
+            "/root/worker",
+            tree_thread_id="root",
+        )
+        payload = json.loads(output.getvalue())
+        self.assertEqual(payload["threadId"], "worker")
+        self.assertEqual(payload["agentPath"], "/root/worker")
+        self.assertEqual(payload["agentDepth"], 1)
+        self.assertFalse(payload["canAcceptDirectInput"])
+        self.assertEqual(payload["inputOwner"], "parent")
+
+    async def test_status_plain_output_names_parent_owned_input(self):
+        args = parser.build_parser().parse_args(["status", "worker"])
+        with (
+            mock.patch.object(commands, "AppServer", return_value=FakeContext()),
+            mock.patch.object(
+                commands,
+                "read_thread",
+                mock.AsyncMock(
+                    return_value={
+                        "id": "worker",
+                        "status": {"type": "idle"},
+                        "parentThreadId": "root",
+                        "source": {
+                            "subAgent": {
+                                "thread_spawn": {
+                                    "parent_thread_id": "root",
+                                    "depth": 1,
+                                    "agent_path": "/root/worker",
+                                }
+                            }
+                        },
+                    }
+                ),
+            ),
+            mock.patch.object(
+                commands,
+                "list_loaded",
+                mock.AsyncMock(return_value=["worker"]),
+            ),
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            result = await commands.cmd_status(args)
+
+        self.assertEqual(result, 0)
+        self.assertIn("task-name=/root/worker", output.getvalue())
+        self.assertIn("input=parent", output.getvalue())
 
     async def test_notify_uses_current_thread_identity_and_prints_acceptance(self):
         args = parser.build_parser().parse_args(["notify", "target", "notice"])

@@ -34,16 +34,20 @@ POSITION=$(streamctl append "$STREAM" \
 ```
 
 Place the stream id in each participant's existing context or durable
-assignment. When peer attention is useful and immediate thread control is
-available, announce only the highest committed position:
+assignment. Once the stream is the authoritative exchange, keep substantive
+peer content there. When an active peer would benefit from prompt attention and
+immediate thread control is available, announce only the highest committed
+position. The target can be a thread id or an unambiguous canonical task name
+such as `/root/reviewer`:
 
 ```sh
 codex-threadctl notify "$B" \
   "Stream $STREAM has a checkpoint through $POSITION."
 ```
 
-Notification is advisory and does not define stream order. If B is loaded and
-idle, an empty wake can start its next turn without adding another message:
+Notification is advisory and does not define stream order. If B is idle and
+must act, start it through its native owner or use an empty wake when B accepts
+direct input:
 
 ```sh
 codex-threadctl wake "$B"

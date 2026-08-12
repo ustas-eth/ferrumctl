@@ -5,6 +5,12 @@ import json
 import os
 import sys
 
+from .agents import (
+    enrich_thread,
+    list_agent_tree,
+    resolve_agent_path,
+    resolve_thread_reference,
+)
 from .appserver import (
     AppServer,
     get_goal,
@@ -26,6 +32,7 @@ from .appserver import (
 from .context import read_context_state
 from .errors import AppServerResponseError, ThreadctlError
 from .formatting import (
+    format_agents,
     format_inspection,
     format_items,
     format_messages,
@@ -49,6 +56,10 @@ THREAD_LIST_FIELDS = (
     "name",
     "agentNickname",
     "agentRole",
+    "agentPath",
+    "agentDepth",
+    "canAcceptDirectInput",
+    "inputOwner",
     "parentThreadId",
     "forkedFromId",
     "cwd",
@@ -87,18 +98,77 @@ async def cmd_loaded(args: argparse.Namespace) -> int:
     return 0
 
 
+async def cmd_agents(args: argparse.Namespace) -> int:
+    reference = current_identity(args.thread_id, "THREAD_ID")
+    async with AppServer(args.endpoint, args.timeout) as app:
+        thread_id = await resolve_thread_reference(
+            app,
+            reference,
+            tree_thread_id=args.tree,
+        )
+        agents = await list_agent_tree(app, thread_id)
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "rootThreadId": agents[0]["threadId"] if agents else None,
+                    "agents": agents,
+                },
+                indent=2,
+            )
+        )
+    else:
+        output = format_agents(agents)
+        if output:
+            print(output)
+    return 0
+
+
+async def cmd_resolve(args: argparse.Namespace) -> int:
+    async with AppServer(args.endpoint, args.timeout) as app:
+        agent = await resolve_agent_path(
+            app,
+            args.agent_path,
+            tree_thread_id=args.tree,
+        )
+    if args.json:
+        print(json.dumps(agent, indent=2))
+    else:
+        print(agent["threadId"])
+    return 0
+
+
 async def cmd_list(args: argparse.Namespace) -> int:
     async with AppServer(args.endpoint, args.timeout) as app:
+        parent = (
+            await resolve_thread_reference(
+                app,
+                args.parent,
+                tree_thread_id=args.tree,
+            )
+            if args.parent is not None
+            else None
+        )
+        ancestor = (
+            await resolve_thread_reference(
+                app,
+                args.ancestor,
+                tree_thread_id=args.tree,
+            )
+            if args.ancestor is not None
+            else None
+        )
         threads = await list_threads(
             app,
-            parent_thread_id=args.parent,
-            ancestor_thread_id=args.ancestor,
+            parent_thread_id=parent,
+            ancestor_thread_id=ancestor,
             limit=args.limit,
             sort_key=THREAD_SORT_KEYS[args.sort],
         )
     records = [
-        {field: thread.get(field) for field in THREAD_LIST_FIELDS}
+        {field: enriched.get(field) for field in THREAD_LIST_FIELDS}
         for thread in threads
+        for enriched in [enrich_thread(thread)]
     ]
     if args.json:
         print(json.dumps({"threads": records}, indent=2))
@@ -119,7 +189,7 @@ async def cmd_search(args: argparse.Namespace) -> int:
         )
     records = []
     for match in matches:
-        thread = match["thread"]
+        thread = enrich_thread(match["thread"])
         record = {field: thread.get(field) for field in THREAD_SEARCH_FIELDS}
         record["snippet"] = match["snippet"]
         records.append(record)
@@ -134,12 +204,22 @@ async def cmd_search(args: argparse.Namespace) -> int:
 
 async def cmd_status(args: argparse.Namespace) -> int:
     async with AppServer(args.endpoint, args.timeout) as app:
-        thread = await read_thread(app, args.thread_id)
-        loaded = args.thread_id in await list_loaded(app)
+        thread_id = await resolve_thread_reference(
+            app,
+            args.thread_id,
+            tree_thread_id=args.tree,
+        )
+        thread = enrich_thread(await read_thread(app, thread_id))
+        loaded = thread_id in await list_loaded(app)
     result = {
-        "threadId": args.thread_id,
+        "threadId": thread_id,
         "loaded": loaded,
         "status": thread.get("status", {"type": "unknown"}),
+        "agentPath": thread.get("agentPath"),
+        "agentDepth": thread.get("agentDepth"),
+        "parentThreadId": thread.get("parentThreadId"),
+        "canAcceptDirectInput": thread.get("canAcceptDirectInput"),
+        "inputOwner": thread.get("inputOwner"),
     }
     if args.json:
         print(json.dumps(result, indent=2))
@@ -150,8 +230,19 @@ async def cmd_status(args: argparse.Namespace) -> int:
                 [
                     loaded_label,
                     str(result["status"].get("type", "unknown")),
-                    args.thread_id,
+                    thread_id,
                 ]
+                + (
+                    [f"task-name={result['agentPath']}"]
+                    if result["agentPath"] is not None
+                    else []
+                )
+                + (
+                    [f"direct-input={str(result['canAcceptDirectInput']).lower()}"]
+                    if result["canAcceptDirectInput"] is not None
+                    else []
+                )
+                + [f"input={result['inputOwner']}"]
             )
         )
     return 0
@@ -159,6 +250,11 @@ async def cmd_status(args: argparse.Namespace) -> int:
 
 async def cmd_inspect(args: argparse.Namespace) -> int:
     async with AppServer(args.endpoint, args.timeout) as app:
+        thread_id = await resolve_thread_reference(
+            app,
+            args.thread_id,
+            tree_thread_id=args.tree,
+        )
         local_rollout = app.endpoint.startswith("unix://")
         turn_limit = 1 if args.no_previous else 2
         history_backend = "thread/turns/list"
@@ -168,7 +264,7 @@ async def cmd_inspect(args: argparse.Namespace) -> int:
             turns = (
                 await list_turn_page(
                     app,
-                    args.thread_id,
+                    thread_id,
                     limit=turn_limit,
                     items_view="summary" if args.brief else "full",
                 )
@@ -178,7 +274,7 @@ async def cmd_inspect(args: argparse.Namespace) -> int:
                 raise
             turns, recent_items = await native_inspection_history(
                 app,
-                args.thread_id,
+                thread_id,
                 turn_limit=turn_limit,
                 item_limit=args.items,
                 brief=args.brief,
@@ -192,11 +288,11 @@ async def cmd_inspect(args: argparse.Namespace) -> int:
         goal = None
         goal_error = None
         try:
-            goal = await get_goal(app, args.thread_id)
+            goal = await get_goal(app, thread_id)
         except ThreadctlError as exc:
             goal_error = str(exc)
-        thread = await read_thread(app, args.thread_id)
-        loaded = args.thread_id in await list_loaded(app)
+        thread = enrich_thread(await read_thread(app, thread_id))
+        loaded = thread_id in await list_loaded(app)
 
     if local_rollout:
         context, compaction = read_context_state(thread.get("path"))
@@ -227,9 +323,14 @@ async def cmd_inspect(args: argparse.Namespace) -> int:
 
 async def cmd_messages(args: argparse.Namespace) -> int:
     async with AppServer(args.endpoint, args.timeout) as app:
-        messages, backend = await recent_messages(
+        thread_id = await resolve_thread_reference(
             app,
             args.thread_id,
+            tree_thread_id=args.tree,
+        )
+        messages, backend = await recent_messages(
+            app,
+            thread_id,
             turn_id=args.turn,
             after=tuple(args.after) if args.after else None,
             before=tuple(args.before) if args.before else None,
@@ -239,7 +340,7 @@ async def cmd_messages(args: argparse.Namespace) -> int:
         print(
             json.dumps(
                 {
-                    "threadId": args.thread_id,
+                    "threadId": thread_id,
                     "view": "materialized",
                     "backend": backend,
                     "messages": messages,
@@ -256,9 +357,14 @@ async def cmd_messages(args: argparse.Namespace) -> int:
 
 async def cmd_items(args: argparse.Namespace) -> int:
     async with AppServer(args.endpoint, args.timeout) as app:
-        selection = await select_materialized_items(
+        thread_id = await resolve_thread_reference(
             app,
             args.thread_id,
+            tree_thread_id=args.tree,
+        )
+        selection = await select_materialized_items(
+            app,
+            thread_id,
             turn_id=args.turn,
             after=tuple(args.after) if args.after else None,
             before=tuple(args.before) if args.before else None,
@@ -270,7 +376,7 @@ async def cmd_items(args: argparse.Namespace) -> int:
         print(
             json.dumps(
                 {
-                    "threadId": args.thread_id,
+                    "threadId": thread_id,
                     "view": "materialized",
                     "backend": selection.backend,
                     "items": records,
@@ -287,9 +393,14 @@ async def cmd_items(args: argparse.Namespace) -> int:
 
 async def cmd_message(args: argparse.Namespace) -> int:
     async with AppServer(args.endpoint, args.timeout) as app:
-        message = await find_message(
+        thread_id = await resolve_thread_reference(
             app,
             args.thread_id,
+            tree_thread_id=args.tree,
+        )
+        message = await find_message(
+            app,
+            thread_id,
             args.turn_id,
             args.item_id,
         )
@@ -305,7 +416,12 @@ async def cmd_message(args: argparse.Namespace) -> int:
 
 async def cmd_start(args: argparse.Namespace) -> int:
     async with AppServer(args.endpoint, args.timeout) as app:
-        result = await start_turn(app, args.thread_id, args.message)
+        thread_id = await resolve_thread_reference(
+            app,
+            args.thread_id,
+            tree_thread_id=args.tree,
+        )
+        result = await start_turn(app, thread_id, args.message)
     if args.json:
         print(json.dumps(result, indent=2))
     else:
@@ -325,9 +441,14 @@ def current_identity(value: str | None, option: str) -> str:
 async def cmd_notify(args: argparse.Namespace) -> int:
     author = current_identity(args.author, "--from")
     async with AppServer(args.endpoint, args.timeout) as app:
-        result = await notify_thread(
+        thread_id = await resolve_thread_reference(
             app,
             args.thread_id,
+            tree_thread_id=args.tree,
+        )
+        result = await notify_thread(
+            app,
+            thread_id,
             author,
             args.message,
         )
@@ -340,7 +461,12 @@ async def cmd_notify(args: argparse.Namespace) -> int:
 
 async def cmd_wake(args: argparse.Namespace) -> int:
     async with AppServer(args.endpoint, args.timeout) as app:
-        result = await wake_thread(app, args.thread_id)
+        thread_id = await resolve_thread_reference(
+            app,
+            args.thread_id,
+            tree_thread_id=args.tree,
+        )
+        result = await wake_thread(app, thread_id)
     if args.json:
         print(json.dumps(result, indent=2))
     else:
@@ -359,9 +485,14 @@ async def cmd_wake(args: argparse.Namespace) -> int:
 
 async def cmd_steer(args: argparse.Namespace) -> int:
     async with AppServer(args.endpoint, args.timeout) as app:
-        result = await steer_turn(
+        thread_id = await resolve_thread_reference(
             app,
             args.thread_id,
+            tree_thread_id=args.tree,
+        )
+        result = await steer_turn(
+            app,
+            thread_id,
             args.turn_id,
             args.message,
         )
@@ -374,9 +505,14 @@ async def cmd_steer(args: argparse.Namespace) -> int:
 
 async def cmd_interrupt(args: argparse.Namespace) -> int:
     async with AppServer(args.endpoint, args.timeout) as app:
-        result = await interrupt_thread(
+        thread_id = await resolve_thread_reference(
             app,
             args.thread_id,
+            tree_thread_id=args.tree,
+        )
+        result = await interrupt_thread(
+            app,
+            thread_id,
             args.turn_id,
             wait=args.wait,
         )
@@ -389,9 +525,14 @@ async def cmd_interrupt(args: argparse.Namespace) -> int:
 
 async def cmd_terminals(args: argparse.Namespace) -> int:
     async with AppServer(args.endpoint, args.timeout) as app:
-        terminals = await list_background_terminals(
+        thread_id = await resolve_thread_reference(
             app,
             args.thread_id,
+            tree_thread_id=args.tree,
+        )
+        terminals = await list_background_terminals(
+            app,
+            thread_id,
             limit=args.limit,
         )
     records = [
@@ -401,7 +542,7 @@ async def cmd_terminals(args: argparse.Namespace) -> int:
     if args.json:
         print(
             json.dumps(
-                {"threadId": args.thread_id, "terminals": records},
+                {"threadId": thread_id, "terminals": records},
                 indent=2,
             )
         )
@@ -414,9 +555,14 @@ async def cmd_terminals(args: argparse.Namespace) -> int:
 
 async def cmd_terminate_terminal(args: argparse.Namespace) -> int:
     async with AppServer(args.endpoint, args.timeout) as app:
-        terminated = await terminate_background_terminal(
+        thread_id = await resolve_thread_reference(
             app,
             args.thread_id,
+            tree_thread_id=args.tree,
+        )
+        terminated = await terminate_background_terminal(
+            app,
+            thread_id,
             args.process_id,
             args.item_id,
         )
@@ -425,7 +571,7 @@ async def cmd_terminate_terminal(args: argparse.Namespace) -> int:
             f"background terminal was not terminated: {args.process_id}"
         )
     result = {
-        "threadId": args.thread_id,
+        "threadId": thread_id,
         "processId": args.process_id,
         "itemId": args.item_id,
         "terminated": True,
@@ -434,7 +580,7 @@ async def cmd_terminate_terminal(args: argparse.Namespace) -> int:
         print(json.dumps(result, indent=2))
     else:
         print(
-            f"terminated\t{args.thread_id}\t{args.process_id}"
+            f"terminated\t{thread_id}\t{args.process_id}"
             f"\titem={args.item_id}"
         )
     return 0
@@ -442,13 +588,18 @@ async def cmd_terminate_terminal(args: argparse.Namespace) -> int:
 
 async def cmd_resume(args: argparse.Namespace) -> int:
     async with AppServer(args.endpoint, args.timeout) as app:
-        thread = await resume_thread(
+        thread_id = await resolve_thread_reference(
             app,
             args.thread_id,
+            tree_thread_id=args.tree,
+        )
+        thread = await resume_thread(
+            app,
+            thread_id,
             continue_goal=args.continue_goal,
         )
     result = {
-        "threadId": thread.get("id", args.thread_id),
+        "threadId": thread.get("id", thread_id),
         "status": thread.get("status", {"type": "unknown"}),
         "goalContinuationAllowed": args.continue_goal,
     }
