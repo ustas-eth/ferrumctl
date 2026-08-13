@@ -608,7 +608,7 @@ grep -Fqx "$agent_thread" "$SMOKE_ROOT/resolved-agent.out" ||
 printf 'threadctl reconstructed, resolved, and inspected a persisted v2 agent tree\n'
 
 agent_watch=$(wakectl --timeout 5 add goal /root/reviewer --status complete \
-  --to /root "smoke" --tree "$agent_thread")
+  --to /root --tree "$agent_thread")
 wakectl --json list >"$SMOKE_ROOT/agent-watch.json"
 "$PYTHON" - "$SMOKE_ROOT/agent-watch.json" "$agent_watch" \
   "$inspect_thread" "$agent_thread" <<'PY'
@@ -624,7 +624,7 @@ PY
 wakectl cancel "$agent_watch" >"$SMOKE_ROOT/agent-watch-cancel.out"
 
 if wakectl --timeout 5 add time --after 1h --to /root/reviewer \
-  "smoke" --tree "$agent_thread" >"$SMOKE_ROOT/agent-target.out" \
+  --tree "$agent_thread" >"$SMOKE_ROOT/agent-target.out" \
   2>"$SMOKE_ROOT/agent-target.err"; then
   fail "expected a v2 child wake target to be rejected"
 fi
@@ -755,6 +755,30 @@ assert result["goalContinuationAllowed"] is True
 PY
 printf 'threadctl required explicit goal-continuation acknowledgement for resume\n'
 
+wake_job=$(wakectl --timeout 5 add time --after 1s --to "$inspect_thread")
+sleep 1.1
+wakectl --timeout 5 --json run >"$SMOKE_ROOT/wakectl-run.json"
+wakectl --json list --all >"$SMOKE_ROOT/wakectl-all.json"
+"$PYTHON" - "$SMOKE_ROOT/wakectl-run.json" "$SMOKE_ROOT/wakectl-all.json" \
+  "$wake_job" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    run = json.load(handle)
+with open(sys.argv[2], encoding="utf-8") as handle:
+    jobs = json.load(handle)["jobs"]
+fired = next(item for item in run["fired"] if item["id"] == sys.argv[3])
+job = next(item for item in jobs if item["id"] == sys.argv[3])
+assert fired["delivery"] == "eventStarted"
+assert fired["turnId"]
+assert job["action"] == {"type": "event"}
+assert job["lastEventItemId"] == f"amsg_wake_{sys.argv[3]}_1"
+assert job["lastTurnId"] == fired["turnId"]
+assert job["status"] == "fired"
+PY
+printf 'wakectl injected a scheduled event and confirmed its empty turn\n'
+
 CODEX_THREAD_ID=smoke-author threadctl --timeout 5 --json notify "$inspect_thread" \
   "Advisory smoke notice." >"$SMOKE_ROOT/notify.json"
 "$PYTHON" - "$SMOKE_ROOT/notify.json" "$inspect_thread" <<'PY'
@@ -763,11 +787,10 @@ import sys
 
 with open(sys.argv[1], encoding="utf-8") as handle:
     result = json.load(handle)
-assert result == {
-    "threadId": sys.argv[2],
-    "author": "smoke-author",
-    "outcome": "accepted",
-}
+assert result["threadId"] == sys.argv[2]
+assert result["author"] == "smoke-author"
+assert result["outcome"] == "accepted"
+assert result["itemId"].startswith("amsg_")
 PY
 
 threadctl --timeout 5 --json wake "$inspect_thread" >"$SMOKE_ROOT/wake.json"
@@ -778,12 +801,13 @@ import sys
 with open(sys.argv[1], encoding="utf-8") as handle:
     result = json.load(handle)
 assert result["threadId"] == sys.argv[2]
-assert result["outcome"] == "confirmedStarted"
-assert result["turnId"]
-assert isinstance(result["observedStatus"], str)
-assert result["observedStatus"]
+assert result["outcome"] in {"confirmedStarted", "notSubmittedActive"}
+assert result.get("turnId")
+if result["outcome"] == "confirmedStarted":
+    assert isinstance(result["observedStatus"], str)
+    assert result["observedStatus"]
 PY
-printf 'threadctl confirmed the exact empty wake turn without asserting completion\n'
+printf 'threadctl preserved empty-wake idleness semantics after scheduled delivery\n'
 
 threadctl --timeout 5 --json terminals "$inspect_thread" \
   >"$SMOKE_ROOT/terminals.json"

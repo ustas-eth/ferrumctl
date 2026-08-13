@@ -2,7 +2,7 @@
 
 # Coordination Practices
 
-This reference describes how immediate input, synchronous waits, and queued
+This reference describes how immediate control, synchronous waits, and queued
 wakes fit into Codex workflows.
 
 ## Identity And Endpoint
@@ -34,12 +34,15 @@ shell tool moves that process to the background, its caller must still observe
 the process finishing; completion does not start a Codex turn.
 
 Use a queued wake when the current process or Codex turn should end while a
-runner watches the condition and resumes attention later.
+runner watches the condition and restores attention later. The default action
+adds a short scheduled event to agent context and starts an empty turn when the
+target is idle. Use `--input MESSAGE` only when delayed ordinary input is the
+intended operation.
 
-Inspect unclear thread state before choosing whether to wait or schedule input.
-A wake is input to its target, not a result returned to its sender. Native
-subagent results, materialized thread history, and shared artifacts are separate
-result channels.
+Inspect unclear thread state before choosing whether to wait or schedule a
+wake. A wake changes the target's attention; it does not return the target's
+result to the sender. Native subagent results, materialized thread history, and
+shared artifacts are separate result channels.
 
 ## Long Host Waits
 
@@ -62,8 +65,9 @@ Codex turn. Its process or service identity should be retained for inspection
 and cleanup, and diagnostics should be written somewhere the resumed session
 can read.
 
-The watcher can instead deliver directly with `codex-threadctl start` once the
-target is idle; an equivalent app-server client is the lower-level alternative.
+The watcher can instead deliver directly with `codex-threadctl wake` or `start`
+once the target is idle; an equivalent app-server client is the lower-level
+alternative.
 This avoids the second polling step, but the watcher then owns target
 availability, retries, uncertain outcomes, and duplicate suppression as well as
 its process lifecycle. Use this form when those controls already belong in the
@@ -87,9 +91,9 @@ App-server `idle` means no turn is running. It does not mean the target lacks an
 active goal or is free for unrelated work.
 
 An idle worker with an active externally assigned goal may not have observed
-that goal. A short input asking it to call `get_goal` can start or resume the
-assignment. Use app-server status to choose a delivery policy, not to infer work
-ownership.
+that goal. An event wake starts a turn without adding another instruction; the
+goal remains the authority. Use app-server status to choose a delivery policy,
+not to infer work ownership.
 
 A terminal goal status and a completed turn are separate boundaries. If a
 coordinator needs the worker's final response, wait for the current turn to stop
@@ -105,9 +109,11 @@ existing turn is deliberately the target.
 
 ## Steering And Checkpoints
 
-For queued delivery, `--allow-active` permits native expected-turn steering for
-a correction, reminder, or constraint that remains valid during current work.
-Ordinary follow-up should wait for an idle target.
+By default, an event waits for an idle target. `--notify-active` instead injects
+the event into current work and finishes the job without starting another turn.
+It is appropriate only when prompt awareness is useful and the event does not
+need a separate response. Use immediate `codex-threadctl steer` with an exact
+turn id for a correction or constraint.
 
 A running worker can send a handoff before its own final response is committed.
 Treat the handoff as readiness; use a stop condition when the receiver depends
@@ -118,22 +124,26 @@ active goal. Interrupt the exact active turn and wait for terminal completion.
 If a later wake should follow the checkpoint response, arm its stop watch before
 starting the checkpoint turn, or bind it to the checkpoint turn id.
 
-## Persisted Jobs And Messages
+## Persisted Jobs And Actions
 
-Queued jobs persist message text, predicates, endpoints, and thread ids in the
-SQLite database. Avoid secrets, large private context, and fragile one-time
-instructions in that state.
+Queued jobs persist their action, predicates, endpoints, and thread ids in the
+SQLite database. An explicit input action also persists its message. Avoid
+secrets, large private context, and fragile one-time instructions in that state.
 
-Queued input does not identify its logical sender. When its source could be
-confused with direct human input, use a natural label such as `From
-coordinator:`, `Self-scheduled reminder:`, or `Automated event:`. Mention
-wakectl only when the transport itself matters. A label provides context, not
-proof of identity or permission to override existing instructions.
+The default action generates a short `Scheduled event JOB/FIRE` agent message
+from the matched condition, then starts an empty turn if the target is idle.
+The event remains in history but is not ordinary user input and carries no new
+instructional authority.
 
-Queued messages may arrive late or more than once. Prefer a short event marker
-when existing thread context remains authoritative. Longer queued input is
-valid when it is deliberately the complete instruction and remains safe under
-delayed or duplicate delivery.
+`--input MESSAGE` retains the ordinary confirmed input path and waits for an
+idle target. The text does not identify its logical sender, so label it
+naturally when it could be mistaken for direct human input. It must remain safe
+if delayed or duplicated.
+
+`--resume` applies only to event wakes. It loads an otherwise unloaded target;
+if that thread has an active goal, Codex can continue the goal immediately.
+The event is then injected into that active turn. Resume does not coordinate a
+copy of the same thread loaded on another app-server.
 
 Record job ids when a workflow will need cleanup. The default queue is shared;
 proximity in `codex-wakectl list` does not establish ownership.

@@ -36,6 +36,11 @@ injection method and does not provide lifecycle control.
 recipient is the target thread id. The text is advisory agent context rather
 than a user message.
 
+Threadctl assigns the raw item an `amsg_` id and returns it as `itemId` in JSON
+output. An uncertain notification reports the same id for reconciliation. The
+materialized conversation view may assign its own item locator, so use the
+notice text or raw rollout when that original id must be found later.
+
 Notification is useful when authoritative content already exists in another
 state surface and an active target only needs a short pointer to it. It is not a
 replacement for a native message whose content is itself the exchange or whose

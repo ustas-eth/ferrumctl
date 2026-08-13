@@ -811,6 +811,7 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(result["outcome"], "accepted")
+        self.assertRegex(result["itemId"], r"^amsg_[0-9a-f]{32}$")
         method, params = app.calls[-1]
         self.assertEqual(method, "thread/inject_items")
         self.assertEqual(params["threadId"], "thread")
@@ -819,7 +820,7 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
             [
                 {
                     "type": "agent_message",
-                    "id": None,
+                    "id": result["itemId"],
                     "author": "coordinator",
                     "recipient": "thread",
                     "content": [
@@ -851,8 +852,15 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
             return await FakeApp.request(app, method, params)
 
         app.request = fail
-        with self.assertRaisesRegex(ThreadctlError, "outcome is uncertain"):
-            await appserver.notify_thread(app, "thread", "author", "message")
+        with self.assertRaises(appserver.NotificationUncertain) as raised:
+            await appserver.notify_thread(
+                app,
+                "thread",
+                "author",
+                "message",
+                item_id="amsg_notice",
+            )
+        self.assertEqual(raised.exception.item_id, "amsg_notice")
 
     async def test_notify_requires_target_loaded_on_selected_server(self):
         app = FakeApp(loaded=False)

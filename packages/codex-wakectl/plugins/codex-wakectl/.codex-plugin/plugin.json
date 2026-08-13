@@ -1,7 +1,7 @@
 {
   "name": "codex-wakectl",
-  "version": "0.4.0",
-  "description": "Codex skill for scheduling thread input by time or condition.",
+  "version": "0.5.0",
+  "description": "Codex skill for scheduling thread attention by time or condition.",
   "author": {
     "name": "ustas-eth"
   },
@@ -17,17 +17,19 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Codex Wakectl",
-    "shortDescription": "Schedule timed and conditional thread input",
-    "longDescription": "Codex Wakectl provides guidance for durable wakes by time or condition, v2 agent-path conditions, queue runners, active-turn delivery, repeating milestones, and blocking waits for scripts and thread-id-only controllers.",
+    "shortDescription": "Schedule timed and conditional thread attention",
+    "longDescription": "Codex Wakectl provides guidance for durable event wakes by time or condition, explicit queued input, optional resume, v2 agent-path conditions, queue runners, repeating milestones, and blocking waits for scripts and thread-id-only controllers.",
     "developerName": "ustas-eth",
     "category": "Productivity",
     "capabilities": [
-      "Timed and conditional thread wakes",
+      "Timed and conditional event wakes",
+      "Explicit queued input",
+      "Optional unloaded-thread resume",
       "V2 agent-path condition resolution",
       "Durable wake-job management",
       "Systemd timer guidance",
       "Blocking condition waits for scripts"
     ],
-    "defaultPrompt": "Use $codex-wakectl to schedule Codex thread input after a time or condition."
+    "defaultPrompt": "Use $codex-wakectl to schedule Codex thread attention after a time or condition."
   }
 }

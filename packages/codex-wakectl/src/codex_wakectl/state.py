@@ -14,6 +14,7 @@ from .parsing import now_seconds
 JOB_COLUMNS = {
     "status": "status",
     "condition": "condition_json",
+    "action": "action_json",
     "targetThreadId": "target_thread_id",
     "message": "message",
     "endpoint": "endpoint",
@@ -27,6 +28,7 @@ JOB_COLUMNS = {
     "lastTurnId": "last_turn_id",
     "lastClientMessageId": "last_client_message_id",
     "lastDeliveryMode": "last_delivery_mode",
+    "lastEventItemId": "last_event_item_id",
     "lastReason": "last_reason",
     "lastError": "last_error",
     "lastTokensUsedBucket": "last_tokens_used_bucket",
@@ -42,6 +44,7 @@ OPTIONAL_JOB_FIELDS = [
     "lastTurnId",
     "lastClientMessageId",
     "lastDeliveryMode",
+    "lastEventItemId",
     "lastReason",
     "lastError",
     "lastTokensUsedBucket",
@@ -82,6 +85,7 @@ def open_state(path: Path) -> sqlite3.Connection:
             id TEXT PRIMARY KEY,
             status TEXT NOT NULL,
             condition_json TEXT NOT NULL,
+            action_json TEXT,
             target_thread_id TEXT NOT NULL,
             message TEXT NOT NULL,
             endpoint TEXT NOT NULL,
@@ -95,6 +99,7 @@ def open_state(path: Path) -> sqlite3.Connection:
             last_turn_id TEXT,
             last_client_message_id TEXT,
             last_delivery_mode TEXT,
+            last_event_item_id TEXT,
             last_reason TEXT,
             last_error TEXT,
             last_tokens_used_bucket INTEGER,
@@ -115,6 +120,8 @@ def open_state(path: Path) -> sqlite3.Connection:
     ensure_column(conn, "allow_active", "INTEGER NOT NULL DEFAULT 0")
     ensure_column(conn, "last_client_message_id", "TEXT")
     ensure_column(conn, "last_delivery_mode", "TEXT")
+    ensure_column(conn, "action_json", "TEXT")
+    ensure_column(conn, "last_event_item_id", "TEXT")
     return conn
 
 
@@ -125,14 +132,23 @@ def ensure_column(conn: sqlite3.Connection, name: str, declaration: str) -> None
 
 
 def decode_job(row: sqlite3.Row) -> dict[str, Any]:
+    action_json = row["action_json"]
+    if action_json is None:
+        action = {
+            "type": "input",
+            "message": row["message"],
+            **({"allowActive": True} if bool(row["allow_active"]) else {}),
+            "legacy": True,
+        }
+    else:
+        action = json.loads(action_json)
     job: dict[str, Any] = {
         "id": row["id"],
         "status": row["status"],
         "condition": json.loads(row["condition_json"]),
+        "action": action,
         "targetThreadId": row["target_thread_id"],
-        "message": row["message"],
         "endpoint": row["endpoint"],
-        "allowActive": bool(row["allow_active"]),
         "createdAt": row["created_at"],
         "updatedAt": row["updated_at"],
         "fireCount": row["fire_count"],
@@ -147,6 +163,8 @@ def decode_job(row: sqlite3.Row) -> dict[str, Any]:
 def encode_value(key: str, value: Any) -> Any:
     if key == "condition":
         return json.dumps(value, sort_keys=True, separators=(",", ":"))
+    if key == "action":
+        return json.dumps(value, sort_keys=True, separators=(",", ":"))
     return value
 
 
@@ -156,24 +174,25 @@ def insert_job(state_path: Path, job: dict[str, Any]) -> None:
         conn.execute(
             """
             INSERT INTO jobs (
-                id, status, condition_json, target_thread_id, message, endpoint,
+                id, status, condition_json, action_json, target_thread_id, message, endpoint,
                 timeout, allow_active,
                 created_at, updated_at, fired_at, fire_count, last_fired_at,
                 last_turn_id, last_reason, last_error, last_tokens_used_bucket,
                 last_time_used_bucket, lease_owner, lease_started_at, lease_until,
-                last_client_message_id, last_delivery_mode
+                last_client_message_id, last_delivery_mode, last_event_item_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 job["id"],
                 job["status"],
                 encode_value("condition", job["condition"]),
+                encode_value("action", job["action"]),
                 job["targetThreadId"],
-                job["message"],
+                job["action"].get("message", ""),
                 job["endpoint"],
                 job.get("timeout"),
-                int(bool(job.get("allowActive"))),
+                int(bool(job["action"].get("allowActive"))),
                 job["createdAt"],
                 job["updatedAt"],
                 job.get("firedAt"),
@@ -189,6 +208,7 @@ def insert_job(state_path: Path, job: dict[str, Any]) -> None:
                 job.get("leaseUntil"),
                 job.get("lastClientMessageId"),
                 job.get("lastDeliveryMode"),
+                job.get("lastEventItemId"),
             ),
         )
     finally:

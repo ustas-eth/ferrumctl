@@ -1,12 +1,15 @@
 # codex-wakectl
 
-`codex-wakectl` schedules durable input for Codex threads after later conditions
+`codex-wakectl` schedules durable thread attention after later conditions
 through a shared `codex app-server`.
 
-Use `add` to persist a wake that a runner will deliver later. The secondary
-`wait` interface polls synchronously for scripts: it blocks only its invoking
-process, sends no input, and persists no job. Immediate input, inspection, and
-interruption belong to `codex-threadctl`.
+Use `add` to persist a condition and wake action for later runner delivery. A
+normal wake adds a short scheduled event to agent context and starts an empty
+turn when the target is idle. It does not add a user message.
+
+The secondary `wait` interface polls synchronously for scripts: it blocks only
+its invoking process, sends no event or input, and persists no job. Immediate
+control belongs to `codex-threadctl`.
 
 ## Install
 
@@ -36,16 +39,15 @@ Only threads loaded on that endpoint can receive input. When
 
 ## Examples
 
-Wake this thread later or wake a coordinator after worker progress:
+Wake this thread later or return a coordinator's attention after worker
+progress:
 
 ```sh
 SELF=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
-codex-wakectl add time --after 10m --to "$SELF" \
-  "Self-scheduled reminder: Review progress."
+codex-wakectl add time --after 10m --to "$SELF"
 codex-wakectl add goal WORKER --status complete,blocked,budgetLimited,usageLimited \
-  --to ORCH "Automated event: Worker goal reached a terminal status."
-codex-wakectl add stop WORKER --to ORCH \
-  "Automated event: Worker turn ended."
+  --to ORCH
+codex-wakectl add stop WORKER --to ORCH
 ```
 
 In a native subagent tree with canonical task names, a child can be watched
@@ -53,7 +55,7 @@ while delivery returns to the native parent:
 
 ```sh
 codex-wakectl add goal /root/reviewer --status complete,blocked \
-  --to /root "Automated event: Reviewer goal ended."
+  --to /root
 ```
 
 `CODEX_THREAD_ID` scopes the task names; pass `--tree THREAD_ID` when needed.
@@ -64,11 +66,23 @@ An unqualified stop watch observes a completion after its creation boundary.
 When one particular turn is the target, use `--turn TURN_ID`; `--turn latest`
 explicitly binds the newest existing turn even if it has already ended.
 
-Host-visible conditions can also schedule input:
+Host-visible conditions can also schedule a wake:
+
+```sh
+codex-wakectl add cmd --to THREAD_ID -- test -f done.txt
+```
+
+By default, a ready event waits for the target to become idle. Use
+`--notify-active` when the event remains useful during current work. Use
+`--resume` only when wakectl should load an unloaded target; resuming a thread
+with an active goal can continue that goal immediately.
+
+Schedule ordinary input only when its text is deliberately the instruction:
 
 ```sh
 codex-wakectl add cmd --to THREAD_ID \
-  "Automated event: Input is ready." -- sh -c 'test -f done.txt'
+  --input "Continue from done.txt and complete the next step." -- \
+  test -f done.txt
 ```
 
 Use `wait` only when a script needs a synchronous exit status:
@@ -84,10 +98,12 @@ codex-wakectl run
 codex-wakectl systemd install --interval 30s
 ```
 
-Queued messages arrive as ordinary thread input. By default, delivery waits for
-the target to appear idle; `--allow-active` permits turn-scoped steering. The
-queue is shared by the host user, so retain job ids and cancel only jobs your
-workflow owns.
+Scheduled events are short agent-context items, not user instructions. They
+still remain in thread history and can be delayed or duplicated. Explicit
+`--input` waits for an idle target and uses the ordinary confirmed input path.
+
+The queue is shared by the host user, so retain job ids and cancel only jobs
+your workflow owns.
 
 More detail:
 

@@ -10,6 +10,8 @@ from unittest import mock
 
 from codex_wakectl import commands
 from codex_wakectl import conditions
+from codex_wakectl.actions import input_action
+from codex_wakectl.actions import event_action
 from codex_threadctl.errors import (
     DeliveryUncertain,
     DirectInputUnsupported,
@@ -44,6 +46,42 @@ def runner_args(state: Path) -> argparse.Namespace:
 
 
 class RunnerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_event_delivery_records_agent_item_and_empty_turn(self) -> None:
+        async def ready(*args: object, **kwargs: object):
+            return True, {}, "scheduled time reached"
+
+        async def deliver(*args: object, **kwargs: object):
+            return {
+                "itemId": "amsg_wake_job_1",
+                "turnId": "wake-turn",
+                "delivery": "eventStarted",
+            }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp) / "jobs.sqlite3"
+            insert_job(
+                state,
+                new_job(
+                    {"type": "time", "at": 1},
+                    "target",
+                    event_action(),
+                    "unix:///tmp/codex.sock",
+                ),
+            )
+            with (
+                mock.patch.object(commands, "AppServer", FakeAppServer),
+                mock.patch.object(commands, "condition_ready", ready),
+                mock.patch.object(commands, "deliver_action", deliver),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                self.assertEqual(await commands.cmd_run(runner_args(state)), 0)
+
+            stored = list_jobs(state, include_all=True)[0]
+            self.assertEqual(stored["status"], "fired")
+            self.assertEqual(stored["lastEventItemId"], "amsg_wake_job_1")
+            self.assertEqual(stored["lastTurnId"], "wake-turn")
+            self.assertEqual(stored["lastDeliveryMode"], "eventStarted")
+
     async def test_goal_job_is_superseded_by_replacement(self) -> None:
         goal = {
             "status": "active",
@@ -64,7 +102,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
                     "goalCreatedAt": 10,
                 },
                 "main",
-                "milestone",
+                input_action("milestone"),
                 "unix:///tmp/codex.sock",
             )
             job["lastTokensUsedBucket"] = 4
@@ -98,14 +136,14 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
         ) -> dict[str, object]:
             return {"data": [dict(turn) for turn in turns], "nextCursor": None}
 
-        async def deliver_input(
+        async def deliver_action(
             app: object,
-            thread_id: str,
-            message: str,
-            *,
-            allow_active: bool = False,
+            job: dict[str, object],
+            reason: str,
         ) -> dict[str, str]:
-            sent.append((thread_id, message))
+            action = job["action"]
+            assert isinstance(action, dict)
+            sent.append((str(job["targetThreadId"]), str(action["message"])))
             return {
                 "turnId": "wake-turn",
                 "clientMessageId": "client",
@@ -122,7 +160,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
                     "cursorTurnStatus": "completed",
                 },
                 "main",
-                "worker stopped",
+                input_action("worker stopped"),
                 "unix:///tmp/codex.sock",
             )
             insert_job(state, job)
@@ -130,7 +168,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
             with (
                 mock.patch.object(commands, "AppServer", FakeAppServer),
                 mock.patch.object(conditions, "list_turn_page", list_turn_page),
-                mock.patch.object(commands, "deliver_input", deliver_input),
+                mock.patch.object(commands, "deliver_action", deliver_action),
                 contextlib.redirect_stdout(io.StringIO()),
             ):
                 self.assertEqual(await commands.cmd_run(runner_args(state)), 0)
@@ -163,12 +201,10 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
                 "nextCursor": None,
             }
 
-        async def deliver_input(
+        async def deliver_action(
             app: object,
-            thread_id: str,
-            message: str,
-            *,
-            allow_active: bool = False,
+            job: dict[str, object],
+            reason: str,
         ) -> dict[str, str]:
             return {
                 "turnId": "wake-turn",
@@ -183,7 +219,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
                 new_job(
                     {"type": "stop", "threadId": "worker", "turnId": "turn-1"},
                     "main",
-                    "worker stopped",
+                    input_action("worker stopped"),
                     "unix:///tmp/codex.sock",
                 ),
             )
@@ -191,7 +227,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
             with (
                 mock.patch.object(commands, "AppServer", FakeAppServer),
                 mock.patch.object(conditions, "list_turn_page", list_turn_page),
-                mock.patch.object(commands, "deliver_input", deliver_input),
+                mock.patch.object(commands, "deliver_action", deliver_action),
                 contextlib.redirect_stdout(io.StringIO()),
             ):
                 self.assertEqual(await commands.cmd_run(runner_args(state)), 0)
@@ -212,7 +248,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
             job = new_job(
                 {"type": "time", "at": 1},
                 "target",
-                "message",
+                input_action("message"),
                 "unix:///tmp/codex.sock",
             )
             insert_job(state, job)
@@ -220,7 +256,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
             with (
                 mock.patch.object(commands, "AppServer", FakeAppServer),
                 mock.patch.object(commands, "condition_ready", ready),
-                mock.patch.object(commands, "deliver_input", defer),
+                mock.patch.object(commands, "deliver_action", defer),
                 contextlib.redirect_stdout(io.StringIO()),
             ):
                 self.assertEqual(await commands.cmd_run(runner_args(state)), 0)
@@ -244,7 +280,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
                 new_job(
                     {"type": "time", "at": 1},
                     "v2-child",
-                    "message",
+                    input_action("message"),
                     "unix:///tmp/codex.sock",
                 ),
             )
@@ -252,7 +288,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
             with (
                 mock.patch.object(commands, "AppServer", FakeAppServer),
                 mock.patch.object(commands, "condition_ready", ready),
-                mock.patch.object(commands, "deliver_input", reject),
+                mock.patch.object(commands, "deliver_action", reject),
                 contextlib.redirect_stdout(io.StringIO()),
             ):
                 self.assertEqual(await commands.cmd_run(runner_args(state)), 1)
@@ -279,7 +315,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
                     "cursorTurnStatus": None,
                 },
                 "main",
-                "message",
+                input_action("message"),
                 "unix:///tmp/codex.sock",
             )
             insert_job(state, job)
@@ -308,14 +344,14 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
                 new_job(
                     {"type": "time", "at": 1},
                     "target",
-                    "message",
+                    input_action("message"),
                     "unix:///tmp/codex.sock",
                 ),
             )
             with (
                 mock.patch.object(commands, "AppServer", FakeAppServer),
                 mock.patch.object(commands, "condition_ready", ready),
-                mock.patch.object(commands, "deliver_input", missing_delivery),
+                mock.patch.object(commands, "deliver_action", missing_delivery),
                 contextlib.redirect_stdout(io.StringIO()),
             ):
                 self.assertEqual(await commands.cmd_run(runner_args(state)), 1)
@@ -341,14 +377,14 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
                 new_job(
                     {"type": "time", "at": 1},
                     "target",
-                    "message",
+                    input_action("message"),
                     "unix:///tmp/codex.sock",
                 ),
             )
             with (
                 mock.patch.object(commands, "AppServer", FakeAppServer),
                 mock.patch.object(commands, "condition_ready", ready),
-                mock.patch.object(commands, "deliver_input", uncertain),
+                mock.patch.object(commands, "deliver_action", uncertain),
                 contextlib.redirect_stdout(io.StringIO()),
             ):
                 self.assertEqual(await commands.cmd_run(runner_args(state)), 1)
@@ -374,7 +410,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
                 new_job(
                     {"type": "time", "at": 1},
                     "target",
-                    "message",
+                    input_action("message"),
                     "unix:///tmp/codex.sock",
                 ),
             )
@@ -385,7 +421,7 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
                     "renew_claimed_job",
                     side_effect=[True, False],
                 ) as renew,
-                mock.patch.object(commands, "deliver_input", delivery),
+                mock.patch.object(commands, "deliver_action", delivery),
                 contextlib.redirect_stdout(io.StringIO()),
             ):
                 self.assertEqual(await commands.cmd_run(args), 1)

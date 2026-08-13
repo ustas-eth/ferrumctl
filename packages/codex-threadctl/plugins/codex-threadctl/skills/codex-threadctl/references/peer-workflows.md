@@ -95,9 +95,9 @@ codex-goalctl replace "$NEXT" \
   "Continue from done.txt and complete the next step."
 
 codex-wakectl add cmd --to "$NEXT" \
-  "Automated event: Input is ready." -- test -f done.txt
+  -- test -f done.txt
 ```
 
-Omit the goal when the wake message is deliberately the complete instruction.
-Keep the predicate cheap and level-triggered so readiness remains observable
-until the handoff is handled.
+Use `--input MESSAGE` instead when the delayed text itself is deliberately the
+complete instruction. Keep the predicate cheap and level-triggered so
+readiness remains observable until the handoff is handled.

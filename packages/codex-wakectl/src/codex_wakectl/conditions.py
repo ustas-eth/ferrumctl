@@ -87,6 +87,10 @@ async def goal_condition_ready(
         return False, combined(), f"status is {goal.get('status')}"
 
     token_budget = goal.get("tokenBudget")
+    matched: list[str] = []
+
+    if statuses:
+        matched.append(f"status is {goal.get('status')}")
 
     if "tokensLeftLte" in condition:
         if token_budget is None:
@@ -94,12 +98,17 @@ async def goal_condition_ready(
         tokens_left = int(token_budget) - tokens_used
         if tokens_left > condition["tokensLeftLte"]:
             return False, combined(), f"tokens left {tokens_left}"
+        matched.append(f"tokens left {tokens_left}")
 
     if "tokensUsedGte" in condition and tokens_used < condition["tokensUsedGte"]:
         return False, combined(), f"tokens used {tokens_used}"
+    if "tokensUsedGte" in condition:
+        matched.append(f"tokens used {tokens_used}")
 
     if "timeUsedGte" in condition and time_used < condition["timeUsedGte"]:
         return False, combined(), f"time used {time_used}s"
+    if "timeUsedGte" in condition:
+        matched.append(f"time used {time_used}s")
 
     if "tokensUsedEvery" in condition:
         interval = condition["tokensUsedEvery"]
@@ -125,7 +134,7 @@ async def goal_condition_ready(
             f"time used {time_used}s",
         )
 
-    return True, combined(), "goal predicate matched"
+    return True, combined(), "; ".join(matched) or "goal predicate matched"
 
 
 def with_turn_cursor(
@@ -364,10 +373,9 @@ def max_fires_reached(condition: dict[str, Any], fire_count: int) -> bool:
 def new_job(
     condition: dict[str, Any],
     target: str,
-    message: str,
+    action: dict[str, Any],
     endpoint: str,
     *,
-    allow_active: bool = False,
     timeout: float | None = None,
 ) -> dict[str, Any]:
     ts = now_seconds()
@@ -376,9 +384,8 @@ def new_job(
         "status": "pending",
         "condition": condition,
         "targetThreadId": target,
-        "message": message,
+        "action": action,
         "endpoint": endpoint,
-        "allowActive": allow_active,
         "createdAt": ts,
         "updatedAt": ts,
         "fireCount": 0,

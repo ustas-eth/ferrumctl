@@ -15,17 +15,18 @@ from codex_threadctl.agents import (
 )
 from codex_threadctl.appserver import (
     AppServer,
-    deliver_input,
     get_goal,
     normalize_endpoint,
 )
 from codex_threadctl.errors import (
     DeliveryUncertain,
     DirectInputUnsupported,
+    NotificationUncertain,
     ThreadNotLoaded,
     ThreadStateError,
 )
 
+from .actions import build_action
 from .conditions import (
     condition_needs_app,
     condition_ready,
@@ -40,7 +41,8 @@ from .constants import (
     SYSTEMD_SERVICE_NAME,
     SYSTEMD_TIMER_NAME,
 )
-from .errors import WakectlError
+from .delivery import deliver_action
+from .errors import EventDeliveryUncertain, WakectlError
 from .parsing import now_seconds
 from .state import (
     cancel_job,
@@ -55,17 +57,6 @@ from .systemd import build_systemd_units, resolve_wakectl_bin, run_systemctl, sy
 
 class LeaseLost(Exception):
     pass
-
-
-_ADD_CMD_OPTIONS = {
-    "--allow-active",
-    "--endpoint",
-    "--json",
-    "--state",
-    "--timeout",
-    "--to",
-    "--tree",
-}
 
 
 def wakectl_appserver(endpoint: str, timeout: float) -> AppServer:
@@ -142,25 +133,16 @@ async def resolve_add_references(args: argparse.Namespace) -> None:
             args.to_thread_id = target["threadId"]
 
 
-def _reject_misplaced_add_cmd_option(args: argparse.Namespace) -> None:
-    if args.condition != "cmd" or not args.argv or args.argv[0] == "--":
-        return
-    option = args.argv[0].partition("=")[0]
-    if option in _ADD_CMD_OPTIONS:
-        raise WakectlError(f"{option} must appear before MESSAGE for add cmd")
-
-
 async def cmd_add(args: argparse.Namespace) -> int:
-    _reject_misplaced_add_cmd_option(args)
+    action = build_action(args)
     await resolve_add_references(args)
     condition = args.condition_builder(args)
     endpoint = normalize_endpoint(args.endpoint)
     job = new_job(
         condition,
         args.to_thread_id,
-        args.message,
+        action,
         endpoint,
-        allow_active=args.allow_active,
         timeout=args.timeout,
     )
     await seed_goal_job(args, job)
@@ -304,7 +286,6 @@ async def cmd_run(args: argparse.Namespace) -> int:
         try:
             endpoint = job.get("endpoint") or args.endpoint
             timeout = job["timeout"] if job.get("timeout") is not None else args.timeout
-            allow_active = bool(job.get("allowActive"))
             lease_window = max(
                 args.lease_seconds,
                 math.ceil(timeout * DELIVERY_LEASE_TIMEOUTS) + 5,
@@ -333,12 +314,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
                             lease_window,
                         ):
                             raise LeaseLost("lease lost before delivery")
-                        delivery = await deliver_input(
-                            app,
-                            job["targetThreadId"],
-                            job["message"],
-                            allow_active=allow_active,
-                        )
+                        delivery = await deliver_action(app, job, reason)
                     else:
                         delivery = None
             else:
@@ -357,12 +333,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
                     ):
                         raise LeaseLost("lease lost before delivery")
                     async with wakectl_appserver(endpoint, timeout) as app:
-                        delivery = await deliver_input(
-                            app,
-                            job["targetThreadId"],
-                            job["message"],
-                            allow_active=allow_active,
-                        )
+                        delivery = await deliver_action(app, job, reason)
                 else:
                     delivery = None
 
@@ -400,6 +371,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
                     "lastFiredAt": ts,
                     "lastTurnId": delivery.get("turnId"),
                     "lastClientMessageId": delivery.get("clientMessageId"),
+                    "lastEventItemId": delivery.get("itemId"),
                     "lastDeliveryMode": delivery.get("delivery"),
                     "lastReason": reason,
                     "lastError": None,
@@ -474,6 +446,45 @@ async def cmd_run(args: argparse.Namespace) -> int:
                     "reason": reason if committed else "lease lost after uncertain delivery",
                 }
             )
+        except NotificationUncertain as exc:
+            had_error = True
+            reason = str(exc)
+            committed = update_claimed_job(
+                args.state,
+                job["id"],
+                owner,
+                {
+                    "status": "uncertain",
+                    "lastEventItemId": exc.item_id,
+                    "lastError": reason,
+                },
+            )
+            skipped.append(
+                {
+                    "id": job["id"],
+                    "reason": reason if committed else "lease lost after uncertain event",
+                }
+            )
+        except EventDeliveryUncertain as exc:
+            had_error = True
+            reason = str(exc)
+            committed = update_claimed_job(
+                args.state,
+                job["id"],
+                owner,
+                {
+                    "status": "uncertain",
+                    "lastTurnId": exc.turn_id,
+                    "lastEventItemId": exc.item_id,
+                    "lastError": reason,
+                },
+            )
+            skipped.append(
+                {
+                    "id": job["id"],
+                    "reason": reason if committed else "lease lost after uncertain event",
+                }
+            )
         except LeaseLost as exc:
             had_error = True
             skipped.append({"id": job["id"], "reason": str(exc)})
@@ -519,6 +530,7 @@ def cmd_list(args: argparse.Namespace) -> int:
                         job["id"],
                         job.get("status", "-"),
                         job["condition"]["type"],
+                        job.get("action", {}).get("type", "-"),
                         job.get("targetThreadId", "-"),
                         str(job.get("fireCount", 0)),
                         job.get("lastError") or job.get("lastReason") or "-",

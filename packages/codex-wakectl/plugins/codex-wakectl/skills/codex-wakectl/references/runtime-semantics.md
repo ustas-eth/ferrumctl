@@ -3,25 +3,26 @@
 # Runtime Semantics
 
 This reference explains how `codex-wakectl` evaluates conditions, delivers
-input, and persists its queue.
+events or input, and persists its queue.
 
 ## Wakeability
 
-A thread id is not enough to receive input. The target must be loaded on the
-selected app-server endpoint. `CODEX_THREAD_ID` identifies the current thread,
-but does not prove that it is wakeable.
+A thread id is not enough to receive a wake. The target must normally be loaded
+on the selected app-server endpoint. `CODEX_THREAD_ID` identifies the current
+thread, but does not prove that it is wakeable. An event job with `--resume`
+may load an unloaded target explicitly.
 
 Use `--endpoint` when the shared server is not the default `unix://`. A queued
 job stores an absolute Unix socket path so a later runner does not reinterpret
 it under another cwd or `CODEX_HOME`.
 
-If the server is down, the endpoint changed, or the target is not loaded,
-queued jobs remain pending.
+If the server is down or the endpoint changed, queued jobs remain pending. An
+unloaded target also remains pending unless its event action permits resume.
 
 Codex rejects direct app-server input to parent-owned agents. They can be the
-subject of goal or stop conditions, but scheduled input must target the root
-thread (`/root`) or another thread that accepts direct input. A nested native
-parent may itself be parent-owned.
+subject of goal or stop conditions, but a scheduled wake must target the root
+thread (`/root`) or another thread that accepts direct lifecycle control. A
+nested native parent may itself be parent-owned.
 
 Wakectl accepts canonical task names beginning with `/root` for condition
 subjects and delivery targets. `CODEX_THREAD_ID` supplies the tree scope, or
@@ -36,8 +37,8 @@ than leaving it pending forever.
 
 `wait` evaluates a condition in the invoking process. It keeps any condition
 cursor only in memory and does not create a SQLite job, involve the runner, or
-send input. Its completion is an ordinary process result, not a callback into a
-Codex thread.
+send an event or input. Its completion is an ordinary process result, not a
+callback into a Codex thread.
 
 This mode is useful when a script needs an exit status from Codex goal or turn
 state. A caller that already owns a live subagent or terminal handle can wait on
@@ -106,29 +107,37 @@ turn. Use `--max-fires N` when a repeating job should end by itself. An exact
 
 ## Delivery
 
-Wakes are ordinary user input in the target thread. They continue its existing
-context and remain in its transcript.
+The default action is an event wake. The runner injects a short agent message
+derived from the matched condition. If the target is idle, it then submits an
+empty `turn/start`, which runs the model with existing context without adding a
+user message. Both the event and resulting response remain in thread history.
 
-The delivery record identifies the job and delivery mode, but the target input
-does not identify its logical author. Provenance must be part of the message
-text when it matters.
+The generated text begins with `Scheduled event JOB/FIRE`, and each event has a
+stable `lastEventItemId`. A repeating job uses the same job id and increments
+the fire number.
 
-Queued delivery is at-least-once. A wake can arrive late, duplicate if a runner
-crashes after delivery, or become redundant after manual handling.
+By default, an active or unloaded target defers event delivery. With
+`--notify-active`, an active target receives the agent event and no new turn is
+started. With `--resume`, an unloaded target is loaded; an active persisted goal
+can continue immediately, in which case the event enters that active turn.
 
-By default, queued wakes send only to idle targets. An active or not-loaded
-target defers delivery and leaves the job pending. The runner confirms the
-client message in materialized history before recording a new turn as fired.
-The idle check and native start request are not atomic; if another regular turn
-wins that race, the recorded delivery mode is `steered`.
+Event injection and empty turn start are separate requests. If another turn
+wins the idle race after injection, the event enters that active work and the
+job records `eventNotifiedActive`. If event acceptance or the following wake
+cannot be established safely, the job becomes `uncertain` and retains the
+event item id for reconciliation.
 
-With `--allow-active`, the runner obtains the current active turn id and uses
-native `turn/steer` with that expected id. A stale id, review turn, or compaction
-turn is rejected instead of steering a replacement turn.
+`--input MESSAGE` selects the ordinary input action. It waits for an idle
+target, submits native `turn/start`, and confirms the client message in
+materialized history. Delayed input does not support active steering or resume;
+use immediate thread control for those decisions. Pending jobs created by
+earlier wakectl releases preserve their original input and `--allow-active`
+semantics.
 
-If the outcome of a submitted start or steer request cannot be confirmed, the
-job becomes `uncertain`. It is not retried automatically because the input may
-already have been delivered.
+Queued delivery is at-least-once. An event or input can arrive late, duplicate
+if a runner stops after delivery, or become redundant after manual handling.
+An uncertain job is not retried automatically because its action may already
+have taken effect.
 
 The runner does not answer approval or user-input requests raised by the
 resulting turn. A capable app-server client must remain available to resolve
@@ -153,6 +162,10 @@ The default state directory is mode `0700` and the database is mode `0600`.
 Existing default state is tightened when opened. A custom `--state` file is
 created as `0600`, but wakectl does not change permissions on an existing
 custom file or directory.
+
+Version 0.5 adds a structured action to each job. Existing rows without that
+field decode as legacy input actions; upgrading does not reinterpret their
+stored messages as event wakes.
 
 The default database is shared by all workflows using the same host user and
 state path. `run` claims pending jobs and renews each claim before condition

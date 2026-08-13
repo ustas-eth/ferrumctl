@@ -20,6 +20,7 @@ from codex_wakectl import parser
 from codex_wakectl import parsing
 from codex_wakectl import state
 from codex_wakectl import systemd
+from codex_wakectl.actions import build_action, input_action
 from codex_wakectl.errors import WakectlError
 
 
@@ -28,7 +29,7 @@ class ParseTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 parser.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-wakectl 0.4.0\n")
+        self.assertEqual(output.getvalue(), "codex-wakectl 0.5.0\n")
 
     def test_parse_duration(self) -> None:
         self.assertEqual(parsing.parse_duration("10s"), 10)
@@ -173,6 +174,78 @@ class ParseTests(unittest.TestCase):
         self.assertTrue(args.allow_active)
         self.assertEqual(args.timeout, 45)
 
+    def test_add_defaults_to_an_event_wake(self) -> None:
+        args = parser.build_parser().parse_args(
+            ["add", "time", "--after", "1m", "--to", "thread"]
+        )
+        self.assertEqual(build_action(args), {"type": "event"})
+
+    def test_add_exposes_event_and_input_policies_explicitly(self) -> None:
+        notify = parser.build_parser().parse_args(
+            [
+                "add",
+                "goal",
+                "worker",
+                "--status",
+                "complete",
+                "--to",
+                "main",
+                "--notify-active",
+                "--resume",
+            ]
+        )
+        send = parser.build_parser().parse_args(
+            [
+                "add",
+                "time",
+                "--after",
+                "1m",
+                "--to",
+                "thread",
+                "--input",
+                "continue",
+            ]
+        )
+        self.assertEqual(
+            build_action(notify),
+            {"type": "event", "notifyActive": True, "resume": True},
+        )
+        self.assertEqual(
+            build_action(send),
+            {"type": "input", "message": "continue"},
+        )
+
+    def test_add_rejects_unsafe_action_combinations(self) -> None:
+        cases = [
+            ["--input", "continue", "--notify-active"],
+            ["--input", "continue", "--resume"],
+            ["--input", "continue", "--allow-active"],
+        ]
+        for options in cases:
+            with self.subTest(options=options):
+                args = parser.build_parser().parse_args(
+                    ["add", "time", "--after", "1m", "--to", "thread", *options]
+                )
+                with self.assertRaises(WakectlError):
+                    build_action(args)
+
+    def test_legacy_positional_message_keeps_input_semantics(self) -> None:
+        args = parser.build_parser().parse_args(
+            [
+                "add",
+                "time",
+                "--after",
+                "1m",
+                "--to",
+                "thread",
+                "old message",
+            ]
+        )
+        self.assertEqual(
+            build_action(args),
+            {"type": "input", "message": "old message", "legacy": True},
+        )
+
     def test_add_stop_repeat_options(self) -> None:
         args = parser.build_parser().parse_args(
             [
@@ -253,12 +326,13 @@ class ParseTests(unittest.TestCase):
         )
 
         self.assertEqual(valid.tree, "root-thread")
+        self.assertEqual(build_action(valid)["message"], "ready")
         self.assertEqual(valid.argv, ["test", "-f", "done"])
         with self.assertRaisesRegex(
             WakectlError,
             "--tree must appear before MESSAGE",
         ):
-            commands._reject_misplaced_add_cmd_option(misplaced)
+            build_action(misplaced)
 
     def test_stop_accepts_exact_or_latest_turn(self) -> None:
         add_args = parser.build_parser().parse_args(
@@ -349,6 +423,25 @@ class ConditionTests(unittest.TestCase):
         ready, updates, _ = asyncio.run(conditions.goal_condition_ready(App(), condition, job))
         self.assertTrue(ready)
         self.assertEqual(updates["lastTokensUsedBucket"], 2)
+
+    def test_goal_match_reason_describes_the_observed_values(self) -> None:
+        condition = {
+            "type": "goal",
+            "threadId": "t",
+            "statuses": ["complete"],
+            "tokensUsedGte": 1000,
+        }
+        goal = {"tokensUsed": 1200, "status": "complete"}
+
+        class App:
+            async def request(self, method, params):
+                return {"goal": goal}
+
+        ready, _, reason = asyncio.run(
+            conditions.goal_condition_ready(App(), condition)
+        )
+        self.assertTrue(ready)
+        self.assertEqual(reason, "status is complete; tokens used 1200")
 
     def test_goal_repeating_bucket_rebases_after_counter_reset(self) -> None:
         condition = {"type": "goal", "threadId": "t", "tokensUsedEvery": 1000}
@@ -790,9 +883,8 @@ class ConditionTests(unittest.TestCase):
             job = conditions.new_job(
                 {"type": "time", "at": parsing.now_seconds() + 60},
                 "thread",
-                "message",
+                input_action("message", allow_active=True),
                 "unix://",
-                allow_active=True,
                 timeout=45.0,
             )
 
@@ -802,7 +894,7 @@ class ConditionTests(unittest.TestCase):
             self.assertEqual(len(jobs), 1)
             self.assertEqual(jobs[0]["id"], job["id"])
             self.assertEqual(jobs[0]["condition"]["type"], "time")
-            self.assertTrue(jobs[0]["allowActive"])
+            self.assertTrue(jobs[0]["action"]["allowActive"])
             self.assertEqual(jobs[0]["timeout"], 45.0)
 
     def test_cmd_add_time_job_persists_cli_policy_fields(self) -> None:
@@ -837,10 +929,10 @@ class ConditionTests(unittest.TestCase):
             self.assertEqual(len(jobs), 1)
             self.assertEqual(jobs[0]["condition"]["type"], "time")
             self.assertEqual(jobs[0]["targetThreadId"], "target-thread")
-            self.assertEqual(jobs[0]["message"], "wake message")
+            self.assertEqual(jobs[0]["action"]["message"], "wake message")
             expected_socket = Path.cwd() / "custom.sock"
             self.assertEqual(jobs[0]["endpoint"], f"unix://{expected_socket}")
-            self.assertTrue(jobs[0]["allowActive"])
+            self.assertTrue(jobs[0]["action"]["allowActive"])
             self.assertEqual(jobs[0]["timeout"], 45.0)
 
     def test_add_resolves_agent_paths_once_before_persisting(self) -> None:
@@ -1124,7 +1216,7 @@ class ConditionTests(unittest.TestCase):
             job = conditions.new_job(
                 {"type": "time", "at": parsing.now_seconds() + 60},
                 "thread",
-                "message",
+                input_action("message"),
                 "unix://",
             )
             state.insert_job(path, job)
@@ -1147,7 +1239,7 @@ class ConditionTests(unittest.TestCase):
             job = conditions.new_job(
                 {"type": "time", "at": parsing.now_seconds() + 60},
                 "thread",
-                "message",
+                input_action("message"),
                 "unix://",
             )
             state.insert_job(path, job)
@@ -1162,7 +1254,7 @@ class ConditionTests(unittest.TestCase):
             job = conditions.new_job(
                 {"type": "time", "at": parsing.now_seconds() + 60},
                 "thread",
-                "message",
+                input_action("message"),
                 "unix://",
             )
             state.insert_job(path, job)
@@ -1226,7 +1318,10 @@ class ConditionTests(unittest.TestCase):
             jobs = state.list_jobs(path)
 
             self.assertEqual(jobs[0]["id"], "oldjob")
-            self.assertFalse(jobs[0]["allowActive"])
+            self.assertEqual(
+                jobs[0]["action"],
+                {"type": "input", "message": "message", "legacy": True},
+            )
             self.assertNotIn("timeout", jobs[0])
 
     def test_default_state_permissions_are_private(self) -> None:
@@ -1267,7 +1362,7 @@ class ConditionTests(unittest.TestCase):
             job = conditions.new_job(
                 {"type": "time", "at": parsing.now_seconds() + 60},
                 "thread",
-                "message",
+                input_action("message"),
                 "unix://",
             )
             state.insert_job(path, job)
@@ -1299,13 +1394,13 @@ class ConditionTests(unittest.TestCase):
             first = conditions.new_job(
                 {"type": "time", "at": parsing.now_seconds() + 60},
                 "first",
-                "message",
+                input_action("message"),
                 "unix://",
             )
             second = conditions.new_job(
                 {"type": "time", "at": parsing.now_seconds() + 60},
                 "second",
-                "message",
+                input_action("message"),
                 "unix://",
             )
             state.insert_job(path, first)

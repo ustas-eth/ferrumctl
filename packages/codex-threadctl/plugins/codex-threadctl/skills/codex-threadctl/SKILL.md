@@ -72,8 +72,8 @@ remain attached to that conversation.
 - `terminate-terminal` targets one exact process from a current terminal
   listing.
 
-Use scheduled input instead when delivery must survive the current turn or wait
-for a future condition and the corresponding skill is available.
+Use a scheduled wake instead when attention must survive the current turn or
+wait for a future condition and the corresponding skill is available.
 
 ```sh
 codex-threadctl start THREAD_ID \
@@ -115,8 +115,8 @@ server.
   live control.
 - `start` has a non-atomic idle check. Read its confirmed delivery mode because
   input can be steered into a turn that won the race.
-- `notify` reports app-server acceptance only. It does not prove timing,
-  persistence, model receipt, or action, and it does not wake the target.
+- `notify` reports app-server acceptance and a raw agent-message id. It does not
+  prove timing, model receipt, or action, and it does not wake the target.
 - `wake` carries no instructions. It starts an empty turn only when the target
   is loaded and idle; an active target receives nothing.
 - Pass a currently observed turn id to `steer` and `interrupt`. Interruption

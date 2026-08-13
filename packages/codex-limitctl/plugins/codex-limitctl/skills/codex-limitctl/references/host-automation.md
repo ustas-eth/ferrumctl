@@ -20,23 +20,21 @@ codex-limitctl test codex --window 7d --remaining-at-least 20
 unavailable. Preserve all three outcomes. A successful gate is a point-in-time
 observation, not a capacity reservation.
 
-When scheduled input is available and the selected window includes a renewal
+When scheduled wakes are available and the selected window includes a renewal
 time, a sleeping coordinator can wake then and evaluate the policy again:
 
 ```sh
 SELF=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
 RENEWS_AT=$(codex-limitctl list codex --window 7d --json |
   jq -er '.windows[0].resetsAt | todateiso8601')
-codex-wakectl add time --at "$RENEWS_AT" --to "$SELF" \
-  "Automated event: Subscription window renewed."
+codex-wakectl add time --at "$RENEWS_AT" --to "$SELF"
 ```
 
 For a short wait that may become ready before renewal, the same policy can be a
 queued command predicate:
 
 ```sh
-codex-wakectl add cmd --timeout 30 --to "$SELF" \
-  "Automated event: Subscription capacity is available." -- \
+codex-wakectl add cmd --timeout 30 --to "$SELF" -- \
   codex-limitctl test codex --window 7d --remaining-at-least 20 --timeout 20
 ```
 
@@ -49,8 +47,7 @@ persistent observation failure must not wait indefinitely.
 A queued command condition is a repeated probe, not the scheduled work:
 
 ```sh
-codex-wakectl add cmd --to THREAD_ID \
-  "Automated event: Input is ready." -- test -f done.txt
+codex-wakectl add cmd --to THREAD_ID -- test -f done.txt
 ```
 
 Run the queue through the recurring user timer:

@@ -11,7 +11,7 @@ Use the tools separately and compose them with the shell:
   acknowledgements.
 - `codex-threadctl` discovers threads, inspects ordered activity, sends
   advisory agent notices, and applies immediate control.
-- `codex-wakectl` schedules durable thread input after later conditions.
+- `codex-wakectl` schedules durable thread attention after later conditions.
 - `codex-readcov` counts file-read actions from Codex rollout transcripts.
 
 The optional Codex plugins add skills that explain when agents should use each
@@ -146,8 +146,7 @@ codex-readcov snapshot "$WORKER" > worker.before.json
 codex-goalctl replace "$WORKER" "Review this package and mark the goal complete."
 codex-wakectl add goal "$WORKER" \
   --status complete,blocked,budgetLimited,usageLimited \
-  --to "$MAIN" \
-  "Automated event: Worker goal reached a terminal status. Inspect it."
+  --to "$MAIN"
 codex-threadctl start "$WORKER" "From coordinator: A goal was assigned. Call get_goal and proceed."
 ```
 
@@ -163,8 +162,7 @@ Schedule a self-reminder from a loaded Codex session:
 
 ```sh
 SELF=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
-codex-wakectl add time --after 30m --to "$SELF" \
-  "Self-scheduled reminder: Review progress."
+codex-wakectl add time --after 30m --to "$SELF"
 ```
 
 Find tracked files not present in a read list, using the snapshot cwd as the

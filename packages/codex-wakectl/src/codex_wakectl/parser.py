@@ -91,7 +91,11 @@ def add_json_option(parser: argparse.ArgumentParser, *, defaults: bool) -> None:
     )
 
 
-def add_target_message(parser: argparse.ArgumentParser) -> None:
+def add_target_action(
+    parser: argparse.ArgumentParser,
+    *,
+    legacy_message: bool = True,
+) -> None:
     parser.add_argument(
         "--to",
         dest="to_thread_id",
@@ -99,11 +103,29 @@ def add_target_message(parser: argparse.ArgumentParser) -> None:
         help="thread id or canonical task name to wake",
     )
     parser.add_argument(
-        "--allow-active",
-        action="store_true",
-        help="steer into the current regular turn if the target is active",
+        "--input",
+        dest="input_message",
+        metavar="MESSAGE",
+        help="send ordinary input instead of a scheduled event",
     )
-    parser.add_argument("message", help="message to send when the wake fires")
+    parser.add_argument(
+        "--notify-active",
+        action="store_true",
+        help="inject the event into active work instead of waiting for idle",
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="resume an unloaded target before delivering an event",
+    )
+    parser.add_argument("--allow-active", action="store_true", help=argparse.SUPPRESS)
+    if legacy_message:
+        parser.add_argument(
+            "legacy_message",
+            nargs="?",
+            metavar="MESSAGE",
+            help=argparse.SUPPRESS,
+        )
 
 
 def add_tree_option(parser: argparse.ArgumentParser) -> None:
@@ -125,7 +147,7 @@ def add_time_condition_parser(sub: argparse._SubParsersAction[argparse.ArgumentP
     )
     group.add_argument("--at", type=parse_at, help="ISO timestamp with timezone")
     parser.set_defaults(condition_builder=build_time_condition)
-    add_target_message(parser)
+    add_target_action(parser)
     add_tree_option(parser)
     add_global_options(parser, defaults=False)
 
@@ -156,7 +178,7 @@ def add_goal_condition_options(
 def add_goal_condition_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = sub.add_parser("goal", help="goal-state condition")
     add_goal_condition_options(parser, allow_max_fires=True)
-    add_target_message(parser)
+    add_target_action(parser)
     add_tree_option(parser)
     add_global_options(parser, defaults=False)
 
@@ -167,12 +189,16 @@ def add_cmd_condition_parser(sub: argparse._SubParsersAction[argparse.ArgumentPa
         help="shell command predicate",
         description=(
             "Persist a shell command predicate. Place wakectl options before "
-            "MESSAGE and the predicate command after --."
+            "-- and the predicate command after it."
         ),
     )
-    add_target_message(parser)
+    add_target_action(parser, legacy_message=False)
     add_tree_option(parser)
-    parser.add_argument("argv", nargs=argparse.REMAINDER, help="command after --")
+    parser.add_argument(
+        "command_parts",
+        nargs=argparse.REMAINDER,
+        help="predicate command after --",
+    )
     parser.set_defaults(condition_builder=build_cmd_condition)
     add_global_options(parser, defaults=False)
 
@@ -198,7 +224,7 @@ def add_stop_condition_parser(sub: argparse._SubParsersAction[argparse.ArgumentP
         help="maximum fires for --repeat",
     )
     parser.set_defaults(condition_builder=build_stop_condition)
-    add_target_message(parser)
+    add_target_action(parser)
     add_tree_option(parser)
     add_global_options(parser, defaults=False)
 
@@ -278,7 +304,7 @@ def add_wait_stop_condition_parser(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="codex-wakectl",
-        description="Schedule conditional input and synchronously poll conditions.",
+        description="Schedule conditional wakes and synchronously poll conditions.",
     )
     parser.add_argument(
         "--version", action="version", version=f"%(prog)s {CLIENT_VERSION}"
@@ -300,7 +326,10 @@ def build_parser() -> argparse.ArgumentParser:
         moved.set_defaults(func=cmd_moved, moved_to=replacement)
         sub._choices_actions.pop()
 
-    add = sub.add_parser("add", help="persist a wake job for runner delivery")
+    add = sub.add_parser(
+        "add",
+        help="persist a conditional event wake or explicit input",
+    )
     add_global_options(add, defaults=False)
     add_sub = add.add_subparsers(dest="condition", required=True)
     add_time_condition_parser(add_sub)
@@ -311,10 +340,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     wait = sub.add_parser(
         "wait",
-        help="poll synchronously without scheduling input",
+        help="poll synchronously without scheduling a wake",
         description=(
-            "Poll a condition in this process. This sends no input and does not "
-            "persist a wake job."
+            "Poll a condition in this process. This sends no event or input and "
+            "does not persist a wake job."
         ),
     )
     add_wait_options(wait, defaults=True)
@@ -326,7 +355,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_wait_stop_condition_parser(wait_sub)
     wait.set_defaults(func=cmd_wait)
 
-    run = sub.add_parser("run", help="evaluate pending jobs once and fire ready wakes")
+    run = sub.add_parser("run", help="evaluate and deliver ready jobs once")
     run.add_argument("--limit", type=parse_positive_int)
     run.add_argument(
         "--lease-seconds",

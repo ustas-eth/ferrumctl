@@ -43,3 +43,14 @@ class DeliveryUncertain(ThreadctlError):
             f"input outcome is uncertain{target}; "
             f"client message id {client_message_id}"
         )
+
+
+class NotificationUncertain(ThreadctlError):
+    """An advisory item may have been accepted before the connection failed."""
+
+    def __init__(self, item_id: str):
+        self.item_id = item_id
+        super().__init__(
+            "notification outcome is uncertain; "
+            f"agent message id {item_id}"
+        )

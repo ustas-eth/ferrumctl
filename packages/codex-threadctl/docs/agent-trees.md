@@ -82,7 +82,7 @@ targets must accept direct input:
 
 ```sh
 codex-wakectl add goal /root/reviewer --status complete,blocked \
-  --to /root "Automated event: Reviewer goal ended."
+  --to /root
 ```
 
 The resolved thread ids are stored in the job. Later task name reuse does not

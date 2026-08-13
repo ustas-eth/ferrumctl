@@ -15,7 +15,7 @@ workflow layers; they do not change the semantics of the remaining tools.
 | --- | --- | --- |
 | Goal state | Durable objective, status, budget, and counters | Turn execution or message delivery |
 | Thread state | Live app-server status and materialized history | An atomic or immutable transcript |
-| Wake queue | Conditions and later input delivery | The target's result |
+| Wake queue | Conditions and later event or input delivery | The target's result |
 | Stream state | Ordered entries and reader acknowledgements | Notification, membership, or authorization |
 | Limit state | Current account observations and local usage history | Reserved capacity or exact thread attribution |
 | Read coverage | Transcript-recorded file-read actions | Verified file access or complete model context |
@@ -40,8 +40,9 @@ Persisted goals, snapshots, and jobs remain bound to thread ids. A canonical
 task name does not transfer lifecycle ownership from the native parent.
 
 A thread id identifies persisted state under a Codex home. It does not identify
-which app-server, if any, owns live execution. Immediate and scheduled input
-must use the endpoint on which the target is loaded.
+which app-server, if any, owns live execution. Immediate control and scheduled
+wakes must use the endpoint on which the target is loaded, unless an explicit
+resume policy loads it there.
 
 SQLite state is shared by callers using the same host user and state path.
 Thread ids, stream authors, readers, and message labels provide provenance and
@@ -54,7 +55,9 @@ result retrieval when the current session owns that handle.
 
 Use thread control when a thread id is the useful handle, persisted history is
 needed, or an immediate app-server operation is intentional. Use a queued wake
-when attention must survive the current turn or wait for a later condition.
+when attention must survive the current turn or wait for a later condition. A
+normal queued wake adds a short agent event and starts an empty turn; schedule
+ordinary input only when its text is deliberately the instruction.
 
 Keep durable assignment in goal state. Keep durable peer content in a stream.
 When a stream is authoritative, use native input or advisory notification only
@@ -74,7 +77,7 @@ for task correctness.
   or grant another participant ownership of the thread.
 - A stream append, its notification, a later wake, and reader acknowledgement
   are separate operations.
-- A matched wake condition, delivered input, target action, and result
+- A matched wake condition, delivered event or input, target action, and result
   retrieval are separate events.
 - Account capacity, goal token usage, and context-window usage are different
   measurements.

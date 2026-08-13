@@ -16,6 +16,7 @@ from .errors import (
     AppServerResponseError,
     DeliveryUncertain,
     DirectInputUnsupported,
+    NotificationUncertain,
     ThreadctlError,
     ThreadNotLoaded,
     ThreadStateError,
@@ -771,11 +772,14 @@ async def notify_thread(
     thread_id: str,
     author: str,
     message: str,
+    *,
+    item_id: str | None = None,
 ) -> dict[str, Any]:
     await require_loaded(app, thread_id)
+    item_id = item_id or f"amsg_{uuid.uuid4().hex}"
     item = {
         "type": "agent_message",
-        "id": None,
+        "id": item_id,
         "author": author,
         "recipient": thread_id,
         "content": [{"type": "input_text", "text": message}],
@@ -791,11 +795,10 @@ async def notify_thread(
     except AppServerResponseError:
         raise
     except (OSError, ThreadctlError, websockets.WebSocketException) as exc:
-        raise ThreadctlError(
-            "notification outcome is uncertain; inspect the target before retrying"
-        ) from exc
+        raise NotificationUncertain(item_id) from exc
     return {
         "threadId": thread_id,
+        "itemId": item_id,
         "author": author,
         "outcome": "accepted",
     }

@@ -23,9 +23,14 @@ codex-threadctl loaded
 codex-threadctl status THREAD_ID
 ```
 
-If the target is active, wakectl defers delivery unless the job was created with
-`--allow-active`. That option uses expected-turn steering and remains suitable
-only for input valid during current work.
+If the target is active, an event wake defers unless the job was created with
+`--notify-active`. That option injects the scheduled event into current work;
+it does not steer user input or start another turn. Explicit `--input` always
+waits for idle.
+
+An unloaded target remains pending unless an event job has `--resume`. Resume
+can immediately continue an active goal. Confirm that another app-server does
+not already own the same thread before choosing that policy.
 
 A job with `status=failed` and a native-parent ownership error targeted a child
 that cannot accept direct app-server input. Keep the child as the goal or stop
@@ -63,10 +68,14 @@ time wake can provide a recovery turn if the condition remains false because
 the watcher or predicate is wrong. It does not protect against the wakectl
 runner itself being stopped.
 
-An `uncertain` job submitted native start or steer input but could not confirm
-the outcome. It is not retried automatically. Inspect the target and compare
-`lastClientMessageId` with structured threadctl message output before deciding
-whether another message is appropriate.
+An `uncertain` input job submitted native start or legacy steer input but could
+not confirm the outcome. Compare `lastClientMessageId` with structured
+threadctl message output before deciding whether another input is appropriate.
+
+An uncertain event job records `lastEventItemId`. Its event may already be in
+the target history even when the following empty wake could not be confirmed.
+Inspect the target before replacing the job. Uncertain jobs are not retried
+automatically.
 
 ## Duplicate Delivery
 

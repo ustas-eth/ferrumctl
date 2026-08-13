@@ -20,8 +20,7 @@ scheduled:
 ```sh
 SELF=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
 
-codex-wakectl add time --after 30m --to "$SELF" \
-  "Self-scheduled reminder: Review progress."
+codex-wakectl add time --after 30m --to "$SELF"
 ```
 
 A goal-budget event requires the current goal to have a token budget. It can
@@ -29,8 +28,7 @@ reach an active turn when the warning remains valid during current work:
 
 ```sh
 codex-wakectl add goal "$SELF" --tokens-left-lte 300000 \
-  --allow-active --to "$SELF" \
-  "Automated event: Goal budget is low."
+  --notify-active --to "$SELF"
 ```
 
 Read coverage can provide a separate view of one work interval:
@@ -57,8 +55,7 @@ codex-goalctl replace "$WORKER" \
 
 codex-wakectl add goal "$WORKER" \
   --status complete,blocked,budgetLimited,usageLimited \
-  --to "$MAIN" \
-  "Automated event: Worker goal reached a terminal status."
+  --to "$MAIN"
 
 codex-threadctl start "$WORKER" \
   "From coordinator: A goal was assigned. Call get_goal and proceed."
@@ -98,8 +95,7 @@ attention to the root:
 ```sh
 codex-wakectl add goal /root/reviewer \
   --status complete,blocked,budgetLimited,usageLimited \
-  --to /root \
-  "Automated event: Reviewer goal reached a terminal status."
+  --to /root
 ```
 
 Start or continue the child through the native parent handle. Canonical task
@@ -116,8 +112,7 @@ holding the coordinating turn open:
 codex-wakectl add goal "$WORKER" \
   --tokens-used-every 2000000 \
   --max-fires 4 \
-  --to "$MAIN" \
-  "Automated event: Worker token milestone."
+  --to "$MAIN"
 ```
 
 Inspect before deciding whether intervention is useful. A non-blocking
@@ -136,8 +131,7 @@ execution must both be controlled:
 codex-goalctl update "$WORKER" --status paused
 codex-threadctl interrupt "$WORKER" ACTIVE_TURN_ID --wait
 
-codex-wakectl add stop "$WORKER" --to "$MAIN" \
-  "Automated event: Worker answered the checkpoint."
+codex-wakectl add stop "$WORKER" --to "$MAIN"
 codex-threadctl start "$WORKER" \
   "From coordinator: Answer this checkpoint and stop: QUESTION"
 ```
@@ -168,13 +162,11 @@ codex-goalctl replace "$REVIEWER" \
 
 codex-wakectl add goal "$WORKER" \
   --status complete,blocked,budgetLimited,usageLimited \
-  --to "$REVIEWER" \
-  "Automated event: Worker goal reached a terminal status."
+  --to "$REVIEWER"
 
 codex-wakectl add goal "$REVIEWER" \
   --status complete,blocked,budgetLimited,usageLimited \
-  --to "$MAIN" \
-  "Automated event: Reviewer goal reached a terminal status."
+  --to "$MAIN"
 ```
 
 The reviewer can inspect the worker through its thread id and read snapshot,
