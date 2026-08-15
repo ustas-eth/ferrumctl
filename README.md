@@ -1,246 +1,96 @@
 # ferrumctl
 
-Small Unix-style control tools for Codex agent workflows.
+Lightweight control tools for long-running Codex workflows.
 
-`ferrumctl` is the repository umbrella. It does not install a wrapper command.
-Use the tools separately and compose them with the shell:
+Codex can start and message subagents. Once work spans many turns, a coordinator
+has limited ways to update another thread's goal, wake it after a future
+condition, or see enough of its state to decide what happens next.
 
-- `codex-goalctl` reads and changes persisted Codex thread goals.
-- `codex-limitctl` reads Codex subscription limits and usage signals.
-- `streamctl` provides durable append-only exchanges with per-reader
-  acknowledgements.
-- `codex-threadctl` discovers threads, inspects ordered activity, sends
-  advisory agent notices, and applies immediate control.
-- `codex-wakectl` schedules durable thread attention after later conditions.
-- `codex-readcov` counts file-read actions from Codex rollout transcripts.
+Ferrumctl fills those gaps with six independent commands. They run locally on
+Codex state available to the same computer and user account, and your coding
+agent composes them into its own workflow. The commands stand alone; optional
+Codex skills help agents choose and use them correctly.
 
-The optional Codex plugins add skills that explain when agents should use each
-command. They do not change CLI behavior.
+## What It Adds
+
+| Tool | What it lets your agents do |
+| --- | --- |
+| [`codex-goalctl`](packages/codex-goalctl) | Set, inspect, or update another Codex thread's durable goal and token budget. |
+| [`codex-wakectl`](packages/codex-wakectl) | Return attention after a time, goal, turn, or host condition. |
+| [`codex-threadctl`](packages/codex-threadctl) | Find a thread, see its recent work and retained messages, or control its current turn. |
+| [`codex-readcov`](packages/codex-readcov) | Check which file reads were recorded in a thread transcript and compare work intervals. |
+| [`codex-limitctl`](packages/codex-limitctl) | Check subscription capacity and recent usage before planning more work. |
+| [`streamctl`](packages/streamctl) | Keep a durable, ordered exchange between agents or host scripts. |
+
+## A Typical Use
+
+You ask a main Codex thread to review a project with two workers. With the
+matching ferrumctl skills available, the coordinator can:
+
+1. Give each worker a durable goal and budget.
+2. Start their work and arrange to wake when either worker stops.
+3. Inspect current activity or retained answers while their work continues.
+4. Check goal status and recorded file reads before choosing the next step.
+
+The coordinator performs these operations itself, removing manual goal copying,
+repeated worker polling, and raw transcript searches. Native controls remain
+simpler for quick exchanges with a live subagent.
+
+The same tools also support self-scheduling agents, paired reviews, and host
+automation.
 
 ## Install
 
-```sh
-git clone https://github.com/ustas-eth/ferrumctl
-cd ferrumctl
+Give this repository to your coding agent with a request such as:
 
-uv tool install ./packages/codex-goalctl
-uv tool install ./packages/codex-limitctl
-uv tool install ./packages/streamctl
-uv tool install ./packages/codex-threadctl
-uv tool install ./packages/codex-wakectl
-cargo install --locked --path ./packages/codex-readcov
-```
+> Install ferrumctl from https://github.com/ustas-eth/ferrumctl. Enable the
+> commands and Codex skills that fit my workflow. Before changing how I start
+> Codex, explain the shared app-server setup to me.
 
-Install one package at a time if you only need one command.
+[Install and upgrade](docs/install-and-upgrade.md) contains the full procedure.
+The commands remain ordinary Unix tools, so humans and scripts can also call
+them directly.
 
-## Codex Plugins
+## One Setup Requirement
 
-Install the optional skills from the root marketplace:
-
-```sh
-codex plugin marketplace add ustas-eth/ferrumctl
-codex plugin add codex-goalctl@ferrumctl
-codex plugin add codex-limitctl@ferrumctl
-codex plugin add streamctl@ferrumctl
-codex plugin add codex-threadctl@ferrumctl
-codex plugin add codex-wakectl@ferrumctl
-codex plugin add codex-readcov@ferrumctl
-```
-
-The marketplace manifest is [.agents/plugins/marketplace.json](.agents/plugins/marketplace.json).
-
-## Upgrade
-
-From an existing checkout, update the installed commands:
-
-```sh
-git pull
-for package in codex-goalctl codex-limitctl streamctl codex-threadctl codex-wakectl; do
-  uv tool install --reinstall "./packages/$package"
-done
-cargo install --locked --force --path ./packages/codex-readcov
-```
-
-When upgrading from `codex-streamctl`, remove the old command and plugin after
-installing `streamctl`:
-
-```sh
-uv tool uninstall codex-streamctl
-codex plugin remove codex-streamctl@ferrumctl
-```
-
-Refresh the marketplace, then rerun `codex plugin add NAME@ferrumctl` for each
-plugin you use:
-
-```sh
-codex plugin marketplace upgrade ferrumctl
-codex plugin add codex-threadctl@ferrumctl
-```
-
-For a persistent app-server at `unix://`, update all commands and plugins from
-the checkout without restarting the server:
-
-```sh
-uv run scripts/update-local.py --reload-threads
-```
-
-## App Server
-
-`codex-threadctl` and `codex-wakectl` use sessions connected to a shared
-app-server:
+Live thread control and scheduled wakes require the relevant Codex sessions to
+share one app-server. Keep the server running in one terminal:
 
 ```sh
 codex app-server --listen unix://
+```
+
+Start or resume controlled sessions through it:
+
+```sh
 codex --remote unix://
-codex-threadctl loaded
 ```
 
-For daily use, keep the Codex flags you normally use and add `--remote
-unix://` to that shortcut, for example `alias x='codex --remote unix://'`.
-
-## What You Can Do
-
-Check shared subscription capacity and recent usage:
-
-```sh
-codex-limitctl list
-codex-limitctl test codex --window 7d --remaining-at-least 20
-codex-limitctl usage --since 7d
-codex-limitctl activity --since 24h | head
-```
-
-Find recent sessions or retained subagent threads:
-
-```sh
-SELF=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
-codex-threadctl list --limit 10
-codex-threadctl list --parent "$SELF" --limit 5
-codex-threadctl search "decision text" --limit 10
-```
-
-Share a durable peer checkpoint and announce it without user input:
-
-```sh
-STREAM=$(streamctl create --label "review")
-POSITION=$(streamctl append "$STREAM" --author "$A" \
-  "The retry result rules out parser order. I will test transaction scope next." \
-  --json | jq -r .position)
-codex-threadctl notify "$B" --from "$A" \
-  "Stream $STREAM has a checkpoint through $POSITION; read after your current work step."
-```
-
-When the recipient is known to be loaded and idle, start its next turn without
-adding another message:
-
-```sh
-codex-threadctl wake "$B"
-```
-
-Assign durable work, arrange the coordinator's return, then start the worker:
-
-```sh
-WORKER=thread-id
-MAIN=main-thread-id
-
-codex-readcov snapshot "$WORKER" > worker.before.json
-codex-goalctl replace "$WORKER" "Review this package and mark the goal complete."
-codex-wakectl add goal "$WORKER" \
-  --status complete,blocked,budgetLimited,usageLimited \
-  --to "$MAIN"
-codex-threadctl start "$WORKER" "From coordinator: A goal was assigned. Call get_goal and proceed."
-```
-
-When the coordinator resumes:
-
-```sh
-codex-goalctl get "$WORKER"
-codex-threadctl inspect "$WORKER"
-codex-readcov delta worker.before.json packages --limit 20
-```
-
-Schedule a self-reminder from a loaded Codex session:
-
-```sh
-SELF=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
-codex-wakectl add time --after 30m --to "$SELF"
-```
-
-Find tracked files not present in a read list, using the snapshot cwd as the
-shared path namespace:
-
-```sh
-SCOPE=packages
-WORKER_CWD=$(jq -r .cwd worker.before.json)
-git -C "$WORKER_CWD" ls-files -- "$SCOPE" | sort > all.txt
-codex-readcov delta worker.before.json "$SCOPE" \
-  --paths-only --limit 0 | sort > read.txt
-comm -23 all.txt read.txt
-```
-
-Process queued wakes with `codex-wakectl run`, or install the user timer:
+On a Linux host with user systemd, install the `codex-wakectl` timer once for
+automatic wake delivery:
 
 ```sh
 codex-wakectl systemd install --interval 30s
 ```
 
-The default wake queue is shared for the host user. Keep job ids for wakes you
-create, and do not cancel jobs owned by other workflows.
+Your agent can install the timer. You must keep the app-server running and
+restart it when updating Codex.
 
-More combinations:
+Some commands depend on Codex app-server methods and local transcript formats.
+These can change between Codex releases, so check for ferrumctl updates after
+upgrading Codex.
 
+## Learn More
+
+- [Install and upgrade](docs/install-and-upgrade.md)
 - [Worker workflows](docs/worker-workflows.md)
 - [Peer workflows](docs/peer-workflows.md)
 - [Host automation](docs/host-automation.md)
+- [Coordination principles](docs/coordination-principles.md)
 
-## Layout
+Each package keeps its own examples and detailed mechanics beside the code.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development and publishing rules.
 
-```text
-packages/
-  codex-goalctl/
-  codex-limitctl/
-  streamctl/
-  codex-threadctl/
-  codex-wakectl/
-  codex-readcov/
-```
+## License
 
-Each package keeps its own README, tests, package metadata, and Codex plugin.
-Repository-level agent instructions are in [AGENTS.md](AGENTS.md).
-
-## Documentation
-
-Package READMEs are short landing pages. Low-level docs live beside each
-package. Shared docs:
-
-- [docs/coordination-principles.md](docs/coordination-principles.md)
-- [docs/worker-workflows.md](docs/worker-workflows.md)
-- [docs/peer-workflows.md](docs/peer-workflows.md)
-- [docs/host-automation.md](docs/host-automation.md)
-- [docs/future-directions.md](docs/future-directions.md)
-
-Selected docs are copied into skill `references/` so installed Codex skills can
-load details without requiring a repo checkout. Regenerate or check those copies
-from the repo root:
-
-```sh
-python3 scripts/sync-skill-references.py
-python3 scripts/sync-skill-references.py --check
-```
-
-## Development
-
-```sh
-scripts/check.sh
-scripts/codex-smoke.sh
-uv run scripts/update-local.py
-```
-
-`scripts/check.sh` is the normal pre-commit check. `scripts/codex-smoke.sh` is
-the local compatibility probe to run after Codex upgrades; it uses a temporary
-`CODEX_HOME` and `XDG_STATE_HOME`, starts only its own app-server, and cleans up
-after itself. `scripts/update-local.py` reinstalls the commands from this
-checkout and refreshes the plugins in an existing app-server without restarting
-the server or its sessions. Pass `--reload-threads` when newly enabled plugins
-must become available to existing sessions. It reloads user configuration in
-every loaded thread. Model-visible skill instructions update when a thread next
-rebuilds its context, such as after compaction, rather than on an ordinary turn.
+[MIT](LICENSE)
