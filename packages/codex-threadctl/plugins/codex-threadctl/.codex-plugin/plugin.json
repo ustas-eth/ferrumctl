@@ -1,6 +1,6 @@
 {
   "name": "codex-threadctl",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Codex skill for finding agent trees, inspecting threads, and applying app-server-backed control.",
   "author": {
     "name": "ustas-eth"

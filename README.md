@@ -6,7 +6,7 @@ Codex can start and message subagents. Once work spans many turns, a coordinator
 has limited ways to update another thread's goal, wake it after a future
 condition, or see enough of its state to decide what happens next.
 
-Ferrumctl fills those gaps with six independent commands. They run locally on
+Ferrumctl fills those gaps with seven independent commands. They run locally on
 Codex state available to the same computer and user account, and your coding
 agent composes them into its own workflow. The commands stand alone; optional
 Codex skills help agents choose and use them correctly.
@@ -20,6 +20,7 @@ Codex skills help agents choose and use them correctly.
 | [`codex-threadctl`](packages/codex-threadctl) | Find a thread, see its recent work and retained messages, or control its current turn. |
 | [`codex-readcov`](packages/codex-readcov) | Check which file reads were recorded in a thread transcript and compare work intervals. |
 | [`codex-limitctl`](packages/codex-limitctl) | Check subscription capacity and recent usage before planning more work. |
+| [`codex-memoryctl`](packages/codex-memoryctl) | Inspect, export, or deliberately transfer opaque Codex compaction memory. |
 | [`streamctl`](packages/streamctl) | Keep a durable, ordered exchange between agents or host scripts. |
 
 ## A Typical Use

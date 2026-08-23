@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "codex-goalctl"
-version = "0.1.9"
+version = "0.1.10"
 description = "Small Unix-style CLI for Codex thread goals"
 readme = "README.md"
 requires-python = ">=3.9"

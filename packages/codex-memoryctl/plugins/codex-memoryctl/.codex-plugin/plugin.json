@@ -1,0 +1,32 @@
+{
+  "name": "codex-memoryctl",
+  "version": "0.1.0",
+  "description": "Codex skill for inspecting and deliberately transferring opaque compaction memory.",
+  "author": {
+    "name": "ustas-eth"
+  },
+  "homepage": "https://github.com/ustas-eth/ferrumctl/tree/main/packages/codex-memoryctl",
+  "repository": "https://github.com/ustas-eth/ferrumctl",
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "memory",
+    "compaction",
+    "automation"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Codex Memoryctl",
+    "shortDescription": "Inspect and transfer Codex compaction memory",
+    "longDescription": "Codex Memoryctl provides workflow guidance for locating, exporting, and deliberately injecting opaque Codex compaction memory.",
+    "developerName": "ustas-eth",
+    "category": "Productivity",
+    "capabilities": [
+      "Compaction memory discovery",
+      "Portable memory exports",
+      "Deliberate memory injection",
+      "Checkpoint experiments"
+    ],
+    "defaultPrompt": "Use $codex-memoryctl to inspect or deliberately transfer Codex compaction memory."
+  }
+}

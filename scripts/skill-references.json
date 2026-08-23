@@ -5,6 +5,7 @@
       "targets": [
         "packages/codex-goalctl/plugins/codex-goalctl/skills/codex-goalctl/references/coordination-principles.md",
         "packages/codex-limitctl/plugins/codex-limitctl/skills/codex-limitctl/references/coordination-principles.md",
+        "packages/codex-memoryctl/plugins/codex-memoryctl/skills/codex-memoryctl/references/coordination-principles.md",
         "packages/streamctl/plugins/streamctl/skills/streamctl/references/coordination-principles.md",
         "packages/codex-wakectl/plugins/codex-wakectl/skills/codex-wakectl/references/coordination-principles.md",
         "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/coordination-principles.md",
@@ -47,6 +48,24 @@
       "source": "packages/codex-limitctl/docs/usage-history.md",
       "targets": [
         "packages/codex-limitctl/plugins/codex-limitctl/skills/codex-limitctl/references/usage-history.md"
+      ]
+    },
+    {
+      "source": "packages/codex-memoryctl/docs/memory-model.md",
+      "targets": [
+        "packages/codex-memoryctl/plugins/codex-memoryctl/skills/codex-memoryctl/references/memory-model.md"
+      ]
+    },
+    {
+      "source": "packages/codex-memoryctl/docs/injection-semantics.md",
+      "targets": [
+        "packages/codex-memoryctl/plugins/codex-memoryctl/skills/codex-memoryctl/references/injection-semantics.md"
+      ]
+    },
+    {
+      "source": "packages/codex-memoryctl/docs/memory-workflows.md",
+      "targets": [
+        "packages/codex-memoryctl/plugins/codex-memoryctl/skills/codex-memoryctl/references/memory-workflows.md"
       ]
     },
     {

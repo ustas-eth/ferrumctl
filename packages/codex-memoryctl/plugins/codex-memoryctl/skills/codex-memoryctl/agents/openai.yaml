@@ -1,0 +1,6 @@
+interface:
+  display_name: "Codex Memoryctl"
+  short_description: "Inspect and transfer Codex compaction memory"
+  default_prompt: "Use $codex-memoryctl to inspect or deliberately transfer Codex compaction memory."
+policy:
+  allow_implicit_invocation: true
