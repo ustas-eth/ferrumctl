@@ -159,7 +159,7 @@ def build_parser() -> argparse.ArgumentParser:
     inject.add_argument(
         "--allow-duplicate",
         action="store_true",
-        help="inject memory already observed in the target rollout",
+        help="inject memory already present in the target's current history",
     )
     inject.add_argument(
         "--allow-non-openai",

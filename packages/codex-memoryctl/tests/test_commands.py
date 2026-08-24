@@ -341,6 +341,64 @@ class InjectionTests(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaisesRegex(MemoryctlError, "already contains"):
                     await commands.cmd_inject(args)
 
+    async def test_allows_memory_replaced_by_later_compaction(self) -> None:
+        value = make_state("older-self")
+        current = make_state("current")
+        args = parser.build_parser().parse_args(
+            ["inject", "target", "--state", "source"]
+        )
+        app = FakeApp()
+        with tempfile.TemporaryDirectory() as directory:
+            target_path = Path(directory) / "target.jsonl"
+            target_path.write_text(
+                "\n".join(
+                    json.dumps(record)
+                    for record in (
+                        {
+                            "type": "compacted",
+                            "payload": {"replacement_history": [value.memory_item]},
+                        },
+                        {
+                            "type": "compacted",
+                            "payload": {"replacement_history": [current.memory_item]},
+                        },
+                    )
+                )
+                + "\n"
+            )
+            with (
+                mock.patch.object(
+                    commands, "memoryctl_appserver", return_value=FakeContext(app)
+                ),
+                mock.patch.object(
+                    commands,
+                    "resolve_thread_reference",
+                    mock.AsyncMock(
+                        side_effect=lambda _app, selected, **_kwargs: selected
+                    ),
+                ),
+                mock.patch.object(
+                    commands, "list_loaded", mock.AsyncMock(return_value=["target"])
+                ),
+                mock.patch.object(
+                    commands,
+                    "read_thread",
+                    mock.AsyncMock(
+                        return_value={
+                            "modelProvider": "openai",
+                            "path": str(target_path),
+                        }
+                    ),
+                ),
+                mock.patch.object(
+                    commands, "load_state", mock.AsyncMock(return_value=value)
+                ),
+            ):
+                result = await commands.cmd_inject(args)
+
+        self.assertEqual(result, 0)
+        self.assertEqual(app.requests[-1][0], "thread/inject_items")
+
     async def test_connection_failure_reports_uncertain_injection(self) -> None:
         value = make_state("uncertain")
         args = parser.build_parser().parse_args(

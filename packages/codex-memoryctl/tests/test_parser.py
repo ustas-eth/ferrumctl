@@ -10,7 +10,7 @@ class ParserTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 parser.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-memoryctl 0.2.0\n")
+        self.assertEqual(output.getvalue(), "codex-memoryctl 0.2.1\n")
 
     def test_parses_public_commands(self) -> None:
         cases = [

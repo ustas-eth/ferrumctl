@@ -37,10 +37,12 @@ order is model-visible and may change the result. Full-checkpoint injection is
 limited to one source because combining retained histories silently would be a
 different operation.
 
-The command refuses memory already visible in a local target rollout
-unless `--allow-duplicate` is present. This is a preflight guard, not an atomic
-idempotency guarantee. If submission becomes uncertain, inspect the target for
-the reported memory reference before retrying.
+The command refuses memory already present in the target's current compacted
+history or appended after its latest compaction unless `--allow-duplicate` is
+present. Earlier replaced checkpoints remain selectable for older-self recall.
+This is a preflight guard, not an atomic idempotency guarantee. If submission
+becomes uncertain, inspect the target for the reported memory reference before
+retrying.
 
 ## Provenance And Compatibility
 
@@ -50,7 +52,9 @@ caller's reason in command output; it does not send a separate instruction to
 another target.
 
 Turn association is delivery metadata, not provenance. Current-turn binding
-does not identify the donor or make the encrypted state a neutral document.
+does not identify the donor, make the encrypted state a neutral document, or
+guarantee that the recipient retains its role and objective. Donor content and
+order can still redirect the recipient.
 
 When an established thread requests and performs its own injection, its tool
 call supplies useful surrounding provenance. External injection should be

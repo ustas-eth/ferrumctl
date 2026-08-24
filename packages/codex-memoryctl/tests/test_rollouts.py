@@ -85,6 +85,52 @@ class RolloutTests(unittest.TestCase):
         self.assertEqual(standalone.memory_id, f"sha256:{expected}")
         self.assertEqual(standalone.metadata()["memoryId"], f"m:{expected[:12]}")
         self.assertEqual(memory_ref(standalone.memory_id), f"m:{expected[:12]}")
+        self.assertEqual(
+            rollout.visible_memory_ids,
+            frozenset({checkpoint.memory_id, standalone.memory_id}),
+        )
+
+    def test_visible_memory_follows_latest_compacted_history(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / f"rollout-{THREAD_ID}.jsonl"
+            old = memory_item("old")
+            before_compaction = memory_item("before-compaction")
+            current = memory_item("current")
+            after_compaction = memory_item("after-compaction")
+            write_rollout(
+                path,
+                [
+                    {
+                        "type": "compacted",
+                        "payload": {"replacement_history": [old]},
+                    },
+                    {"type": "response_item", "payload": before_compaction},
+                    {
+                        "type": "compacted",
+                        "payload": {"replacement_history": [current]},
+                    },
+                    {"type": "response_item", "payload": after_compaction},
+                ],
+            )
+            rollout = scan_rollout(path)
+
+        current_id = next(
+            state.memory_id
+            for state in rollout.states
+            if state.memory_item == current
+        )
+        after_id = next(
+            state.memory_id
+            for state in rollout.states
+            if state.memory_item == after_compaction
+        )
+        old_ids = {
+            state.memory_id
+            for state in rollout.states
+            if state.memory_item in (old, before_compaction)
+        }
+        self.assertEqual(rollout.visible_memory_ids, frozenset({current_id, after_id}))
+        self.assertTrue(old_ids.isdisjoint(rollout.visible_memory_ids))
 
     def test_checkpoint_index_counts_nonportable_compactions(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

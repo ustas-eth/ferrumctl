@@ -255,9 +255,7 @@ async def cmd_inject(args: argparse.Namespace) -> int:
 
         target_path = thread.get("path")
         if isinstance(target_path, str) and Path(target_path).is_file():
-            existing = {
-                state.memory_id for state in scan_rollout(Path(target_path)).states
-            }
+            existing = scan_rollout(Path(target_path)).visible_memory_ids
             duplicates = sorted(existing.intersection(memory_ids))
             if duplicates and not args.allow_duplicate:
                 raise MemoryctlError(

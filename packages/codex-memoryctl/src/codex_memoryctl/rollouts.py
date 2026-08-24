@@ -66,6 +66,7 @@ class RolloutMemory:
     thread_id: str
     path: Path
     states: tuple[MemoryState, ...]
+    visible_memory_ids: frozenset[str] = frozenset()
 
 
 def resolve_codex_home(value: str | None) -> Path:
@@ -150,6 +151,7 @@ def scan_rollout(path: Path) -> RolloutMemory:
     model: str | None = None
     model_provider: str | None = None
     states: list[MemoryState] = []
+    visible_memory_ids: set[str] = set()
     checkpoint_index = 0
 
     try:
@@ -201,6 +203,9 @@ def scan_rollout(path: Path) -> RolloutMemory:
                     checkpoint_index += 1
                     replacement = payload.get("replacement_history")
                     items = _memory_items(replacement)
+                    visible_memory_ids = {
+                        memory_id(item)[0] for item in items
+                    }
                     if len(items) != 1 or not isinstance(replacement, list):
                         continue
                     if not all(isinstance(item, dict) for item in replacement):
@@ -232,6 +237,7 @@ def scan_rollout(path: Path) -> RolloutMemory:
                     continue
                 if record_type == "response_item" and is_memory_item(payload):
                     digest, size = memory_id(payload)
+                    visible_memory_ids.add(digest)
                     states.append(
                         MemoryState(
                             thread_id=reported_thread_id,
@@ -250,7 +256,12 @@ def scan_rollout(path: Path) -> RolloutMemory:
     except OSError as exc:
         raise MemoryctlError(f"failed to read rollout {path}: {exc}") from exc
 
-    return RolloutMemory(reported_thread_id, path, tuple(states))
+    return RolloutMemory(
+        reported_thread_id,
+        path,
+        tuple(states),
+        frozenset(visible_memory_ids),
+    )
 
 
 def load_rollout(codex_home: Path, source: str) -> RolloutMemory:

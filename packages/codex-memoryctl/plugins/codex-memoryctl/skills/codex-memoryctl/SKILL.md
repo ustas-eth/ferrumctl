@@ -33,7 +33,10 @@ a full checkpoint requires an explicit fresh target.
 
 The tool call gives the donated memory useful provenance in this thread's
 surrounding context. The memory itself carries no reliable donor identity,
-purpose, or added authority.
+purpose, or added authority. Current-turn binding is framing, not isolation:
+memory content and order can still redirect the recipient. Use a disposable
+consultation thread when the original must remain unchanged; thread creation
+and result retrieval remain native operations.
 
 Use several `--state` arguments for one ordered memory-only batch. Use
 `--full-checkpoint` only when a fresh target deliberately needs the donor's
@@ -55,8 +58,6 @@ but it does not send an instruction to a different target.
   it. Once recorded, it has no paired removal operation.
 - A later compaction may assimilate the donated state into this thread's next
   opaque memory.
-- Use a disposable consultation thread when the original must remain
-  unchanged. Thread creation and result retrieval remain native operations.
 - The target must be loaded on the selected app-server. Injection neither
   wakes it nor starts a turn.
 - `accepted` confirms only the app-server request. It does not prove model
