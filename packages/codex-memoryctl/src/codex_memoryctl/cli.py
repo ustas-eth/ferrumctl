@@ -21,7 +21,12 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(dispatch(args))
     except BrokenPipeError:
         return 1
-    except (OSError, MemoryctlError, ThreadctlError, websockets.WebSocketException) as exc:
+    except (
+        OSError,
+        MemoryctlError,
+        ThreadctlError,
+        websockets.WebSocketException,
+    ) as exc:
         print(f"codex-memoryctl: {exc}", file=sys.stderr)
         return 1
 

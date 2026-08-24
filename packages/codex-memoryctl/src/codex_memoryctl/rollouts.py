@@ -8,9 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .constants import MEMORY_ITEM_TYPES
+from .constants import MEMORY_ITEM_TYPES, MEMORY_REF_HEX_LENGTH
 from .errors import MemoryctlError
-
 
 THREAD_ID_RE = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
@@ -51,7 +50,7 @@ class MemoryState:
             "threadId": self.thread_id,
             "origin": self.origin,
             "observedAt": self.observed_at,
-            "memoryId": self.memory_id,
+            "memoryId": memory_ref(self.memory_id),
             "payloadBytes": self.payload_bytes,
             "model": self.model,
             "modelProvider": self.model_provider,
@@ -87,6 +86,11 @@ def memory_id(item: dict[str, Any]) -> tuple[str, int]:
         raise MemoryctlError("compaction item has no encrypted content")
     encoded = encrypted.encode("utf-8")
     return f"sha256:{hashlib.sha256(encoded).hexdigest()}", len(encoded)
+
+
+def memory_ref(value: str) -> str:
+    digest = value.removeprefix("sha256:")
+    return f"m:{digest[:MEMORY_REF_HEX_LENGTH]}"
 
 
 def is_memory_item(value: Any) -> bool:
@@ -169,7 +173,9 @@ def scan_rollout(path: Path) -> RolloutMemory:
                     continue
 
                 if record_type == "session_meta":
-                    reported_thread_id = _string(payload.get("id")) or reported_thread_id
+                    reported_thread_id = (
+                        _string(payload.get("id")) or reported_thread_id
+                    )
                     model_provider = (
                         _string(payload.get("model_provider")) or model_provider
                     )

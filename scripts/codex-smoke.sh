@@ -969,11 +969,14 @@ assert source["threadId"] == source_id
 assert state["origin"] == "checkpoint"
 assert state["windowNumber"] == 1
 assert exported["scope"] == "memory"
-assert exported["memory"]["id"] == state["memoryId"]
+exported_digest = exported["memory"]["id"].removeprefix("sha256:")
+assert state["memoryId"] == f"m:{exported_digest[:12]}"
 assert os.stat(export_path).st_mode & 0o777 == 0o600
 assert injected["outcome"] == "accepted"
 assert injected["targetThreadId"] == target_id
 assert injected["memoryIds"] == [state["memoryId"]]
+assert injected["turnBinding"] == "source"
+assert "activeTurnId" not in injected
 assert target["states"][0]["origin"] == "standalone"
 assert target["states"][0]["memoryId"] == state["memoryId"]
 PY

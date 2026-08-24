@@ -26,6 +26,11 @@ codex-memoryctl inject \
   --purpose "Consult this perspective while retaining my current role and goal."
 ```
 
+Omit the target for self-consultation. Memoryctl verifies that this thread has
+an active turn and binds the copied memories to that turn instead of retaining
+their donor turn associations. An explicit target preserves source association;
+a full checkpoint requires an explicit fresh target.
+
 The tool call gives the donated memory useful provenance in this thread's
 surrounding context. The memory itself carries no reliable donor identity,
 purpose, or added authority.
@@ -56,8 +61,8 @@ but it does not send an instruction to a different target.
   wakes it nor starts a turn.
 - `accepted` confirms only the app-server request. It does not prove model
   receipt, interpretation, or action.
-- An uncertain request may already have succeeded. Compare the reported digest
-  with `list TARGET` before retrying.
+- An uncertain request may already have succeeded. Compare the reported memory
+  reference with `list TARGET` before retrying.
 - Known non-OpenAI targets are incompatible by default. Override that check
   only for a deliberate provider experiment.
 

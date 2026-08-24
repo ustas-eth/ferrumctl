@@ -1,4 +1,3 @@
-import json
 import os
 import tempfile
 import unittest
@@ -42,6 +41,7 @@ class EnvelopeTests(unittest.TestCase):
         envelope = build_envelope(state(), full_checkpoint=False)
         self.assertEqual(envelope["scope"], "memory")
         self.assertEqual(envelope["items"], [state().memory_item])
+        self.assertEqual(envelope["memory"]["id"], state().memory_id)
         self.assertEqual(validate_envelope(envelope), envelope)
 
     def test_full_checkpoint_preserves_replacement_history(self) -> None:

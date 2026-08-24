@@ -48,12 +48,15 @@ codex-memoryctl inject \
   --purpose "Consult this diagnosis while retaining my current role and goal."
 ```
 
-Several `--state` arguments form one ordered memory batch:
+With the target omitted, the calling thread must have an active turn. The
+command binds the copied memories to that turn instead of retaining their donor
+turn associations. Several `--state` arguments form one ordered batch:
 
 ```sh
-codex-memoryctl inject CONSULTANT_THREAD_ID \
+codex-memoryctl inject \
   --state HUNTER_THREAD_ID@latest \
-  --state ENGINEER_THREAD_ID@latest
+  --state ENGINEER_THREAD_ID@latest \
+  --purpose "Compare these peer perspectives against my current work."
 ```
 
 Export a portable memory file without printing its encrypted content:
@@ -80,6 +83,8 @@ explicitly writes the complete object to stdout.
 
 - Injection appends model-visible history; it does not replace the target's
   history, wake it, or start a turn.
+- An omitted target is an active self-consultation and receives current-turn
+  binding. An explicit target preserves the source turn association.
 - An active target first receives pending input, which may not appear in the
   rollout until Codex processes it. An idle target records the items for a
   later turn immediately.

@@ -12,6 +12,9 @@ itself. The default memory-only mode leaves its own retained instructions around
 the donated state. The receiving agent should state why it is consulting the
 memory before the tool call and judge the result against its current goal.
 
+Keep the target omitted in this flow. Memoryctl then binds the donated memory
+to the caller's active turn rather than preserving the donor turn association.
+
 This is durable assimilation, not a temporary lookup. Continue through at
 least one later compaction when the purpose is to study identity or retention.
 

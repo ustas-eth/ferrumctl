@@ -20,6 +20,12 @@ Injection does not add ordinary user input, wake an idle thread, or bypass the
 native parent's lifecycle ownership of a v2 agent. Lifecycle control remains a
 separate operation.
 
+When the target is omitted, memoryctl treats the operation as self-consultation.
+It requires the calling thread to have an active turn, clears each copied
+memory's donor turn association, and asks Codex to bind the batch to that active
+turn. An explicit target preserves the source association. Full-checkpoint
+injection requires an explicit target.
+
 ## Persistence And Order
 
 Once recorded, injected items are part of model-visible history and have no
@@ -31,10 +37,10 @@ order is model-visible and may change the result. Full-checkpoint injection is
 limited to one source because combining retained histories silently would be a
 different operation.
 
-The command refuses a memory digest already visible in a local target rollout
+The command refuses memory already visible in a local target rollout
 unless `--allow-duplicate` is present. This is a preflight guard, not an atomic
 idempotency guarantee. If submission becomes uncertain, inspect the target for
-the reported digest before retrying.
+the reported memory reference before retrying.
 
 ## Provenance And Compatibility
 
@@ -42,6 +48,9 @@ An opaque compaction item does not state which thread donated it, why it was
 injected, or how much authority it should carry. `--purpose` records the
 caller's reason in command output; it does not send a separate instruction to
 another target.
+
+Turn association is delivery metadata, not provenance. Current-turn binding
+does not identify the donor or make the encrypted state a neutral document.
 
 When an established thread requests and performs its own injection, its tool
 call supplies useful surrounding provenance. External injection should be

@@ -27,7 +27,10 @@ reported as injectable memory.
 - `standalone` identifies a compaction item persisted separately, normally by
   an earlier injection.
 
-A SHA-256 digest of `encrypted_content` identifies the opaque memory. Matching
+A SHA-256 digest of `encrypted_content` identifies the opaque memory. Portable
+exports retain the full digest for validation. Normal command output uses its
+first 12 hexadecimal characters as a compact `m:` reference; selectors reject
+a prefix when it matches more than one memory in the source rollout. Matching
 digests show that the same encrypted object appears in more than one place;
 they do not show that a model read or adopted it.
 
@@ -37,7 +40,9 @@ Checkpoint selectors are local to one rollout:
   memory when the rollout has no generated checkpoint;
 - `window:N` uses Codex's compaction window number;
 - `index:N` uses the 1-based order of all `compacted` records in the rollout;
-- `sha256:PREFIX` selects an unambiguous memory digest in that rollout.
+- `m:PREFIX` selects an unambiguous memory digest prefix in that rollout.
+
+`sha256:PREFIX` is also accepted when a full digest came from export metadata.
 
 Window metadata is absent from some older rollouts. The checkpoint index and
 digest remain available when the record contains portable memory.

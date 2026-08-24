@@ -6,9 +6,8 @@ from dataclasses import replace
 from pathlib import Path
 
 from codex_memoryctl.errors import MemoryctlError
-from codex_memoryctl.rollouts import find_rollout, scan_rollout
+from codex_memoryctl.rollouts import find_rollout, memory_ref, scan_rollout
 from codex_memoryctl.selectors import parse_state_reference, select_state
-
 
 THREAD_ID = "01a00000-0000-7000-8000-000000000001"
 
@@ -22,7 +21,9 @@ def memory_item(content: str) -> dict:
     }
 
 
-def write_rollout(path: Path, records: list[dict], *, partial: str | None = None) -> None:
+def write_rollout(
+    path: Path, records: list[dict], *, partial: str | None = None
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
         for record in records:
@@ -82,6 +83,8 @@ class RolloutTests(unittest.TestCase):
         self.assertEqual(standalone.origin, "standalone")
         expected = hashlib.sha256(b"injected").hexdigest()
         self.assertEqual(standalone.memory_id, f"sha256:{expected}")
+        self.assertEqual(standalone.metadata()["memoryId"], f"m:{expected[:12]}")
+        self.assertEqual(memory_ref(standalone.memory_id), f"m:{expected[:12]}")
 
     def test_checkpoint_index_counts_nonportable_compactions(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -183,7 +186,7 @@ class SelectorTests(unittest.TestCase):
         self.assertEqual(select_state(rollout, "window:2").window_number, 2)
         self.assertEqual(select_state(rollout, "index:1").window_number, 2)
         prefix = latest.memory_id.removeprefix("sha256:")[:12]
-        self.assertEqual(select_state(rollout, f"sha256:{prefix}"), latest)
+        self.assertEqual(select_state(rollout, f"m:{prefix}"), latest)
 
     def test_latest_prefers_generated_checkpoint_over_standalone_memory(self) -> None:
         rollout = self.make_rollout()

@@ -117,4 +117,6 @@ def write_envelope(
             f"output already exists: {destination}; pass --force to replace it"
         ) from exc
     except OSError as exc:
-        raise MemoryctlError(f"failed to write memory export {destination}: {exc}") from exc
+        raise MemoryctlError(
+            f"failed to write memory export {destination}: {exc}"
+        ) from exc

@@ -19,7 +19,7 @@ def parse_state_reference(value: str) -> StateReference:
     if not source or not selector:
         raise MemoryctlError(
             "state reference must use SOURCE@latest, SOURCE@window:N, "
-            "SOURCE@index:N, or SOURCE@sha256:PREFIX"
+            "SOURCE@index:N, or SOURCE@m:PREFIX"
         )
     return StateReference(source, selector)
 
@@ -55,10 +55,10 @@ def select_state(
             selector.removeprefix("index:"), "index", allow_zero=False
         )
         matches = [state for state in states if state.checkpoint_index == number]
-    elif selector.startswith("sha256:"):
-        prefix = selector.removeprefix("sha256:").lower()
+    elif selector.startswith(("m:", "sha256:")):
+        prefix = selector.split(":", 1)[1].lower()
         if not prefix or any(char not in "0123456789abcdef" for char in prefix):
-            raise MemoryctlError("sha256 selector must contain hexadecimal characters")
+            raise MemoryctlError("memory selector must contain hexadecimal characters")
         matches = [
             state
             for state in states
@@ -66,10 +66,10 @@ def select_state(
         ]
         distinct = {state.memory_id for state in matches}
         if len(distinct) > 1:
-            raise MemoryctlError(f"sha256 selector is ambiguous: {prefix}")
+            raise MemoryctlError(f"memory selector is ambiguous: {prefix}")
     else:
         raise MemoryctlError(
-            "unknown state selector; use latest, window:N, index:N, or sha256:PREFIX"
+            "unknown state selector; use latest, window:N, index:N, or m:PREFIX"
         )
 
     if require_checkpoint:

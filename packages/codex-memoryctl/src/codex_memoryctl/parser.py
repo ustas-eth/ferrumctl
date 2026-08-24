@@ -130,7 +130,10 @@ def build_parser() -> argparse.ArgumentParser:
     inject.add_argument(
         "target",
         nargs="?",
-        help="target thread id or task name (default: CODEX_THREAD_ID)",
+        help=(
+            "target thread id or task name; omit for active self-consultation "
+            "through CODEX_THREAD_ID"
+        ),
     )
     source = inject.add_mutually_exclusive_group(required=True)
     source.add_argument(
@@ -143,7 +146,10 @@ def build_parser() -> argparse.ArgumentParser:
     inject.add_argument(
         "--full-checkpoint",
         action="store_true",
-        help="inject one source checkpoint including its retained history",
+        help=(
+            "inject one source checkpoint including its retained history "
+            "into an explicit target"
+        ),
     )
     inject.add_argument(
         "--purpose",

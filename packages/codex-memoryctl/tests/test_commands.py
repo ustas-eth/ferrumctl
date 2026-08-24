@@ -8,7 +8,7 @@ from unittest import mock
 
 from codex_memoryctl import commands, parser
 from codex_memoryctl.errors import InjectionUncertain, MemoryctlError
-from codex_memoryctl.rollouts import MemoryState, memory_id
+from codex_memoryctl.rollouts import MemoryState, memory_id, memory_ref
 
 
 class FakeContext:
@@ -123,7 +123,66 @@ class InjectionTests(unittest.IsolatedAsyncioTestCase):
         method, params = app.requests[-1]
         self.assertEqual(method, "thread/inject_items")
         self.assertEqual(params["items"], [first.memory_item, second.memory_item])
+        self.assertIn(memory_ref(first.memory_id), output)
+        self.assertNotIn(first.memory_id, output)
+        self.assertIn("binding=source", output)
         self.assertIn('purpose="compare\\ncarefully"', output)
+
+    async def test_implicit_self_injection_binds_memory_to_active_turn(self) -> None:
+        value = make_state("donor")
+        value.memory_item["internal_chat_message_metadata_passthrough"] = {
+            "turn_id": "donor-turn",
+            "create_time": 1,
+        }
+        with (
+            mock.patch.dict(commands.os.environ, {"CODEX_THREAD_ID": "target"}),
+            mock.patch.object(
+                commands,
+                "current_active_turn",
+                mock.AsyncMock(return_value={"id": "recipient-turn"}),
+            ) as active_turn,
+        ):
+            result, app, output = await self.run_inject(
+                ["inject", "--state", "source@latest"],
+                [value],
+            )
+
+        self.assertEqual(result, 0)
+        active_turn.assert_awaited_once_with(app, "target")
+        self.assertEqual(
+            app.requests[-1],
+            (
+                "thread/inject_items",
+                {
+                    "threadId": "target",
+                    "items": [
+                        {
+                            "type": "compaction",
+                            "encrypted_content": "donor",
+                            "internal_chat_message_metadata_passthrough": {
+                                "turn_id": None
+                            },
+                        }
+                    ],
+                },
+            ),
+        )
+        self.assertEqual(
+            value.memory_item["internal_chat_message_metadata_passthrough"],
+            {"turn_id": "donor-turn", "create_time": 1},
+        )
+        self.assertIn("binding=current:recipient-turn", output)
+
+    async def test_implicit_self_injection_rejects_full_checkpoint(self) -> None:
+        value = make_state("checkpoint")
+        with (
+            mock.patch.dict(commands.os.environ, {"CODEX_THREAD_ID": "target"}),
+            self.assertRaisesRegex(MemoryctlError, "explicit fresh target"),
+        ):
+            await self.run_inject(
+                ["inject", "--state", "source@latest", "--full-checkpoint"],
+                [value],
+            )
 
     async def test_full_checkpoint_injects_exact_replacement_history(self) -> None:
         value = make_state("checkpoint")
@@ -258,7 +317,9 @@ class InjectionTests(unittest.IsolatedAsyncioTestCase):
                 mock.patch.object(
                     commands,
                     "resolve_thread_reference",
-                    mock.AsyncMock(side_effect=lambda _app, selected, **_kwargs: selected),
+                    mock.AsyncMock(
+                        side_effect=lambda _app, selected, **_kwargs: selected
+                    ),
                 ),
                 mock.patch.object(
                     commands, "list_loaded", mock.AsyncMock(return_value=["target"])
@@ -307,5 +368,9 @@ class InjectionTests(unittest.IsolatedAsyncioTestCase):
                 commands, "load_state", mock.AsyncMock(return_value=value)
             ),
         ):
-            with self.assertRaisesRegex(InjectionUncertain, "before retrying"):
+            with self.assertRaisesRegex(
+                InjectionUncertain, "before retrying"
+            ) as caught:
                 await commands.cmd_inject(args)
+        self.assertIn(memory_ref(value.memory_id), str(caught.exception))
+        self.assertNotIn(value.memory_id, str(caught.exception))

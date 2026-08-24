@@ -1,6 +1,6 @@
 {
   "name": "codex-memoryctl",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Codex skill for inspecting and deliberately transferring opaque compaction memory.",
   "author": {
     "name": "ustas-eth"

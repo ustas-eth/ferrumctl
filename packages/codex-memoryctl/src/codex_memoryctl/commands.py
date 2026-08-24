@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 from pathlib import Path
@@ -10,6 +11,7 @@ import websockets
 from codex_threadctl.agents import is_agent_path, resolve_thread_reference
 from codex_threadctl.appserver import (
     AppServer,
+    current_active_turn,
     list_loaded,
     read_thread,
     require_object,
@@ -20,7 +22,14 @@ from .constants import CLIENT_VERSION
 from .envelope import build_envelope, read_envelope, write_envelope
 from .errors import InjectionUncertain, MemoryctlError
 from .formatting import format_state
-from .rollouts import MemoryState, load_rollout, resolve_codex_home, scan_rollout
+from .rollouts import (
+    MemoryState,
+    is_memory_item,
+    load_rollout,
+    memory_ref,
+    resolve_codex_home,
+    scan_rollout,
+)
 from .selectors import StateReference, parse_state_reference, select_state
 
 
@@ -134,7 +143,7 @@ async def cmd_export(args: argparse.Namespace) -> int:
             "outcome": "exported",
             "output": str(Path(args.output).expanduser()),
             "scope": envelope["scope"],
-            "memoryId": state.memory_id,
+            "memoryId": memory_ref(state.memory_id),
         }
         if args.json:
             print(json.dumps(result, indent=2))
@@ -157,7 +166,21 @@ def _export_memory_id(envelope: dict[str, Any]) -> str:
     return str(memory["id"])
 
 
+def bind_to_current_turn(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rebound: list[dict[str, Any]] = []
+    for source in items:
+        if not is_memory_item(source):
+            raise MemoryctlError(
+                "current-turn binding accepts memory-only transfers"
+            )
+        item = copy.deepcopy(source)
+        item["internal_chat_message_metadata_passthrough"] = {"turn_id": None}
+        rebound.append(item)
+    return rebound
+
+
 async def cmd_inject(args: argparse.Namespace) -> int:
+    implicit_self_target = args.target is None
     target_reference = current_thread_id(args.target, "target thread")
 
     async with memoryctl_appserver(args.endpoint, args.timeout) as app:
@@ -183,7 +206,8 @@ async def cmd_inject(args: argparse.Namespace) -> int:
         if args.file is not None:
             if args.full_checkpoint:
                 raise MemoryctlError(
-                    "--full-checkpoint selects a rollout source and cannot be used with --file"
+                    "--full-checkpoint selects a rollout source and cannot be "
+                    "used with --file"
                 )
             envelope = read_envelope(args.file)
             items = list(envelope["items"])
@@ -218,6 +242,17 @@ async def cmd_inject(args: argparse.Namespace) -> int:
             memory_ids = [state.memory_id for state in states]
             sources = [state.thread_id for state in states]
 
+        active_turn_id: str | None = None
+        if implicit_self_target:
+            if scope != "memory":
+                raise MemoryctlError(
+                    "implicit self-injection accepts memory only; pass an explicit "
+                    "fresh target for a full checkpoint"
+                )
+            turn = await current_active_turn(app, target)
+            active_turn_id = str(turn["id"])
+            items = bind_to_current_turn(items)
+
         target_path = thread.get("path")
         if isinstance(target_path, str) and Path(target_path).is_file():
             existing = {
@@ -227,7 +262,7 @@ async def cmd_inject(args: argparse.Namespace) -> int:
             if duplicates and not args.allow_duplicate:
                 raise MemoryctlError(
                     "target already contains memory "
-                    + ", ".join(duplicates)
+                    + ", ".join(memory_ref(value) for value in duplicates)
                     + "; pass --allow-duplicate to repeat it deliberately"
                 )
 
@@ -242,15 +277,22 @@ async def cmd_inject(args: argparse.Namespace) -> int:
         except AppServerResponseError:
             raise
         except (OSError, ThreadctlError, websockets.WebSocketException) as exc:
-            raise InjectionUncertain(target, memory_ids) from exc
+            raise InjectionUncertain(
+                target, [memory_ref(value) for value in memory_ids]
+            ) from exc
+
+    shown_memory_ids = [memory_ref(value) for value in memory_ids]
 
     result: dict[str, Any] = {
         "outcome": "accepted",
         "targetThreadId": target,
         "scope": scope,
-        "memoryIds": memory_ids,
+        "memoryIds": shown_memory_ids,
         "sourceThreadIds": sources,
+        "turnBinding": "current" if active_turn_id is not None else "source",
     }
+    if active_turn_id is not None:
+        result["activeTurnId"] = active_turn_id
     if args.purpose is not None:
         result["purpose"] = args.purpose
     if args.json:
@@ -260,8 +302,13 @@ async def cmd_inject(args: argparse.Namespace) -> int:
             result["outcome"],
             target,
             f"scope={scope}",
-            f"memories={','.join(memory_ids)}",
+            f"memories={','.join(shown_memory_ids)}",
             f"sources={','.join(sources)}",
+            (
+                f"binding=current:{active_turn_id}"
+                if active_turn_id is not None
+                else "binding=source"
+            ),
         ]
         if args.purpose is not None:
             fields.append(f"purpose={json.dumps(args.purpose)}")
