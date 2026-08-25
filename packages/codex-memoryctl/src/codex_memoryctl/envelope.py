@@ -25,6 +25,7 @@ def build_envelope(state: MemoryState, *, full_checkpoint: bool) -> dict[str, An
         "scope": scope,
         "source": {
             "threadId": state.thread_id,
+            "sessionMetaThreadId": state.session_meta_thread_id,
             "observedAt": state.observed_at,
             "checkpointIndex": state.checkpoint_index,
             "windowNumber": state.window_number,

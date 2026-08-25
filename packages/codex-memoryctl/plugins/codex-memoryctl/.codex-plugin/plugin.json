@@ -1,6 +1,6 @@
 {
   "name": "codex-memoryctl",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Codex skill for inspecting and reusing opaque compaction memory.",
   "author": {
     "name": "ustas-eth"
@@ -17,12 +17,12 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Codex Memoryctl",
-    "shortDescription": "Reuse retained Codex compaction memory",
+    "shortDescription": "Locate and reuse Codex compaction memory",
     "longDescription": "Codex Memoryctl provides workflow guidance for locating and reusing opaque compaction memory for recall, consultation, handoff, consolidation, and recovery.",
     "developerName": "ustas-eth",
     "category": "Productivity",
     "capabilities": [
-      "Compaction memory discovery",
+      "Transcript-to-checkpoint discovery",
       "Portable memory exports",
       "Older-self recall",
       "Consultation and handoff"

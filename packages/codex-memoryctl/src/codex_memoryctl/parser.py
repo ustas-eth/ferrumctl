@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import math
 
-from .commands import cmd_export, cmd_inject, cmd_list, cmd_show
+from .commands import cmd_export, cmd_inject, cmd_list, cmd_search, cmd_show
 from .constants import CLIENT_VERSION, DEFAULT_TIMEOUT
 
 
@@ -103,6 +103,36 @@ def build_parser() -> argparse.ArgumentParser:
     add_global_options(show, defaults=False)
     show.set_defaults(func=cmd_show)
 
+    search = sub.add_parser(
+        "search",
+        help="find transcript text and the first later memory checkpoint",
+    )
+    search.add_argument(
+        "source",
+        help="thread id, task name, or rollout path",
+    )
+    search.add_argument("query", type=nonempty, help="text or pattern to find")
+    search.add_argument(
+        "--match",
+        choices=("tokens", "phrase", "regex"),
+        default="tokens",
+        help="match all query tokens across a checkpoint segment, a phrase, or a regex",
+    )
+    search.add_argument(
+        "--limit",
+        type=nonnegative_int,
+        default=20,
+        help="candidate segments to print; 0 prints all",
+    )
+    search.add_argument(
+        "--context",
+        type=nonnegative_int,
+        default=1,
+        help="ordinary messages around each matching message",
+    )
+    add_global_options(search, defaults=False)
+    search.set_defaults(func=cmd_search)
+
     export = sub.add_parser("export", help="write a portable memory export")
     export.add_argument("state", help="SOURCE@SELECTOR memory reference")
     export.add_argument(
@@ -162,7 +192,10 @@ def build_parser() -> argparse.ArgumentParser:
     inject.add_argument(
         "--purpose",
         type=nonempty,
-        help="record the caller's reason in command output; required with --self",
+        help=(
+            "caller intent; delivered after memory with --self and recorded "
+            "only in output with --to"
+        ),
     )
     inject.add_argument(
         "--allow-duplicate",

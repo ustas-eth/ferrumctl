@@ -15,10 +15,17 @@ Inspect available memory without exposing its encrypted content:
 ```sh
 codex-memoryctl list THREAD_ID
 codex-memoryctl show THREAD_ID@latest
+codex-memoryctl search THREAD_ID "earlier diagnosis"
 ```
 
 `visible=yes` means that observation remains in the thread's current
 model-visible history. It does not prove that the model used it.
+
+`search` finds ordinary transcript text and reports the first later portable
+checkpoint. Its default token mode can match words across messages in one
+checkpoint segment; use `--match phrase` or `--match regex` when exact matching
+matters. `uncompacted` means no existing memory can contain that transcript
+tail. Search associates text with checkpoints; it does not inspect ciphertext.
 
 For a foreign perspective, prefer a disposable consultant when the established
 agent should keep its trajectory. Frame the question in a fresh thread, then
@@ -32,8 +39,10 @@ codex-memoryctl inject --self \
 
 Use `--self` in an established thread only when durable assimilation is
 intended, such as older-self recall. It requires an active `CODEX_THREAD_ID`
-and `--purpose`, and binds memory to the current turn instead of retaining the
-donor turn association.
+and `--purpose`, binds memory to the current turn, and appends the exact purpose
+and canonical memory references as an attributed item after the opaque batch.
+State how the memory relates to the current question; do not infer a donor role
+or assignment merely to fill the purpose.
 
 Use `--to TARGET` for source-associated transplantation into a loaded thread.
 This is suitable for a fresh handoff or recovery target; it should not be

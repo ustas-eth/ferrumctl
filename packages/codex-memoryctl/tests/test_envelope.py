@@ -14,7 +14,11 @@ from codex_memoryctl.rollouts import MemoryState, memory_id
 
 
 def state() -> MemoryState:
-    item = {"type": "compaction", "encrypted_content": "opaque"}
+    item = {
+        "type": "compaction",
+        "id": "cmp_opaque",
+        "encrypted_content": "opaque",
+    }
     digest, size = memory_id(item)
     return MemoryState(
         thread_id="thread",
@@ -55,6 +59,12 @@ class EnvelopeTests(unittest.TestCase):
         envelope = build_envelope(state(), full_checkpoint=False)
         envelope["items"][0]["encrypted_content"] = "changed"
         with self.assertRaisesRegex(MemoryctlError, "digest"):
+            validate_envelope(envelope)
+
+    def test_memory_without_stable_response_item_id_is_rejected(self) -> None:
+        envelope = build_envelope(state(), full_checkpoint=False)
+        envelope["items"][0]["id"] = None
+        with self.assertRaisesRegex(MemoryctlError, "compaction item"):
             validate_envelope(envelope)
 
     def test_export_is_private_and_refuses_overwrite(self) -> None:

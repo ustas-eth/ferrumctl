@@ -41,7 +41,7 @@ class FailingApp(FakeApp):
 
 
 def make_state(name: str, *, checkpoint: bool = True) -> MemoryState:
-    item = {"type": "compaction", "encrypted_content": name}
+    item = {"type": "compaction", "id": f"cmp_{name}", "encrypted_content": name}
     digest, size = memory_id(item)
     history = (
         ({"type": "message", "role": "user", "content": []}, item)
@@ -157,29 +157,42 @@ class InjectionTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result, 0)
         active_turn.assert_awaited_once_with(app, "target")
+        method, params = app.requests[-1]
+        self.assertEqual(method, "thread/inject_items")
+        self.assertEqual(params["threadId"], "target")
         self.assertEqual(
-            app.requests[-1],
-            (
-                "thread/inject_items",
-                {
-                    "threadId": "target",
-                    "items": [
-                        {
-                            "type": "compaction",
-                            "encrypted_content": "donor",
-                            "internal_chat_message_metadata_passthrough": {
-                                "turn_id": None
-                            },
-                        }
-                    ],
+            params["items"][0],
+            {
+                "type": "compaction",
+                "id": "cmp_donor",
+                "encrypted_content": "donor",
+                "internal_chat_message_metadata_passthrough": {
+                    "turn_id": None
                 },
-            ),
+            },
+        )
+        frame = params["items"][1]
+        self.assertEqual(frame["type"], "agent_message")
+        self.assertEqual(frame["author"], "memoryctl")
+        self.assertEqual(frame["recipient"], "target")
+        self.assertEqual(
+            frame["content"],
+            [
+                {
+                    "type": "input_text",
+                    "text": (
+                        "Purpose: recover an earlier diagnosis\n"
+                        f"Memory sources: source-donor@{memory_ref(value.memory_id)}"
+                    ),
+                }
+            ],
         )
         self.assertEqual(
             value.memory_item["internal_chat_message_metadata_passthrough"],
             {"turn_id": "donor-turn", "create_time": 1},
         )
         self.assertIn("binding=current:recipient-turn", output)
+        self.assertIn("purpose-delivery=attributed-item", output)
         self.assertIn('purpose="recover an earlier diagnosis"', output)
 
     async def test_self_injection_requires_purpose(self) -> None:

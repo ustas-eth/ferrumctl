@@ -22,7 +22,9 @@ itself has no removal operation.
 An established agent can use `inject --self` to revisit an older checkpoint or
 accept a donated perspective into its continuing work. It must call the command
 during an active turn and state the purpose explicitly. Memoryctl replaces the
-donor turn association with current-turn binding.
+donor turn association with current-turn binding and records that exact purpose
+after the memory batch. The purpose should say how the retained perspective
+relates to the current question; it does not need to restate the current role.
 
 The retained current instructions and evidence remain the authority. Extract
 useful details from the recalled state and check them against the present

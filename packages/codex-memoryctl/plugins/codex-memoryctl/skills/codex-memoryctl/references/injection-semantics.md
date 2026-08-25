@@ -22,10 +22,15 @@ separate operation.
 
 `--self` selects the active `CODEX_THREAD_ID`. It requires `--purpose`, clears
 each copied memory's donor turn association, and asks Codex to bind the batch
-to the current turn. `--to TARGET` preserves source turn association instead.
-The two modes are explicit because they give the injected memory different
-framing. Full-checkpoint injection requires `--to` and is intended for a fresh
-target.
+to the current turn. The same batch ends with an attributed `memoryctl` item
+containing the exact purpose and canonical source memory references. This
+places the caller's intent after the opaque memories without turning it into
+user or developer instruction.
+
+`--to TARGET` preserves source turn association instead. A purpose supplied
+with `--to` appears only in the command receipt. The two modes are explicit
+because they give the injected memory different framing. Full-checkpoint
+injection requires `--to` and is intended for a fresh target.
 
 ## Persistence And Order
 
@@ -48,9 +53,10 @@ retrying.
 ## Provenance And Compatibility
 
 An opaque compaction item does not state which thread donated it, why it was
-injected, or how much authority it should carry. `--purpose` records the
-caller's reason in command output; it does not send a separate instruction to
-another target.
+injected, or how much authority it should carry. The attributed item added by
+`--self` supplies that missing local context. It reports caller intent and
+source references; it does not decode, summarize, or assign authority to the
+memory.
 
 Turn association is delivery metadata, not provenance. Current-turn binding
 does not identify the donor, make the encrypted state a neutral document, or

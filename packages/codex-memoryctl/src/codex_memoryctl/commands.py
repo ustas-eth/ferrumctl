@@ -4,6 +4,7 @@ import argparse
 import copy
 import json
 import os
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,7 @@ from codex_threadctl.appserver import (
 from codex_threadctl.errors import AppServerResponseError, ThreadctlError
 
 from .constants import CLIENT_VERSION
+from .discovery import search_rollout
 from .envelope import build_envelope, read_envelope, write_envelope
 from .errors import InjectionUncertain, MemoryctlError
 from .formatting import format_state
@@ -103,6 +105,7 @@ async def cmd_list(args: argparse.Namespace) -> int:
             json.dumps(
                 {
                     "threadId": rollout.thread_id,
+                    "sessionMetaThreadId": rollout.session_meta_thread_id,
                     "rolloutPath": str(rollout.path),
                     "states": [state.metadata() for state in states],
                 },
@@ -127,6 +130,55 @@ async def cmd_show(args: argparse.Namespace) -> int:
         for key, value in result.items():
             if value is not None:
                 print(f"{key}\t{value}")
+    return 0
+
+
+async def cmd_search(args: argparse.Namespace) -> int:
+    source = current_thread_id(args.source, "source thread")
+    reference = await resolve_source(StateReference(source, "latest"), args)
+    rollout = load_rollout(
+        resolve_codex_home(args.codex_home),
+        reference.source,
+        include_messages=True,
+    )
+    result = search_rollout(
+        rollout,
+        args.query,
+        mode=args.match,
+        limit=args.limit,
+        context=args.context,
+    )
+    if args.json:
+        print(json.dumps(result, indent=2))
+        return 0
+
+    for candidate in result["candidates"]:
+        checkpoint = candidate["checkpoint"]
+        if checkpoint is None:
+            fields = ["uncompacted"]
+        else:
+            fields = [
+                "checkpoint",
+                f"index={checkpoint['checkpointIndex']}",
+                checkpoint["memoryId"],
+            ]
+            if checkpoint["windowNumber"] is not None:
+                fields.append(f"window={checkpoint['windowNumber']}")
+        fields.append(f"matches={candidate['matchCount']}")
+        if candidate["closestLineDistance"] is not None:
+            fields.append(f"distance={candidate['closestLineDistance']}")
+        print("\t".join(fields))
+        for message in candidate["messages"]:
+            print(
+                "\t".join(
+                    (
+                        "*" if message["matched"] else " ",
+                        message["role"],
+                        message["timestamp"] or "-",
+                        message["text"],
+                    )
+                )
+            )
     return 0
 
 
@@ -170,13 +222,32 @@ def bind_to_current_turn(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     rebound: list[dict[str, Any]] = []
     for source in items:
         if not is_memory_item(source):
-            raise MemoryctlError(
-                "current-turn binding accepts memory-only transfers"
-            )
+            raise MemoryctlError("current-turn binding accepts memory-only transfers")
         item = copy.deepcopy(source)
         item["internal_chat_message_metadata_passthrough"] = {"turn_id": None}
         rebound.append(item)
     return rebound
+
+
+def purpose_frame(
+    target: str,
+    purpose: str,
+    source_refs: list[str],
+) -> dict[str, Any]:
+    return {
+        "type": "agent_message",
+        "id": f"amsg_memoryctl_{uuid.uuid4().hex}",
+        "author": "memoryctl",
+        "recipient": target,
+        "content": [
+            {
+                "type": "input_text",
+                "text": (
+                    f"Purpose: {purpose}\nMemory sources: {', '.join(source_refs)}"
+                ),
+            }
+        ],
+    }
 
 
 async def cmd_inject(args: argparse.Namespace) -> int:
@@ -224,11 +295,10 @@ async def cmd_inject(args: argparse.Namespace) -> int:
             memory_ids = [_export_memory_id(envelope)]
             scope = str(envelope["scope"])
             sources = [str(envelope.get("source", {}).get("threadId") or "file")]
+            source_refs = [f"{sources[0]}@{memory_ref(memory_ids[0])}"]
         else:
             if args.full_checkpoint and len(args.state) != 1:
-                raise MemoryctlError(
-                    "--full-checkpoint requires exactly one --state"
-                )
+                raise MemoryctlError("--full-checkpoint requires exactly one --state")
             states = [
                 await load_state(
                     value,
@@ -251,6 +321,9 @@ async def cmd_inject(args: argparse.Namespace) -> int:
                 scope = "memory"
             memory_ids = [state.memory_id for state in states]
             sources = [state.thread_id for state in states]
+            source_refs = [
+                f"{state.thread_id}@{memory_ref(state.memory_id)}" for state in states
+            ]
 
         active_turn_id: str | None = None
         if self_target:
@@ -262,6 +335,7 @@ async def cmd_inject(args: argparse.Namespace) -> int:
             turn = await current_active_turn(app, target)
             active_turn_id = str(turn["id"])
             items = bind_to_current_turn(items)
+            items.append(purpose_frame(target, args.purpose, source_refs))
 
         target_path = thread.get("path")
         if isinstance(target_path, str) and Path(target_path).is_file():
@@ -297,7 +371,9 @@ async def cmd_inject(args: argparse.Namespace) -> int:
         "scope": scope,
         "memoryIds": shown_memory_ids,
         "sourceThreadIds": sources,
+        "sourceMemoryRefs": source_refs,
         "turnBinding": "current" if active_turn_id is not None else "source",
+        "purposeDelivery": "attributed-item" if self_target else "receipt-only",
     }
     if active_turn_id is not None:
         result["activeTurnId"] = active_turn_id
@@ -317,6 +393,7 @@ async def cmd_inject(args: argparse.Namespace) -> int:
                 if active_turn_id is not None
                 else "binding=source"
             ),
+            f"purpose-delivery={result['purposeDelivery']}",
         ]
         if args.purpose is not None:
             fields.append(f"purpose={json.dumps(args.purpose)}")

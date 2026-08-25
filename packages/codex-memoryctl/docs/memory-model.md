@@ -16,8 +16,9 @@ The command calls the full record a **checkpoint** and the opaque item its
 **memory**. A memory-only transfer preserves the target's surrounding history.
 A full-checkpoint transfer appends the source's retained context as well.
 
-Older or non-OpenAI compactions may have no portable opaque item. They are not
-reported as injectable memory.
+Older or non-OpenAI compactions may have no portable opaque item. A portable
+item needs both encrypted content and a stable response-item id; records
+missing either are not reported as injectable memory.
 
 ## Observations
 
@@ -54,11 +55,27 @@ Checkpoint selectors are local to one rollout:
 Window metadata is absent from some older rollouts. The checkpoint index and
 digest remain available when the record contains portable memory.
 
+## Transcript Discovery
+
+`search` reads ordinary user and assistant messages in the rollout. It groups
+each message with the first later portable checkpoint, then searches those
+groups. This identifies a checkpoint that followed the matching conversation;
+it does not prove which details the encrypted memory retained.
+
+The default `tokens` mode requires every query word somewhere in one checkpoint
+segment. `phrase` and `regex` match individual messages. An `uncompacted`
+result identifies matching text after the last portable checkpoint, so no
+existing memory observation can contain that part of the conversation.
+
 ## Sources And Freshness
 
 Thread ids are resolved under `$CODEX_HOME/sessions` and
 `$CODEX_HOME/archived_sessions`. A direct rollout path is also accepted. Both
 v1 and v2 agents use ordinary thread ids and separate rollout paths.
+
+The thread id in the rollout filename is canonical for that rollout. A resumed
+or forked file may retain a different `session_meta` id from its source;
+`sessionMetaThreadId` reports that value without replacing the canonical id.
 
 Canonical task names such as `/root/reviewer` require the selected app-server
 and normal tree-scoped resolution. Resolve and retain the thread id when a

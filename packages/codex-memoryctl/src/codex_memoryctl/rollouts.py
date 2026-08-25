@@ -34,6 +34,8 @@ class MemoryState:
     payload_bytes: int
     model: str | None
     model_provider: str | None
+    session_meta_thread_id: str | None = None
+    line_number: int | None = None
     checkpoint_index: int | None = None
     window_number: int | None = None
     window_id: str | None = None
@@ -55,6 +57,7 @@ class MemoryState:
             "payloadBytes": self.payload_bytes,
             "model": self.model,
             "modelProvider": self.model_provider,
+            "sessionMetaThreadId": self.session_meta_thread_id,
             "checkpointIndex": self.checkpoint_index,
             "windowNumber": self.window_number,
             "windowId": self.window_id,
@@ -64,11 +67,22 @@ class MemoryState:
 
 
 @dataclass(frozen=True)
+class TranscriptMessage:
+    line_number: int
+    timestamp: str | None
+    role: str
+    turn_id: str | None
+    text: str
+
+
+@dataclass(frozen=True)
 class RolloutMemory:
     thread_id: str
     path: Path
     states: tuple[MemoryState, ...]
     visible_memory_ids: frozenset[str] = frozenset()
+    session_meta_thread_id: str | None = None
+    messages: tuple[TranscriptMessage, ...] = ()
 
 
 def resolve_codex_home(value: str | None) -> Path:
@@ -84,6 +98,9 @@ def resolve_codex_home(value: str | None) -> Path:
 
 
 def memory_id(item: dict[str, Any]) -> tuple[str, int]:
+    item_id = item.get("id")
+    if not isinstance(item_id, str) or not item_id:
+        raise MemoryctlError("compaction item has no stable response-item id")
     encrypted = item.get("encrypted_content")
     if not isinstance(encrypted, str) or not encrypted:
         raise MemoryctlError("compaction item has no encrypted content")
@@ -100,6 +117,8 @@ def is_memory_item(value: Any) -> bool:
     return (
         isinstance(value, dict)
         and value.get("type") in MEMORY_ITEM_TYPES
+        and isinstance(value.get("id"), str)
+        and bool(value["id"])
         and isinstance(value.get("encrypted_content"), str)
         and bool(value["encrypted_content"])
     )
@@ -148,19 +167,36 @@ def _memory_items(items: Any) -> list[dict[str, Any]]:
     return [item for item in items if is_memory_item(item)]
 
 
-def scan_rollout(path: Path) -> RolloutMemory:
-    reported_thread_id = thread_id_from_path(path) or path.stem
+def _message_text(payload: dict[str, Any]) -> str:
+    content = payload.get("content")
+    if not isinstance(content, list):
+        return ""
+    parts = [
+        item.get("text")
+        for item in content
+        if isinstance(item, dict) and isinstance(item.get("text"), str)
+    ]
+    return "\n".join(part for part in parts if part)
+
+
+def scan_rollout(path: Path, *, include_messages: bool = False) -> RolloutMemory:
+    path_thread_id = thread_id_from_path(path)
+    reported_thread_id = path_thread_id or path.stem
+    session_meta_thread_id: str | None = None
     model: str | None = None
     model_provider: str | None = None
     states: list[MemoryState] = []
     visible_memory_ids: set[str] = set()
     visible_state_indices: set[int] = set()
+    messages: list[TranscriptMessage] = []
     checkpoint_index = 0
 
     try:
         with path.open("r", encoding="utf-8", errors="strict") as handle:
             for line_number, line in enumerate(handle, start=1):
-                if not any(marker in line for marker in INTERESTING_MARKERS):
+                if not any(marker in line for marker in INTERESTING_MARKERS) and not (
+                    include_messages and '"response_item"' in line
+                ):
                     continue
                 try:
                     record = json.loads(line)
@@ -178,9 +214,11 @@ def scan_rollout(path: Path) -> RolloutMemory:
                     continue
 
                 if record_type == "session_meta":
-                    reported_thread_id = (
-                        _string(payload.get("id")) or reported_thread_id
+                    session_meta_thread_id = (
+                        _string(payload.get("id")) or session_meta_thread_id
                     )
+                    if path_thread_id is None and session_meta_thread_id is not None:
+                        reported_thread_id = session_meta_thread_id
                     model_provider = (
                         _string(payload.get("model_provider")) or model_provider
                     )
@@ -200,6 +238,32 @@ def scan_rollout(path: Path) -> RolloutMemory:
                         model = _string(settings.get("model")) or model
                         model_provider = (
                             _string(settings.get("model_provider")) or model_provider
+                        )
+                    continue
+                if (
+                    include_messages
+                    and record_type == "response_item"
+                    and payload.get("type") == "message"
+                    and payload.get("role") in {"user", "assistant"}
+                ):
+                    text = _message_text(payload)
+                    if text:
+                        metadata = payload.get(
+                            "internal_chat_message_metadata_passthrough"
+                        )
+                        turn_id = (
+                            _string(metadata.get("turn_id"))
+                            if isinstance(metadata, dict)
+                            else None
+                        )
+                        messages.append(
+                            TranscriptMessage(
+                                line_number=line_number,
+                                timestamp=_string(record.get("timestamp")),
+                                role=str(payload["role"]),
+                                turn_id=turn_id,
+                                text=text,
+                            )
                         )
                     continue
                 if record_type == "compacted":
@@ -232,6 +296,8 @@ def scan_rollout(path: Path) -> RolloutMemory:
                             payload_bytes=size,
                             model=model,
                             model_provider=model_provider,
+                            session_meta_thread_id=session_meta_thread_id,
+                            line_number=line_number,
                             checkpoint_index=checkpoint_index,
                             window_number=window_number,
                             window_id=_string(payload.get("window_id")),
@@ -254,6 +320,8 @@ def scan_rollout(path: Path) -> RolloutMemory:
                             payload_bytes=size,
                             model=model,
                             model_provider=model_provider,
+                            session_meta_thread_id=session_meta_thread_id,
+                            line_number=line_number,
                         )
                     )
                     visible_state_indices.add(len(states) - 1)
@@ -271,8 +339,18 @@ def scan_rollout(path: Path) -> RolloutMemory:
         path,
         visible_states,
         frozenset(visible_memory_ids),
+        session_meta_thread_id,
+        tuple(messages),
     )
 
 
-def load_rollout(codex_home: Path, source: str) -> RolloutMemory:
-    return scan_rollout(find_rollout(codex_home, source))
+def load_rollout(
+    codex_home: Path,
+    source: str,
+    *,
+    include_messages: bool = False,
+) -> RolloutMemory:
+    return scan_rollout(
+        find_rollout(codex_home, source),
+        include_messages=include_messages,
+    )

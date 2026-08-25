@@ -10,6 +10,7 @@ from codex_memoryctl.rollouts import find_rollout, memory_ref, scan_rollout
 from codex_memoryctl.selectors import parse_state_reference, select_state
 
 THREAD_ID = "01a00000-0000-7000-8000-000000000001"
+ORIGIN_THREAD_ID = "01a00000-0000-7000-8000-000000000002"
 
 
 def memory_item(content: str) -> dict:
@@ -194,6 +195,50 @@ class RolloutTests(unittest.TestCase):
             )
             rollout = scan_rollout(path)
         self.assertEqual(rollout.states[0].checkpoint_index, 2)
+
+    def test_missing_response_item_id_is_not_portable(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / f"rollout-{THREAD_ID}.jsonl"
+            invalid = memory_item("invalid")
+            invalid["id"] = None
+            write_rollout(
+                path,
+                [
+                    {
+                        "type": "compacted",
+                        "payload": {"replacement_history": [invalid]},
+                    }
+                ],
+            )
+            rollout = scan_rollout(path)
+        self.assertEqual(rollout.states, ())
+
+    def test_rollout_path_id_remains_canonical_after_inherited_session_meta(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / f"rollout-{THREAD_ID}.jsonl"
+            write_rollout(
+                path,
+                [
+                    {
+                        "type": "session_meta",
+                        "payload": {"id": ORIGIN_THREAD_ID},
+                    },
+                    {
+                        "type": "compacted",
+                        "payload": {
+                            "replacement_history": [memory_item("forked")]
+                        },
+                    },
+                ],
+            )
+            rollout = scan_rollout(path)
+        self.assertEqual(rollout.thread_id, THREAD_ID)
+        self.assertEqual(rollout.session_meta_thread_id, ORIGIN_THREAD_ID)
+        self.assertEqual(rollout.states[0].thread_id, THREAD_ID)
+        self.assertEqual(
+            rollout.states[0].metadata()["sessionMetaThreadId"],
+            ORIGIN_THREAD_ID,
+        )
 
     def test_partial_final_record_is_ignored(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

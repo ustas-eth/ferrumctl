@@ -1,9 +1,10 @@
 # codex-memoryctl
 
-`codex-memoryctl` lets Codex agents inspect and reuse the opaque memory created
-during compaction. A long-running agent can revisit an older checkpoint, a
-fresh consultant can consider another thread's retained perspective, and a
-new handoff or recovery thread can start with selected prior memory.
+`codex-memoryctl` lets Codex agents locate, inspect, and reuse the opaque memory
+created during compaction. A long-running agent can revisit an older
+checkpoint, a fresh consultant can consider another thread's retained
+perspective, and a new handoff or recovery thread can start with selected prior
+memory.
 
 The command reads local rollout files and uses a shared Codex app-server for
 injection. It keeps no database or background service. Injection relies on
@@ -40,13 +41,26 @@ codex-memoryctl show THREAD_ID@window:14 --json
 Each observation reports whether it remains in the thread's current
 model-visible history. Visibility does not prove that the model used it.
 
+Find which memory checkpoints followed relevant transcript text:
+
+```sh
+codex-memoryctl search THREAD_ID "preset mismatch"
+codex-memoryctl search THREAD_ID "exact phrase" --match phrase
+codex-memoryctl search THREAD_ID 'preset.*mismatch' --match regex
+```
+
+The default token search can match words across messages in one checkpoint
+segment. Results identify the first later portable checkpoint and show ordinary
+nearby messages. `uncompacted` means the matching text has no later memory
+checkpoint yet. Search does not inspect the encrypted memory itself.
+
 For consultation or older-self recall, the receiving agent injects memory into
 its own active turn and records why:
 
 ```sh
 codex-memoryctl inject --self \
   --state DONOR_THREAD_ID@latest \
-  --purpose "Consult this diagnosis while retaining my current role and goal."
+  --purpose "Compare this diagnosis with the evidence in my current investigation."
 ```
 
 Several `--state` arguments form one ordered memory-only batch:
@@ -58,9 +72,10 @@ codex-memoryctl inject --self \
   --purpose "Compare these perspectives against my current evidence."
 ```
 
-`--self` requires an active `CODEX_THREAD_ID` and uses current-turn binding.
-Use `--to TARGET` when a fresh loaded thread should retain the source turn
-association:
+`--self` requires an active `CODEX_THREAD_ID` and uses current-turn binding. It
+also appends an attributed item containing the exact purpose and canonical
+memory references after the opaque batch. Use `--to TARGET` when a fresh loaded
+thread should retain the source turn association:
 
 ```sh
 codex-memoryctl inject --to FRESH_THREAD_ID \
@@ -94,6 +109,8 @@ explicitly writes the complete object to stdout.
   thread, or start a turn.
 - `--self` binds memory to the caller's current turn. `--to` preserves source
   turn association.
+- The attributed `--self` purpose improves provenance but does not make foreign
+  memory isolated or guarantee how the model interprets it.
 - During an active turn, injected memory first enters pending input and may not
   appear in the rollout until Codex processes it. An idle target records it
   immediately for a later turn.

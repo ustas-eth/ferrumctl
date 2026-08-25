@@ -10,13 +10,15 @@ class ParserTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 parser.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-memoryctl 0.2.2\n")
+        self.assertEqual(output.getvalue(), "codex-memoryctl 0.3.0\n")
 
     def test_parses_public_commands(self) -> None:
         cases = [
             ["list"],
             ["list", "thread", "--origin", "standalone", "--limit", "0"],
             ["show", "thread@latest"],
+            ["search", "thread", "preset mismatch"],
+            ["search", "thread", "preset.*mismatch", "--match", "regex"],
             ["export", "thread@window:2", "--output", "memory.json"],
             [
                 "inject",

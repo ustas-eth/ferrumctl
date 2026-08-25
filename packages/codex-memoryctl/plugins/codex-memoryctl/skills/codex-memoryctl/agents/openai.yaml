@@ -1,6 +1,6 @@
 interface:
   display_name: "Codex Memoryctl"
-  short_description: "Reuse retained Codex compaction memory"
+  short_description: "Locate and reuse Codex compaction memory"
   default_prompt: "Use $codex-memoryctl to inspect available checkpoints or choose a suitable recall, consultation, consolidation, or recovery flow."
 policy:
   allow_implicit_invocation: true
