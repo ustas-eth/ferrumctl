@@ -9,6 +9,7 @@ def format_state(state: MemoryState) -> str:
         state.observed_at or "-",
         memory_ref(state.memory_id),
         f"bytes={state.payload_bytes}",
+        f"visible={'yes' if state.visible else 'no'}",
     ]
     if state.checkpoint_index is not None:
         fields.append(f"index={state.checkpoint_index}")

@@ -125,14 +125,22 @@ def build_parser() -> argparse.ArgumentParser:
     export.set_defaults(func=cmd_export)
 
     inject = sub.add_parser(
-        "inject", help="append compaction memory to one loaded Codex thread"
+        "inject", help="append compaction memory with an explicit turn binding"
     )
-    inject.add_argument(
-        "target",
-        nargs="?",
+    target = inject.add_mutually_exclusive_group(required=True)
+    target.add_argument(
+        "--self",
+        dest="self_target",
+        action="store_true",
+        help="inject into this active CODEX_THREAD_ID with current-turn binding",
+    )
+    target.add_argument(
+        "--to",
+        dest="target",
+        metavar="TARGET",
         help=(
-            "target thread id or task name; omit for active self-consultation "
-            "through CODEX_THREAD_ID"
+            "inject into a loaded thread id or task name while preserving "
+            "source turn association"
         ),
     )
     source = inject.add_mutually_exclusive_group(required=True)
@@ -148,13 +156,13 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "inject one source checkpoint including its retained history "
-            "into an explicit target"
+            "into a --to target; intended for a fresh thread"
         ),
     )
     inject.add_argument(
         "--purpose",
         type=nonempty,
-        help="record the caller's reason in command output",
+        help="record the caller's reason in command output; required with --self",
     )
     inject.add_argument(
         "--allow-duplicate",

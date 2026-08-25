@@ -81,6 +81,8 @@ class RolloutTests(unittest.TestCase):
         self.assertEqual(checkpoint.model, "gpt-test")
         self.assertEqual(checkpoint.model_provider, "openai")
         self.assertEqual(standalone.origin, "standalone")
+        self.assertTrue(checkpoint.visible)
+        self.assertTrue(standalone.visible)
         expected = hashlib.sha256(b"injected").hexdigest()
         self.assertEqual(standalone.memory_id, f"sha256:{expected}")
         self.assertEqual(standalone.metadata()["memoryId"], f"m:{expected[:12]}")
@@ -131,6 +133,46 @@ class RolloutTests(unittest.TestCase):
         }
         self.assertEqual(rollout.visible_memory_ids, frozenset({current_id, after_id}))
         self.assertTrue(old_ids.isdisjoint(rollout.visible_memory_ids))
+        visibility = {
+            state.memory_item["encrypted_content"]: state.visible
+            for state in rollout.states
+        }
+        self.assertEqual(
+            visibility,
+            {
+                "old": False,
+                "before-compaction": False,
+                "current": True,
+                "after-compaction": True,
+            },
+        )
+
+    def test_visibility_belongs_to_an_observation_not_only_its_digest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / f"rollout-{THREAD_ID}.jsonl"
+            repeated = memory_item("repeated")
+            current = memory_item("current")
+            write_rollout(
+                path,
+                [
+                    {
+                        "type": "compacted",
+                        "payload": {"replacement_history": [repeated]},
+                    },
+                    {
+                        "type": "compacted",
+                        "payload": {"replacement_history": [current]},
+                    },
+                    {"type": "response_item", "payload": repeated},
+                ],
+            )
+            rollout = scan_rollout(path)
+
+        repeated_states = [
+            state for state in rollout.states if state.memory_item == repeated
+        ]
+        self.assertEqual([state.visible for state in repeated_states], [False, True])
+        self.assertIn(repeated_states[0].memory_id, rollout.visible_memory_ids)
 
     def test_checkpoint_index_counts_nonportable_compactions(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

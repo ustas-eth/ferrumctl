@@ -1,16 +1,14 @@
 # codex-memoryctl
 
-`codex-memoryctl` lets you inspect, export, and deliberately inject the opaque
-memory that Codex creates during compaction.
+`codex-memoryctl` lets Codex agents inspect and reuse the opaque memory created
+during compaction. A long-running agent can revisit an older checkpoint, a
+fresh consultant can consider another thread's retained perspective, and a
+new handoff or recovery thread can start with selected prior memory.
 
-This makes controlled experiments possible on real Codex threads: an agent can
-consult another thread's compacted perspective, revisit an older checkpoint,
-or seed a disposable consolidation thread with several memories. The command
-uses local rollout files as its source and a shared Codex app-server for
-injection. It keeps no database or background service.
-
-The feature is experimental. Injected memory becomes part of the target's
-model-visible history and has no automatic removal operation.
+The command reads local rollout files and uses a shared Codex app-server for
+injection. It keeps no database or background service. Injection relies on
+evolving Codex app-server and compaction formats, so compatibility should be
+checked after Codex upgrades.
 
 ## Install
 
@@ -31,7 +29,7 @@ app-server.
 
 ## Examples
 
-List the latest memory observations for a thread:
+List memory observations without printing their encrypted content:
 
 ```sh
 codex-memoryctl list THREAD_ID
@@ -39,62 +37,73 @@ codex-memoryctl show THREAD_ID@latest
 codex-memoryctl show THREAD_ID@window:14 --json
 ```
 
-By default, injection copies only the opaque compaction item. When
-`CODEX_THREAD_ID` is available, the target defaults to the calling thread:
+Each observation reports whether it remains in the thread's current
+model-visible history. Visibility does not prove that the model used it.
+
+For consultation or older-self recall, the receiving agent injects memory into
+its own active turn and records why:
 
 ```sh
-codex-memoryctl inject \
+codex-memoryctl inject --self \
   --state DONOR_THREAD_ID@latest \
   --purpose "Consult this diagnosis while retaining my current role and goal."
 ```
 
-With the target omitted, the calling thread must have an active turn. The
-command binds the copied memories to that turn instead of retaining their donor
-turn associations. Several `--state` arguments form one ordered batch:
+Several `--state` arguments form one ordered memory-only batch:
 
 ```sh
-codex-memoryctl inject \
+codex-memoryctl inject --self \
   --state HUNTER_THREAD_ID@latest \
   --state ENGINEER_THREAD_ID@latest \
-  --purpose "Compare these peer perspectives against my current work."
+  --purpose "Compare these perspectives against my current evidence."
+```
+
+`--self` requires an active `CODEX_THREAD_ID` and uses current-turn binding.
+Use `--to TARGET` when a fresh loaded thread should retain the source turn
+association:
+
+```sh
+codex-memoryctl inject --to FRESH_THREAD_ID \
+  --state DONOR_THREAD_ID@latest
 ```
 
 Export a portable memory file without printing its encrypted content:
 
 ```sh
 codex-memoryctl export THREAD_ID@latest --output memory.json
-codex-memoryctl inject --file memory.json
+codex-memoryctl inject --self --file memory.json \
+  --purpose "Recall the diagnosis retained in this exported memory."
 ```
 
-Use `--full-checkpoint` only when retained user, developer, and agent messages
-are intentionally part of a cloning or restoration experiment:
+Use a full checkpoint only when the donor's retained user, developer, and
+agent messages are needed for a fresh recovery target:
 
 ```sh
 codex-memoryctl export THREAD_ID@latest \
   --full-checkpoint --output checkpoint.json
-codex-memoryctl inject FRESH_THREAD_ID \
+codex-memoryctl inject --to FRESH_THREAD_ID \
   --state THREAD_ID@latest --full-checkpoint
 ```
 
-The export is written with private file permissions. Passing `--output -`
+Exports are written with private file permissions. Passing `--output -`
 explicitly writes the complete object to stdout.
 
 ## Boundaries
 
-- Injection appends model-visible history; it does not replace the target's
-  history, wake it, or start a turn.
-- An omitted target is an active self-consultation and receives current-turn
-  binding. An explicit target preserves the source turn association.
-- An active target first receives pending input, which may not appear in the
-  rollout until Codex processes it. An idle target records the items for a
-  later turn immediately.
+- Injection appends model-visible history; it does not replace history, wake a
+  thread, or start a turn.
+- `--self` binds memory to the caller's current turn. `--to` preserves source
+  turn association.
+- During an active turn, injected memory first enters pending input and may not
+  appear in the rollout until Codex processes it. An idle target records it
+  immediately for a later turn.
 - App-server acceptance does not prove that the model interpreted the memory.
-- The opaque item carries no reliable donor identity or purpose. A receiving
-  agent should request an in-place consultation from its own context.
-- Later compaction may absorb an injected memory into the target's next
-  checkpoint. Use a disposable thread when the original must remain unchanged.
-- `list` and `show` never print encrypted content. Full-checkpoint exports can
-  contain retained plaintext messages and should be treated as sensitive.
+- Opaque memory carries no reliable donor identity or purpose. Use a disposable
+  consultant when an established thread should remain unchanged.
+- Later compaction may absorb injected memory into the target's next
+  checkpoint, and there is no paired removal operation.
+- Full-checkpoint exports contain retained plaintext messages. Treat every
+  export as sensitive session material.
 
 More detail:
 
@@ -104,8 +113,8 @@ More detail:
 
 ## Codex Skill
 
-Install the optional skill when Codex should know when and how to use memory
-injection:
+Install the optional skill when Codex should choose and operate these memory
+workflows:
 
 ```sh
 codex plugin marketplace add ustas-eth/ferrumctl

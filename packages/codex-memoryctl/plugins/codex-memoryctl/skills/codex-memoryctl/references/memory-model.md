@@ -29,6 +29,13 @@ reported as injectable memory.
 - `standalone` identifies a compaction item persisted separately, normally by
   an earlier injection.
 
+Each observation also reports `visible=yes` when that occurrence remains in
+the history assembled from the latest compaction and any later standalone
+memory. `visible=no` marks an older occurrence replaced by a later compaction.
+Visibility is occurrence-specific: the same memory digest can appear in both
+an older replaced checkpoint and a current standalone item. It describes
+history structure, not whether the model attended to or adopted the memory.
+
 A SHA-256 digest of `encrypted_content` identifies the opaque memory. Portable
 exports retain the full digest for validation. Normal command output uses its
 first 12 hexadecimal characters as a compact `m:` reference; selectors reject

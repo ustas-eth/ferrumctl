@@ -180,8 +180,18 @@ def bind_to_current_turn(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 async def cmd_inject(args: argparse.Namespace) -> int:
-    implicit_self_target = args.target is None
-    target_reference = current_thread_id(args.target, "target thread")
+    self_target = bool(args.self_target)
+    if self_target and args.purpose is None:
+        raise MemoryctlError("--self requires --purpose")
+    if self_target and args.full_checkpoint:
+        raise MemoryctlError(
+            "--self accepts memory only; use --to with a fresh target when "
+            "transferring a full checkpoint"
+        )
+    target_reference = current_thread_id(
+        None if self_target else args.target,
+        "target thread",
+    )
 
     async with memoryctl_appserver(args.endpoint, args.timeout) as app:
         target = await resolve_thread_reference(
@@ -200,7 +210,7 @@ async def cmd_inject(args: argparse.Namespace) -> int:
             shown = provider if isinstance(provider, str) and provider else "unknown"
             raise MemoryctlError(
                 f"target model provider is {shown}; opaque compaction memory is "
-                "OpenAI-specific (pass --allow-non-openai to test deliberately)"
+                "OpenAI-specific (pass --allow-non-openai to override this check)"
             )
 
         if args.file is not None:
@@ -243,11 +253,11 @@ async def cmd_inject(args: argparse.Namespace) -> int:
             sources = [state.thread_id for state in states]
 
         active_turn_id: str | None = None
-        if implicit_self_target:
+        if self_target:
             if scope != "memory":
                 raise MemoryctlError(
-                    "implicit self-injection accepts memory only; pass an explicit "
-                    "fresh target for a full checkpoint"
+                    "--self accepts memory-only exports; use --to with a fresh "
+                    "target for a full checkpoint"
                 )
             turn = await current_active_turn(app, target)
             active_turn_id = str(turn["id"])

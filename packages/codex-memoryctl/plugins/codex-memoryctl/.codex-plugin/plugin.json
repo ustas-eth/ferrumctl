@@ -1,7 +1,7 @@
 {
   "name": "codex-memoryctl",
-  "version": "0.2.1",
-  "description": "Codex skill for inspecting and deliberately transferring opaque compaction memory.",
+  "version": "0.2.2",
+  "description": "Codex skill for inspecting and reusing opaque compaction memory.",
   "author": {
     "name": "ustas-eth"
   },
@@ -17,16 +17,16 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Codex Memoryctl",
-    "shortDescription": "Inspect and transfer Codex compaction memory",
-    "longDescription": "Codex Memoryctl provides workflow guidance for locating, exporting, and deliberately injecting opaque Codex compaction memory.",
+    "shortDescription": "Reuse retained Codex compaction memory",
+    "longDescription": "Codex Memoryctl provides workflow guidance for locating and reusing opaque compaction memory for recall, consultation, handoff, consolidation, and recovery.",
     "developerName": "ustas-eth",
     "category": "Productivity",
     "capabilities": [
       "Compaction memory discovery",
       "Portable memory exports",
-      "Deliberate memory injection",
-      "Checkpoint experiments"
+      "Older-self recall",
+      "Consultation and handoff"
     ],
-    "defaultPrompt": "Use $codex-memoryctl to inspect or deliberately transfer Codex compaction memory."
+    "defaultPrompt": "Use $codex-memoryctl to inspect available checkpoints or choose a suitable recall, consultation, consolidation, or recovery flow."
   }
 }

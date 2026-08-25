@@ -18,11 +18,12 @@ Injection does not add ordinary user input, wake an idle thread, or bypass the
 native parent's lifecycle ownership of a v2 agent. Lifecycle control remains a
 separate operation.
 
-When the target is omitted, memoryctl treats the operation as self-consultation.
-It requires the calling thread to have an active turn, clears each copied
-memory's donor turn association, and asks Codex to bind the batch to that active
-turn. An explicit target preserves the source association. Full-checkpoint
-injection requires an explicit target.
+`--self` selects the active `CODEX_THREAD_ID`. It requires `--purpose`, clears
+each copied memory's donor turn association, and asks Codex to bind the batch
+to the current turn. `--to TARGET` preserves source turn association instead.
+The two modes are explicit because they give the injected memory different
+framing. Full-checkpoint injection requires `--to` and is intended for a fresh
+target.
 
 ## Persistence And Order
 
@@ -56,11 +57,13 @@ order can still redirect the recipient.
 
 When an established thread requests and performs its own injection, its tool
 call supplies useful surrounding provenance. External injection should be
-framed in the recipient's existing context or limited to a disposable target.
+limited to a fresh handoff or recovery target. When an established agent should
+remain unchanged, use a disposable consultant that performs its own `--self`
+injection.
 
 Opaque compaction memory is produced by OpenAI. Known non-OpenAI targets are
 rejected by default because JSON acceptance does not establish provider
-compatibility. `--allow-non-openai` permits deliberate experiments without
+compatibility. `--allow-non-openai` bypasses the compatibility check without
 changing that limitation.
 
 Memory-only exports contain encrypted content and source metadata.

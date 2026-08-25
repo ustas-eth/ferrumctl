@@ -109,6 +109,7 @@ class InjectionTests(unittest.IsolatedAsyncioTestCase):
         result, app, output = await self.run_inject(
             [
                 "inject",
+                "--to",
                 "target",
                 "--state",
                 "first@latest",
@@ -128,7 +129,7 @@ class InjectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("binding=source", output)
         self.assertIn('purpose="compare\\ncarefully"', output)
 
-    async def test_implicit_self_injection_binds_memory_to_active_turn(self) -> None:
+    async def test_self_injection_binds_memory_to_active_turn(self) -> None:
         value = make_state("donor")
         value.memory_item["internal_chat_message_metadata_passthrough"] = {
             "turn_id": "donor-turn",
@@ -143,7 +144,14 @@ class InjectionTests(unittest.IsolatedAsyncioTestCase):
             ) as active_turn,
         ):
             result, app, output = await self.run_inject(
-                ["inject", "--state", "source@latest"],
+                [
+                    "inject",
+                    "--self",
+                    "--state",
+                    "source@latest",
+                    "--purpose",
+                    "recover an earlier diagnosis",
+                ],
                 [value],
             )
 
@@ -172,15 +180,31 @@ class InjectionTests(unittest.IsolatedAsyncioTestCase):
             {"turn_id": "donor-turn", "create_time": 1},
         )
         self.assertIn("binding=current:recipient-turn", output)
+        self.assertIn('purpose="recover an earlier diagnosis"', output)
 
-    async def test_implicit_self_injection_rejects_full_checkpoint(self) -> None:
+    async def test_self_injection_requires_purpose(self) -> None:
+        args = parser.build_parser().parse_args(
+            ["inject", "--self", "--state", "source@latest"]
+        )
+        with self.assertRaisesRegex(MemoryctlError, "--self requires --purpose"):
+            await commands.cmd_inject(args)
+
+    async def test_self_injection_rejects_full_checkpoint(self) -> None:
         value = make_state("checkpoint")
         with (
             mock.patch.dict(commands.os.environ, {"CODEX_THREAD_ID": "target"}),
-            self.assertRaisesRegex(MemoryctlError, "explicit fresh target"),
+            self.assertRaisesRegex(MemoryctlError, "fresh target"),
         ):
             await self.run_inject(
-                ["inject", "--state", "source@latest", "--full-checkpoint"],
+                [
+                    "inject",
+                    "--self",
+                    "--state",
+                    "source@latest",
+                    "--full-checkpoint",
+                    "--purpose",
+                    "restore retained context",
+                ],
                 [value],
             )
 
@@ -189,6 +213,7 @@ class InjectionTests(unittest.IsolatedAsyncioTestCase):
         _, app, _ = await self.run_inject(
             [
                 "inject",
+                "--to",
                 "target",
                 "--state",
                 "source@latest",
@@ -205,6 +230,7 @@ class InjectionTests(unittest.IsolatedAsyncioTestCase):
         args = parser.build_parser().parse_args(
             [
                 "inject",
+                "--to",
                 "target",
                 "--state",
                 "first",
@@ -237,7 +263,7 @@ class InjectionTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_rejects_non_openai_target(self) -> None:
         args = parser.build_parser().parse_args(
-            ["inject", "target", "--state", "source"]
+            ["inject", "--to", "target", "--state", "source"]
         )
         app = FakeApp()
         with (
@@ -265,6 +291,7 @@ class InjectionTests(unittest.IsolatedAsyncioTestCase):
         args = parser.build_parser().parse_args(
             [
                 "inject",
+                "--to",
                 "target",
                 "--file",
                 "memory.json",
@@ -296,7 +323,7 @@ class InjectionTests(unittest.IsolatedAsyncioTestCase):
     async def test_rejects_memory_already_observed_in_target(self) -> None:
         value = make_state("duplicate")
         args = parser.build_parser().parse_args(
-            ["inject", "target", "--state", "source"]
+            ["inject", "--to", "target", "--state", "source"]
         )
         app = FakeApp()
         with tempfile.TemporaryDirectory() as directory:
@@ -345,7 +372,7 @@ class InjectionTests(unittest.IsolatedAsyncioTestCase):
         value = make_state("older-self")
         current = make_state("current")
         args = parser.build_parser().parse_args(
-            ["inject", "target", "--state", "source"]
+            ["inject", "--to", "target", "--state", "source"]
         )
         app = FakeApp()
         with tempfile.TemporaryDirectory() as directory:
@@ -402,7 +429,7 @@ class InjectionTests(unittest.IsolatedAsyncioTestCase):
     async def test_connection_failure_reports_uncertain_injection(self) -> None:
         value = make_state("uncertain")
         args = parser.build_parser().parse_args(
-            ["inject", "target", "--state", "source"]
+            ["inject", "--to", "target", "--state", "source"]
         )
         app = FailingApp()
         with (

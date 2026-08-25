@@ -10,7 +10,7 @@ class ParserTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 parser.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-memoryctl 0.2.1\n")
+        self.assertEqual(output.getvalue(), "codex-memoryctl 0.2.2\n")
 
     def test_parses_public_commands(self) -> None:
         cases = [
@@ -18,16 +18,24 @@ class ParserTests(unittest.TestCase):
             ["list", "thread", "--origin", "standalone", "--limit", "0"],
             ["show", "thread@latest"],
             ["export", "thread@window:2", "--output", "memory.json"],
-            ["inject", "--state", "thread@latest"],
             [
                 "inject",
+                "--self",
+                "--state",
+                "thread@latest",
+                "--purpose",
+                "recall an earlier decision",
+            ],
+            [
+                "inject",
+                "--to",
                 "target",
                 "--state",
                 "first@latest",
                 "--state",
                 "second@latest",
             ],
-            ["inject", "--file", "memory.json"],
+            ["inject", "--to", "target", "--file", "memory.json"],
         ]
         for argv in cases:
             with self.subTest(argv=argv):
@@ -36,7 +44,31 @@ class ParserTests(unittest.TestCase):
     def test_inject_requires_one_source_form(self) -> None:
         for argv in (
             ["inject"],
-            ["inject", "--state", "thread", "--file", "memory.json"],
+            ["inject", "--self"],
+            [
+                "inject",
+                "--self",
+                "--state",
+                "thread",
+                "--file",
+                "memory.json",
+            ],
+        ):
+            with self.subTest(argv=argv):
+                with self.assertRaises(SystemExit):
+                    parser.build_parser().parse_args(argv)
+
+    def test_inject_requires_one_target_mode(self) -> None:
+        for argv in (
+            ["inject", "--state", "thread"],
+            [
+                "inject",
+                "--self",
+                "--to",
+                "target",
+                "--state",
+                "thread",
+            ],
         ):
             with self.subTest(argv=argv):
                 with self.assertRaises(SystemExit):

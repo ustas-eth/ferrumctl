@@ -4,7 +4,7 @@ import hashlib
 import json
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +38,7 @@ class MemoryState:
     window_number: int | None = None
     window_id: str | None = None
     replacement_history: tuple[dict[str, Any], ...] | None = None
+    visible: bool = False
 
     @property
     def retained_items(self) -> int | None:
@@ -58,6 +59,7 @@ class MemoryState:
             "windowNumber": self.window_number,
             "windowId": self.window_id,
             "retainedItems": self.retained_items,
+            "visible": self.visible,
         }
 
 
@@ -152,6 +154,7 @@ def scan_rollout(path: Path) -> RolloutMemory:
     model_provider: str | None = None
     states: list[MemoryState] = []
     visible_memory_ids: set[str] = set()
+    visible_state_indices: set[int] = set()
     checkpoint_index = 0
 
     try:
@@ -206,6 +209,7 @@ def scan_rollout(path: Path) -> RolloutMemory:
                     visible_memory_ids = {
                         memory_id(item)[0] for item in items
                     }
+                    visible_state_indices.clear()
                     if len(items) != 1 or not isinstance(replacement, list):
                         continue
                     if not all(isinstance(item, dict) for item in replacement):
@@ -234,6 +238,7 @@ def scan_rollout(path: Path) -> RolloutMemory:
                             replacement_history=tuple(replacement),
                         )
                     )
+                    visible_state_indices.add(len(states) - 1)
                     continue
                 if record_type == "response_item" and is_memory_item(payload):
                     digest, size = memory_id(payload)
@@ -251,15 +256,20 @@ def scan_rollout(path: Path) -> RolloutMemory:
                             model_provider=model_provider,
                         )
                     )
+                    visible_state_indices.add(len(states) - 1)
     except UnicodeDecodeError as exc:
         raise MemoryctlError(f"rollout is not valid UTF-8: {path}") from exc
     except OSError as exc:
         raise MemoryctlError(f"failed to read rollout {path}: {exc}") from exc
 
+    visible_states = tuple(
+        replace(state, visible=index in visible_state_indices)
+        for index, state in enumerate(states)
+    )
     return RolloutMemory(
         reported_thread_id,
         path,
-        tuple(states),
+        visible_states,
         frozenset(visible_memory_ids),
     )
 
