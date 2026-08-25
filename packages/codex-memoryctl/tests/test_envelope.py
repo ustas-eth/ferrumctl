@@ -46,6 +46,7 @@ class EnvelopeTests(unittest.TestCase):
         self.assertEqual(envelope["scope"], "memory")
         self.assertEqual(envelope["items"], [state().memory_item])
         self.assertEqual(envelope["memory"]["id"], state().memory_id)
+        self.assertIsNone(envelope["source"]["sessionMetaThreadId"])
         self.assertEqual(validate_envelope(envelope), envelope)
 
     def test_full_checkpoint_preserves_replacement_history(self) -> None:

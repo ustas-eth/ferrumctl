@@ -6,7 +6,12 @@ from dataclasses import dataclass
 from typing import Any
 
 from .errors import MemoryctlError
-from .rollouts import MemoryState, RolloutMemory, TranscriptMessage
+from .rollouts import (
+    MemoryState,
+    RolloutMemory,
+    TranscriptMessage,
+    distinct_session_meta_thread_id,
+)
 
 SNIPPET_ANCHORS = 3
 SNIPPET_CHARACTERS = 240
@@ -191,7 +196,10 @@ def search_rollout(
     selected = candidates if limit == 0 else candidates[:limit]
     return {
         "threadId": rollout.thread_id,
-        "sessionMetaThreadId": rollout.session_meta_thread_id,
+        "sessionMetaThreadId": distinct_session_meta_thread_id(
+            rollout.thread_id,
+            rollout.session_meta_thread_id,
+        ),
         "rolloutPath": str(rollout.path),
         "query": query,
         "matchMode": mode,

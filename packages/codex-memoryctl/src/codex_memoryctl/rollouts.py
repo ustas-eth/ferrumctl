@@ -57,7 +57,10 @@ class MemoryState:
             "payloadBytes": self.payload_bytes,
             "model": self.model,
             "modelProvider": self.model_provider,
-            "sessionMetaThreadId": self.session_meta_thread_id,
+            "sessionMetaThreadId": distinct_session_meta_thread_id(
+                self.thread_id,
+                self.session_meta_thread_id,
+            ),
             "checkpointIndex": self.checkpoint_index,
             "windowNumber": self.window_number,
             "windowId": self.window_id,
@@ -83,6 +86,16 @@ class RolloutMemory:
     visible_memory_ids: frozenset[str] = frozenset()
     session_meta_thread_id: str | None = None
     messages: tuple[TranscriptMessage, ...] = ()
+    compaction_count: int = 0
+
+
+def distinct_session_meta_thread_id(
+    thread_id: str,
+    session_meta_thread_id: str | None,
+) -> str | None:
+    if session_meta_thread_id == thread_id:
+        return None
+    return session_meta_thread_id
 
 
 def resolve_codex_home(value: str | None) -> Path:
@@ -341,6 +354,7 @@ def scan_rollout(path: Path, *, include_messages: bool = False) -> RolloutMemory
         frozenset(visible_memory_ids),
         session_meta_thread_id,
         tuple(messages),
+        checkpoint_index,
     )
 
 

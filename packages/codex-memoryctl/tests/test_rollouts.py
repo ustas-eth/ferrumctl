@@ -73,6 +73,7 @@ class RolloutTests(unittest.TestCase):
             rollout = scan_rollout(path)
 
         self.assertEqual(rollout.thread_id, THREAD_ID)
+        self.assertEqual(rollout.compaction_count, 1)
         self.assertEqual(len(rollout.states), 2)
         checkpoint, standalone = rollout.states
         self.assertEqual(checkpoint.origin, "checkpoint")
@@ -194,7 +195,33 @@ class RolloutTests(unittest.TestCase):
                 ],
             )
             rollout = scan_rollout(path)
+        self.assertEqual(rollout.compaction_count, 2)
         self.assertEqual(rollout.states[0].checkpoint_index, 2)
+
+    def test_latest_fails_closed_after_nonportable_compaction(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / f"rollout-{THREAD_ID}.jsonl"
+            write_rollout(
+                path,
+                [
+                    {
+                        "type": "compacted",
+                        "payload": {
+                            "window_number": 1,
+                            "replacement_history": [memory_item("portable")],
+                        },
+                    },
+                    {
+                        "type": "compacted",
+                        "payload": {"replacement_history": []},
+                    },
+                ],
+            )
+            rollout = scan_rollout(path)
+
+        with self.assertRaisesRegex(MemoryctlError, "latest compaction.*no portable"):
+            select_state(rollout, "latest")
+        self.assertEqual(select_state(rollout, "index:1").checkpoint_index, 1)
 
     def test_missing_response_item_id_is_not_portable(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -239,6 +266,26 @@ class RolloutTests(unittest.TestCase):
             rollout.states[0].metadata()["sessionMetaThreadId"],
             ORIGIN_THREAD_ID,
         )
+
+    def test_matching_session_meta_id_is_not_reported_as_an_origin(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / f"rollout-{THREAD_ID}.jsonl"
+            write_rollout(
+                path,
+                [
+                    {"type": "session_meta", "payload": {"id": THREAD_ID}},
+                    {
+                        "type": "compacted",
+                        "payload": {
+                            "replacement_history": [memory_item("native")]
+                        },
+                    },
+                ],
+            )
+            rollout = scan_rollout(path)
+
+        self.assertEqual(rollout.session_meta_thread_id, THREAD_ID)
+        self.assertIsNone(rollout.states[0].metadata()["sessionMetaThreadId"])
 
     def test_partial_final_record_is_ignored(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -335,7 +382,11 @@ class SelectorTests(unittest.TestCase):
             states=(*rollout.states, injected),
         )
         self.assertEqual(select_state(combined, "latest"), rollout.states[-1])
-        standalone_only = replace(combined, states=(injected,))
+        standalone_only = replace(
+            combined,
+            states=(injected,),
+            compaction_count=0,
+        )
         self.assertEqual(select_state(standalone_only, "latest"), injected)
         prefix = injected.memory_id.removeprefix("sha256:")[:12]
         self.assertEqual(

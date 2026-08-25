@@ -44,6 +44,15 @@ def select_state(
     states = list(rollout.states)
     if selector == "latest":
         checkpoints = [state for state in states if state.origin == "checkpoint"]
+        if rollout.compaction_count and (
+            not checkpoints
+            or checkpoints[-1].checkpoint_index != rollout.compaction_count
+        ):
+            raise MemoryctlError(
+                f"latest compaction in {rollout.thread_id} has no portable "
+                "opaque memory; select an earlier checkpoint explicitly with "
+                "@index:N, @window:N, or @m:PREFIX"
+            )
         matches = checkpoints[-1:] or states[-1:]
     elif selector.startswith("window:"):
         number = _number(

@@ -26,6 +26,7 @@ from .errors import InjectionUncertain, MemoryctlError
 from .formatting import format_state
 from .rollouts import (
     MemoryState,
+    distinct_session_meta_thread_id,
     is_memory_item,
     load_rollout,
     memory_ref,
@@ -105,7 +106,10 @@ async def cmd_list(args: argparse.Namespace) -> int:
             json.dumps(
                 {
                     "threadId": rollout.thread_id,
-                    "sessionMetaThreadId": rollout.session_meta_thread_id,
+                    "sessionMetaThreadId": distinct_session_meta_thread_id(
+                        rollout.thread_id,
+                        rollout.session_meta_thread_id,
+                    ),
                     "rolloutPath": str(rollout.path),
                     "states": [state.metadata() for state in states],
                 },

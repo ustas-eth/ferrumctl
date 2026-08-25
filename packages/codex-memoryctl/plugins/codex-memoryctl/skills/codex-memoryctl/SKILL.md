@@ -78,7 +78,9 @@ instead of reviving obsolete work.
   receipt, interpretation, or action.
 - An uncertain request may already have succeeded. Compare the reported memory
   reference with `list TARGET` before retrying.
-- Known non-OpenAI targets are incompatible by default.
+- Known non-OpenAI targets are incompatible by default. An OpenAI provider
+  passes the transport check, but useful interpretation across models is not
+  guaranteed; validate a cross-model workflow before relying on it.
 
 Both v1 and v2 agents use thread ids and local rollouts. Canonical task names
 such as `/root/reviewer` are accepted when they resolve unambiguously in the

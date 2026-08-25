@@ -7,7 +7,12 @@ from typing import Any
 
 from .constants import EXPORT_KIND, EXPORT_SCHEMA_VERSION
 from .errors import MemoryctlError
-from .rollouts import MemoryState, is_memory_item, memory_id
+from .rollouts import (
+    MemoryState,
+    distinct_session_meta_thread_id,
+    is_memory_item,
+    memory_id,
+)
 
 
 def build_envelope(state: MemoryState, *, full_checkpoint: bool) -> dict[str, Any]:
@@ -25,7 +30,10 @@ def build_envelope(state: MemoryState, *, full_checkpoint: bool) -> dict[str, An
         "scope": scope,
         "source": {
             "threadId": state.thread_id,
-            "sessionMetaThreadId": state.session_meta_thread_id,
+            "sessionMetaThreadId": distinct_session_meta_thread_id(
+                state.thread_id,
+                state.session_meta_thread_id,
+            ),
             "observedAt": state.observed_at,
             "checkpointIndex": state.checkpoint_index,
             "windowNumber": state.window_number,

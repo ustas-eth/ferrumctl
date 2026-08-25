@@ -45,7 +45,10 @@ they do not show that a model read or adopted it.
 Checkpoint selectors are local to one rollout:
 
 - `latest` selects the newest generated checkpoint, or the newest standalone
-  memory when the rollout has no generated checkpoint;
+  memory when the rollout has never generated a checkpoint. If the newest
+  `compacted` record has no portable memory, `latest` fails instead of silently
+  selecting an older checkpoint; use an explicit selector when that is
+  intentional;
 - `window:N` uses Codex's compaction window number;
 - `index:N` uses the 1-based order of all `compacted` records in the rollout;
 - `m:PREFIX` selects an unambiguous memory digest prefix in that rollout.
@@ -75,7 +78,8 @@ v1 and v2 agents use ordinary thread ids and separate rollout paths.
 
 The thread id in the rollout filename is canonical for that rollout. A resumed
 or forked file may retain a different `session_meta` id from its source;
-`sessionMetaThreadId` reports that value without replacing the canonical id.
+`sessionMetaThreadId` reports that inherited value only when it differs from
+the canonical id.
 
 Canonical task names such as `/root/reviewer` require the selected app-server
 and normal tree-scoped resolution. Resolve and retain the thread id when a

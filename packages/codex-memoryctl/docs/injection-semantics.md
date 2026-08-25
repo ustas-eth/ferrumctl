@@ -70,7 +70,10 @@ injection.
 Opaque compaction memory is produced by OpenAI. Known non-OpenAI targets are
 rejected by default because JSON acceptance does not establish provider
 compatibility. `--allow-non-openai` bypasses the compatibility check without
-changing that limitation.
+changing that limitation. An OpenAI provider passes this transport check, but
+a recipient model may still fail to recover useful content from memory
+produced by another model. Validate a cross-model workflow before relying on
+it.
 
 Memory-only exports contain encrypted content and source metadata.
 Full-checkpoint exports additionally contain retained plaintext conversation

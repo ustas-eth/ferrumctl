@@ -176,6 +176,7 @@ class SearchCommandTests(unittest.IsolatedAsyncioTestCase):
         document = json.loads(output.getvalue())
         self.assertEqual(result, 0)
         self.assertEqual(document["threadId"], THREAD_ID)
+        self.assertIsNone(document["sessionMetaThreadId"])
         self.assertIsNone(document["candidates"][0]["checkpoint"])
 
 
