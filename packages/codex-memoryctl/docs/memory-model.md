@@ -1,7 +1,9 @@
 # Memory Model
 
-`codex-memoryctl` reads Codex rollout JSONL files. It does not decrypt or
-summarize their contents.
+`codex-memoryctl` reads Codex rollout JSONL files. It cannot decrypt opaque
+memory. Its generated-text commands can submit an opaque item to a Codex model
+for a derived description, while structural commands inspect only rollout
+metadata and ordinary transcript text.
 
 ## Checkpoints And Memory
 

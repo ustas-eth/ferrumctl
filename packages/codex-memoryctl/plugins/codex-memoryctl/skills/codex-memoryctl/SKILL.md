@@ -1,12 +1,13 @@
 ---
 name: codex-memoryctl
-description: "Use when opaque Codex compaction memory must be inspected or reused for older-self recall, consultation with another thread's retained perspective, or seeding a fresh handoff, consolidation, or recovery thread. Do not use for ordinary messages, conversation reading, requesting compaction, or durable project knowledge."
+description: "Use when opaque Codex compaction memory must be located, described, compared, indexed, or reused for older-self recall, consultation with another thread's retained perspective, or seeding a fresh handoff, consolidation, or recovery thread. Do not use for ordinary messages, exact conversation reading, requesting compaction, or durable project knowledge."
 ---
 
 # Codex Memoryctl
 
-Use `codex-memoryctl` to reuse opaque memory already created by Codex
-compaction. It reads local rollouts and keeps no state of its own.
+Use `codex-memoryctl` to find, interpret, or reuse opaque memory already created
+by Codex compaction. Structural operations read local rollouts. Generated
+descriptions use a model and keep a private plaintext cache.
 
 ## Choose The Workflow
 
@@ -26,6 +27,22 @@ checkpoint. Its default token mode can match words across messages in one
 checkpoint segment; use `--match phrase` or `--match regex` when exact matching
 matters. `uncompacted` means no existing memory can contain that transcript
 tail. Search associates text with checkpoints; it does not inspect ciphertext.
+
+When the words are unknown, use model-derived text to orient or search:
+
+```sh
+codex-memoryctl summarize THREAD_ID@latest
+codex-memoryctl diff THREAD_ID@index:12 THREAD_ID@index:13
+codex-memoryctl index THREAD_ID | rg -i "suspected subject"
+```
+
+Use `summarize` for one checkpoint, `diff` for a directed comparison, and
+`index` for a compact sequential view. These commands make subscription model
+requests on cache misses. Their plaintext is useful for locating a likely
+state, not for proving that an omitted detail is absent. Use `--focus` only
+when the current question gives a real subject to emphasize. If the task needs
+the opaque state's retained fidelity, use an appropriate consultation or
+recall workflow instead of treating generated text as equivalent memory.
 
 For a foreign perspective, prefer a disposable consultant when the established
 agent should keep its trajectory. Frame the question in a fresh thread, then
@@ -111,5 +128,7 @@ current tree. Preserve a thread id when the reference must remain durable.
   older-self recall, handoff, consolidation, and recovery.
 - Read `references/perspective-framing.md` when imported memory should remain a
   distinguishable perspective or several memories must retain attribution.
+- Read `references/generated-text.md` when model requests, source boundaries,
+  caching, index construction, or generated-text limitations matter.
 - Read `references/coordination-principles.md` when composing memory transfer
   with other ferrumctl state or lifecycle tools.

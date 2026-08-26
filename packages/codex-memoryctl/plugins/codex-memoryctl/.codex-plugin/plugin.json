@@ -1,7 +1,7 @@
 {
   "name": "codex-memoryctl",
-  "version": "0.4.0",
-  "description": "Codex skill for inspecting and reusing opaque compaction memory.",
+  "version": "0.5.0",
+  "description": "Codex skill for locating, describing, and reusing opaque compaction memory.",
   "author": {
     "name": "ustas-eth"
   },
@@ -17,16 +17,18 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Codex Memoryctl",
-    "shortDescription": "Locate and reuse Codex compaction memory",
-    "longDescription": "Codex Memoryctl provides workflow guidance for locating and reusing opaque compaction memory for recall, consultation, handoff, consolidation, and recovery.",
+    "shortDescription": "Locate, describe, and reuse Codex compaction memory",
+    "longDescription": "Codex Memoryctl provides workflow guidance for locating, describing, comparing, and reusing opaque compaction memory for recall, consultation, handoff, consolidation, and recovery.",
     "developerName": "ustas-eth",
     "category": "Productivity",
     "capabilities": [
       "Transcript-to-checkpoint discovery",
+      "Generated checkpoint descriptions",
+      "Sequential memory indexes",
       "Portable memory exports",
       "Older-self recall",
       "Consultation and handoff"
     ],
-    "defaultPrompt": "Use $codex-memoryctl to inspect available checkpoints or choose a suitable recall, consultation, consolidation, or recovery flow."
+    "defaultPrompt": "Use $codex-memoryctl to find, compare, or reuse a suitable compaction checkpoint."
   }
 }

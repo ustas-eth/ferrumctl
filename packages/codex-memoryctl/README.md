@@ -1,15 +1,17 @@
 # codex-memoryctl
 
-`codex-memoryctl` lets Codex agents locate, inspect, and reuse the opaque memory
-created during compaction. A long-running agent can revisit an older
-checkpoint, a fresh consultant can consider another thread's retained
-perspective, and a new handoff or recovery thread can start with selected prior
-memory.
+`codex-memoryctl` lets Codex agents locate, describe, compare, and reuse the
+opaque memory created during compaction. It can build a compact, grep-friendly
+view of a long thread, revisit an older checkpoint, let a fresh consultant
+consider another thread's retained perspective, or seed a handoff or recovery
+thread with selected prior memory.
 
-The command reads local rollout files and uses a shared Codex app-server for
-injection. It keeps no database or background service. Injection relies on
-evolving Codex app-server and compaction formats, so compatibility should be
-checked after Codex upgrades.
+Structural inspection reads local rollout files without a model request.
+Generated descriptions use Codex subscription auth and are cached as plaintext
+in a private SQLite database. Injection uses a shared Codex app-server. The
+command has no background service. Injection relies on evolving Codex
+app-server and compaction formats, so compatibility should be checked after
+Codex upgrades.
 
 ## Install
 
@@ -40,6 +42,29 @@ codex-memoryctl show THREAD_ID@window:14 --json
 
 Each observation reports whether it remains in the thread's current
 model-visible history. Visibility does not prove that the model used it.
+
+Generate a short description of one checkpoint, compare two checkpoints, or
+render a sequential view of the whole thread:
+
+```sh
+codex-memoryctl summarize THREAD_ID@latest
+codex-memoryctl diff THREAD_ID@index:12 THREAD_ID@index:13
+codex-memoryctl index THREAD_ID | rg -i "preset|aggregator"
+```
+
+`summarize` and `diff` produce one concise text field. `index` summarizes the
+first portable checkpoint and describes each later checkpoint relative to its
+predecessor. It renders the current rollout together with cached results rather
+than maintaining a separate catalog. The default model is GPT-5.6 Luna at
+medium effort; `--model`, `--effort`, and `--refresh` are available when a
+different tradeoff or a fresh result is needed.
+
+Generated text is a model-derived aid for orientation and search. It may omit
+retained details, so an omission is not evidence that the opaque state lacks
+them. The cache defaults to
+`$XDG_STATE_HOME/codex-memoryctl/derived.sqlite3`, or
+`~/.local/state/codex-memoryctl/derived.sqlite3`, and should be treated as
+sensitive session material.
 
 Find which memory checkpoints followed relevant transcript text:
 
@@ -139,6 +164,7 @@ More detail:
 - [Injection semantics](docs/injection-semantics.md)
 - [Memory workflows](docs/memory-workflows.md)
 - [Perspective framing](docs/perspective-framing.md)
+- [Generated text](docs/generated-text.md)
 
 ## Codex Skill
 

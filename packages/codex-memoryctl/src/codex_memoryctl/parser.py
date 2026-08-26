@@ -2,9 +2,19 @@ from __future__ import annotations
 
 import argparse
 import math
+from pathlib import Path
 
-from .commands import cmd_export, cmd_inject, cmd_list, cmd_search, cmd_show
+from .cache import default_database_path
+from .commands import (
+    cmd_export,
+    cmd_inject,
+    cmd_list,
+    cmd_search,
+    cmd_show,
+)
 from .constants import CLIENT_VERSION, DEFAULT_TIMEOUT
+from .generation import DEFAULT_EFFORT, DEFAULT_MODEL
+from .generated_commands import cmd_diff, cmd_index, cmd_summarize
 
 
 def positive_float(value: str) -> float:
@@ -24,6 +34,13 @@ def nonnegative_int(value: str) -> int:
         raise argparse.ArgumentTypeError("must be zero or greater") from exc
     if parsed < 0:
         raise argparse.ArgumentTypeError("must be zero or greater")
+    return parsed
+
+
+def positive_int(value: str) -> int:
+    parsed = nonnegative_int(value)
+    if parsed == 0:
+        raise argparse.ArgumentTypeError("must be greater than zero")
     return parsed
 
 
@@ -64,10 +81,56 @@ def add_global_options(parser: argparse.ArgumentParser, *, defaults: bool) -> No
     )
 
 
+def add_generation_options(
+    parser: argparse.ArgumentParser,
+    *,
+    include_focus: bool,
+    include_jobs: bool,
+) -> None:
+    parser.add_argument(
+        "--database",
+        type=Path,
+        default=default_database_path(),
+        help="private SQLite cache for generated memory text",
+    )
+    parser.add_argument(
+        "--model",
+        type=nonempty,
+        default=DEFAULT_MODEL,
+        help=f"subscription model used for generation (default: {DEFAULT_MODEL})",
+    )
+    parser.add_argument(
+        "--effort",
+        choices=("minimal", "low", "medium", "high", "xhigh", "max"),
+        default=DEFAULT_EFFORT,
+        help=f"reasoning effort used for generation (default: {DEFAULT_EFFORT})",
+    )
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help="regenerate and replace matching cached output",
+    )
+    if include_focus:
+        parser.add_argument(
+            "--focus",
+            type=nonempty,
+            help="caller-supplied subject to emphasize in the generated text",
+        )
+    if include_jobs:
+        parser.add_argument(
+            "--jobs",
+            type=positive_int,
+            default=4,
+            help="maximum concurrent generation requests (default: 4)",
+        )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="codex-memoryctl",
-        description="Inspect, export, and inject Codex compaction memory.",
+        description=(
+            "Locate, describe, compare, export, and inject Codex compaction memory."
+        ),
     )
     parser.add_argument(
         "--version", action="version", version=f"%(prog)s {CLIENT_VERSION}"
@@ -102,6 +165,38 @@ def build_parser() -> argparse.ArgumentParser:
     show.add_argument("state", help="SOURCE@SELECTOR memory reference")
     add_global_options(show, defaults=False)
     show.set_defaults(func=cmd_show)
+
+    summarize = sub.add_parser(
+        "summarize",
+        help="generate concise text describing one opaque memory",
+    )
+    summarize.add_argument("state", help="SOURCE@SELECTOR memory reference")
+    add_generation_options(summarize, include_focus=True, include_jobs=False)
+    add_global_options(summarize, defaults=False)
+    summarize.set_defaults(func=cmd_summarize)
+
+    diff = sub.add_parser(
+        "diff",
+        help="generate concise text comparing an older and newer memory",
+    )
+    diff.add_argument("older", help="older SOURCE@SELECTOR memory reference")
+    diff.add_argument("newer", help="newer SOURCE@SELECTOR memory reference")
+    add_generation_options(diff, include_focus=True, include_jobs=False)
+    add_global_options(diff, defaults=False)
+    diff.set_defaults(func=cmd_diff)
+
+    index = sub.add_parser(
+        "index",
+        help="render sequential cached descriptions of a thread's checkpoints",
+    )
+    index.add_argument(
+        "source",
+        nargs="?",
+        help="thread id, task name, or rollout path (default: CODEX_THREAD_ID)",
+    )
+    add_generation_options(index, include_focus=False, include_jobs=True)
+    add_global_options(index, defaults=False)
+    index.set_defaults(func=cmd_index)
 
     search = sub.add_parser(
         "search",

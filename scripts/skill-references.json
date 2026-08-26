@@ -75,6 +75,12 @@
       ]
     },
     {
+      "source": "packages/codex-memoryctl/docs/generated-text.md",
+      "targets": [
+        "packages/codex-memoryctl/plugins/codex-memoryctl/skills/codex-memoryctl/references/generated-text.md"
+      ]
+    },
+    {
       "source": "packages/codex-goalctl/docs/goal-lifecycle.md",
       "targets": [
         "packages/codex-goalctl/plugins/codex-goalctl/skills/codex-goalctl/references/goal-lifecycle.md"

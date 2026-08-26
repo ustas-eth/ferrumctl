@@ -10,13 +10,18 @@ class ParserTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 parser.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-memoryctl 0.4.0\n")
+        self.assertEqual(output.getvalue(), "codex-memoryctl 0.5.0\n")
 
     def test_parses_public_commands(self) -> None:
         cases = [
             ["list"],
             ["list", "thread", "--origin", "standalone", "--limit", "0"],
             ["show", "thread@latest"],
+            ["summarize", "thread@latest"],
+            ["summarize", "thread@latest", "--focus", "network roots"],
+            ["diff", "thread@index:1", "thread@index:2"],
+            ["index"],
+            ["index", "thread", "--jobs", "2", "--refresh"],
             ["search", "thread", "preset mismatch"],
             ["search", "thread", "preset.*mismatch", "--match", "regex"],
             ["export", "thread@window:2", "--output", "memory.json"],
@@ -42,6 +47,10 @@ class ParserTests(unittest.TestCase):
         for argv in cases:
             with self.subTest(argv=argv):
                 self.assertTrue(callable(parser.build_parser().parse_args(argv).func))
+
+    def test_index_jobs_must_be_positive(self) -> None:
+        with self.assertRaises(SystemExit):
+            parser.build_parser().parse_args(["index", "thread", "--jobs", "0"])
 
     def test_inject_requires_one_source_form(self) -> None:
         for argv in (
