@@ -72,10 +72,16 @@ codex-memoryctl inject --self \
   --purpose "Compare these perspectives against my current evidence."
 ```
 
+Memoryctl labels the first perspective, closes it before opening the next, and
+closes the final perspective with the caller purpose. Each boundary carries
+the relevant source reference and whether it came from a local rollout or an
+export claim. This improves attribution without guaranteeing that the model
+will keep the perspectives separate.
+
 `--self` requires an active `CODEX_THREAD_ID` and uses current-turn binding. It
-also appends an attributed item containing the exact purpose and canonical
-memory references after the opaque batch. Use `--to TARGET` when a fresh loaded
-thread should retain the source turn association:
+also frames the opaque batch with attributed source items. Use `--to TARGET`
+when a fresh loaded thread should retain the source turn association;
+memory-only transfers keep the same perspective framing:
 
 ```sh
 codex-memoryctl inject --to FRESH_THREAD_ID \
@@ -109,16 +115,21 @@ explicitly writes the complete object to stdout.
   thread, or start a turn.
 - `--self` binds memory to the caller's current turn. `--to` preserves source
   turn association.
-- The attributed `--self` purpose improves provenance but does not make foreign
-  memory isolated or guarantee how the model interprets it.
+- Memory-only transfers use attributed perspective boundaries. They improve
+  provenance but do not isolate foreign memory or guarantee interpretation.
+- A model can use imported memory without retaining awareness that it came from
+  another perspective. State the intended relationship positively and use a
+  disposable consultant when the original thread must remain unchanged.
 - During an active turn, injected memory first enters pending input and may not
   appear in the rollout until Codex processes it. An idle target records it
   immediately for a later turn.
 - App-server acceptance does not prove that the model interpreted the memory.
-- Opaque memory carries no reliable donor identity or purpose. Use a disposable
-  consultant when an established thread should remain unchanged.
+- Opaque memory carries no reliable donor identity or purpose; memoryctl adds
+  source labels around it rather than changing the object.
 - Later compaction may absorb injected memory into the target's next
   checkpoint, and there is no paired removal operation.
+- Export digests validate the opaque item. Exported source thread, time, model,
+  and checkpoint fields remain editable claims.
 - Full-checkpoint exports contain retained plaintext messages. Treat every
   export as sensitive session material.
 
@@ -127,6 +138,7 @@ More detail:
 - [Memory model](docs/memory-model.md)
 - [Injection semantics](docs/injection-semantics.md)
 - [Memory workflows](docs/memory-workflows.md)
+- [Perspective framing](docs/perspective-framing.md)
 
 ## Codex Skill
 

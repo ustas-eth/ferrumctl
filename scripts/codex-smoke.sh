@@ -942,7 +942,7 @@ memoryctl --json export "$memory_thread@window:1" \
   --output "$SMOKE_ROOT/memory-export.json" >"$SMOKE_ROOT/memory-export-result.json"
 threadctl --timeout 5 resume "$agent_thread" --continue-goal \
   >"$SMOKE_ROOT/memory-target-resume.out"
-memoryctl --timeout 5 --json inject "$agent_thread" \
+memoryctl --timeout 5 --json inject --to "$agent_thread" \
   --state "$memory_thread@window:1" --purpose "isolated app-server smoke" \
   >"$SMOKE_ROOT/memory-inject.json"
 memoryctl --json list "$agent_thread" --origin standalone \
@@ -976,9 +976,28 @@ assert injected["outcome"] == "accepted"
 assert injected["targetThreadId"] == target_id
 assert injected["memoryIds"] == [state["memoryId"]]
 assert injected["turnBinding"] == "source"
+assert injected["sourceBasis"] == "local-rollout"
+assert injected["perspectiveFraming"] == "boundaries"
+assert injected["purposeDelivery"] == "attributed-boundary"
 assert "activeTurnId" not in injected
 assert target["states"][0]["origin"] == "standalone"
 assert target["states"][0]["memoryId"] == state["memoryId"]
+with open(target["rolloutPath"], encoding="utf-8") as handle:
+    records = [json.loads(line) for line in handle if line.strip()]
+frames = [
+    record["payload"]
+    for record in records
+    if record.get("type") == "response_item"
+    and record.get("payload", {}).get("type") == "agent_message"
+    and record["payload"].get("author") == "memoryctl"
+]
+assert len(frames) == 2
+frame_events = [json.loads(frame["content"][0]["text"]) for frame in frames]
+assert [event["event"] for event in frame_events] == [
+    "memoryctl.perspective.open",
+    "memoryctl.perspective.close",
+]
+assert frame_events[1]["callerPurpose"]["text"] == "isolated app-server smoke"
 PY
 printf 'memoryctl discovered, exported, injected, and re-observed opaque memory\n'
 

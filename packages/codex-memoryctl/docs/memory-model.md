@@ -42,6 +42,16 @@ a prefix when it matches more than one memory in the source rollout. Matching
 digests show that the same encrypted object appears in more than one place;
 they do not show that a model read or adopted it.
 
+The `m:` reference is a memoryctl selector, not a model-visible label embedded
+in the opaque state. Supplying a memory and naming its reference elsewhere does
+not by itself bind the two from the model's point of view. Surrounding context
+must establish that relationship when source awareness matters.
+
+An export validates the digest and size of its opaque item. Its source thread,
+time, model, and checkpoint fields remain descriptive metadata rather than
+authenticated provenance; a copied export can be edited. Keep that distinction
+when an export came from another host or party.
+
 Checkpoint selectors are local to one rollout:
 
 - `latest` selects the newest generated checkpoint, or the newest standalone

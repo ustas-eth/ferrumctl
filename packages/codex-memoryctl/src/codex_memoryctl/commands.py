@@ -5,6 +5,7 @@ import copy
 import json
 import os
 import uuid
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -233,11 +234,12 @@ def bind_to_current_turn(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return rebound
 
 
-def purpose_frame(
+def perspective_frame(
     target: str,
-    purpose: str,
-    source_refs: list[str],
+    event: str,
+    **fields: Any,
 ) -> dict[str, Any]:
+    payload = {"event": f"memoryctl.perspective.{event}", **fields}
     return {
         "type": "agent_message",
         "id": f"amsg_memoryctl_{uuid.uuid4().hex}",
@@ -246,12 +248,53 @@ def purpose_frame(
         "content": [
             {
                 "type": "input_text",
-                "text": (
-                    f"Purpose: {purpose}\nMemory sources: {', '.join(source_refs)}"
-                ),
+                "text": json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
             }
         ],
     }
+
+
+def frame_memory_batch(
+    target: str,
+    items: list[dict[str, Any]],
+    sources: list[dict[str, Any]],
+    purpose: str | None,
+) -> list[dict[str, Any]]:
+    if not items or len(items) != len(sources):
+        raise MemoryctlError("memory framing requires one source for each item")
+
+    framed = [
+        perspective_frame(
+            target,
+            "open",
+            openedMemory=sources[0],
+        )
+    ]
+    for index, item in enumerate(items):
+        framed.append(item)
+        if index + 1 < len(items):
+            framed.append(
+                perspective_frame(
+                    target,
+                    "transition",
+                    closedMemory=sources[index],
+                    openedMemory=sources[index + 1],
+                )
+            )
+
+    closing: dict[str, Any] = {"closedMemory": sources[-1]}
+    if purpose is not None:
+        closing["callerPurpose"] = {
+            "origin": "caller-supplied",
+            "text": purpose,
+        }
+    framed.append(perspective_frame(target, "close", **closing))
+    return framed
+
+
+def repeated_memory_ids(memory_ids: list[str]) -> list[str]:
+    counts = Counter(memory_ids)
+    return sorted(value for value, count in counts.items() if count > 1)
 
 
 async def cmd_inject(args: argparse.Namespace) -> int:
@@ -298,7 +341,13 @@ async def cmd_inject(args: argparse.Namespace) -> int:
             items = list(envelope["items"])
             memory_ids = [_export_memory_id(envelope)]
             scope = str(envelope["scope"])
-            sources = [str(envelope.get("source", {}).get("threadId") or "file")]
+            claimed_thread_id = envelope.get("source", {}).get("threadId")
+            sources = [
+                claimed_thread_id
+                if isinstance(claimed_thread_id, str) and claimed_thread_id
+                else "file"
+            ]
+            source_basis = "export-metadata-claim"
             source_refs = [f"{sources[0]}@{memory_ref(memory_ids[0])}"]
         else:
             if args.full_checkpoint and len(args.state) != 1:
@@ -325,9 +374,30 @@ async def cmd_inject(args: argparse.Namespace) -> int:
                 scope = "memory"
             memory_ids = [state.memory_id for state in states]
             sources = [state.thread_id for state in states]
+            source_basis = "local-rollout"
             source_refs = [
                 f"{state.thread_id}@{memory_ref(state.memory_id)}" for state in states
             ]
+
+        requested_duplicates = repeated_memory_ids(memory_ids)
+        if requested_duplicates and not args.allow_duplicate:
+            raise MemoryctlError(
+                "requested batch repeats memory "
+                + ", ".join(memory_ref(value) for value in requested_duplicates)
+                + "; pass --allow-duplicate to repeat it deliberately"
+            )
+
+        source_memories = [
+            {
+                "position": position,
+                "reference": reference,
+                "sourceBasis": source_basis,
+            }
+            for position, (reference, memory_id) in enumerate(
+                zip(source_refs, memory_ids, strict=True),
+                1,
+            )
+        ]
 
         active_turn_id: str | None = None
         if self_target:
@@ -339,7 +409,11 @@ async def cmd_inject(args: argparse.Namespace) -> int:
             turn = await current_active_turn(app, target)
             active_turn_id = str(turn["id"])
             items = bind_to_current_turn(items)
-            items.append(purpose_frame(target, args.purpose, source_refs))
+
+        perspective_framing = "none"
+        if scope == "memory":
+            items = frame_memory_batch(target, items, source_memories, args.purpose)
+            perspective_framing = "boundaries"
 
         target_path = thread.get("path")
         if isinstance(target_path, str) and Path(target_path).is_file():
@@ -368,6 +442,12 @@ async def cmd_inject(args: argparse.Namespace) -> int:
             ) from exc
 
     shown_memory_ids = [memory_ref(value) for value in memory_ids]
+    if args.purpose is None:
+        purpose_delivery = "none"
+    elif perspective_framing == "boundaries":
+        purpose_delivery = "attributed-boundary"
+    else:
+        purpose_delivery = "receipt-only"
 
     result: dict[str, Any] = {
         "outcome": "accepted",
@@ -376,8 +456,11 @@ async def cmd_inject(args: argparse.Namespace) -> int:
         "memoryIds": shown_memory_ids,
         "sourceThreadIds": sources,
         "sourceMemoryRefs": source_refs,
+        "sourceBasis": source_basis,
+        "sourceMemories": source_memories,
         "turnBinding": "current" if active_turn_id is not None else "source",
-        "purposeDelivery": "attributed-item" if self_target else "receipt-only",
+        "perspectiveFraming": perspective_framing,
+        "purposeDelivery": purpose_delivery,
     }
     if active_turn_id is not None:
         result["activeTurnId"] = active_turn_id
@@ -392,11 +475,13 @@ async def cmd_inject(args: argparse.Namespace) -> int:
             f"scope={scope}",
             f"memories={','.join(shown_memory_ids)}",
             f"sources={','.join(sources)}",
+            f"source-basis={source_basis}",
             (
                 f"binding=current:{active_turn_id}"
                 if active_turn_id is not None
                 else "binding=source"
             ),
+            f"framing={perspective_framing}",
             f"purpose-delivery={result['purposeDelivery']}",
         ]
         if args.purpose is not None:

@@ -20,15 +20,19 @@ separate operation.
 
 `--self` selects the active `CODEX_THREAD_ID`. It requires `--purpose`, clears
 each copied memory's donor turn association, and asks Codex to bind the batch
-to the current turn. The same batch ends with an attributed `memoryctl` item
-containing the exact purpose and canonical source memory references. This
-places the caller's intent after the opaque memories without turning it into
-user or developer instruction.
+to the current turn. Memoryctl places an attributed perspective boundary
+before and after the memory, and a transition boundary between memories. The
+closing boundary contains the exact caller purpose and mechanically resolved
+memory ids. It also states whether each source thread came from a local rollout
+or editable export metadata. The purpose is a field inside structured content,
+so its text remains distinguishable from fields supplied by memoryctl.
 
 `--to TARGET` preserves source turn association instead. A purpose supplied
-with `--to` appears only in the command receipt. The two modes are explicit
-because they give the injected memory different framing. Full-checkpoint
-injection requires `--to` and is intended for a fresh target.
+with a memory-only `--to` transfer is delivered in the same closing boundary.
+The two modes remain explicit because their memory items have different turn
+binding. Full-checkpoint injection requires `--to`, keeps the exact replacement
+history unframed, and is intended for a fresh target. Its optional purpose
+appears only in the command receipt.
 
 ## Persistence And Order
 
@@ -37,24 +41,34 @@ paired remove operation. A later compaction can combine their influence with
 the recipient's history into a new opaque memory.
 
 Repeated `--state` arguments are submitted as one batch in command order. The
-order is model-visible and may change the result. Full-checkpoint injection is
+order is model-visible and may change the result. Memoryctl labels the first
+memory, closes one perspective before opening the next, and closes the final
+perspective with its source reference. These boundaries improve source
+awareness; they do not guarantee that the model keeps a perspective distinct
+or that later compaction preserves the boundary. Full-checkpoint injection is
 limited to one source because combining retained histories silently would be a
 different operation.
 
-The command refuses memory already present in the target's current compacted
-history or appended after its latest compaction unless `--allow-duplicate` is
-present. Earlier replaced checkpoints remain selectable for older-self recall.
-This is a preflight guard, not an atomic idempotency guarantee. If submission
-becomes uncertain, inspect the target for the reported memory reference before
-retrying.
+Without `--allow-duplicate`, the command refuses both a repeated memory within
+the requested batch and memory already present in the target's current
+compacted history or appended after its latest compaction. Earlier replaced
+checkpoints remain selectable for older-self recall. This is a preflight guard,
+not an atomic idempotency guarantee. If submission becomes uncertain, inspect
+the target for the reported memory reference before retrying.
 
 ## Provenance And Compatibility
 
 An opaque compaction item does not state which thread donated it, why it was
-injected, or how much authority it should carry. The attributed item added by
-`--self` supplies that missing local context. It reports caller intent and
-source references; it does not decode, summarize, or assign authority to the
-memory.
+injected, or how much authority it should carry. The surrounding attributed
+items supply local source labels and caller intent; they do not decode,
+summarize, or assign authority to the memory.
+
+Semantic use and source awareness are separate outcomes. A model may recover
+useful content while treating it as its own continuity, or may lose track of
+which of several memories supplied a detail. The perspective boundaries
+improve surrounding provenance but are not an isolation guarantee. See
+[Perspective framing](perspective-framing.md) when the imported state should
+remain an attributed foreign perspective.
 
 Turn association is delivery metadata, not provenance. Current-turn binding
 does not identify the donor, make the encrypted state a neutral document, or
@@ -77,4 +91,8 @@ it.
 
 Memory-only exports contain encrypted content and source metadata.
 Full-checkpoint exports additionally contain retained plaintext conversation
-items. Both should be handled as sensitive session material.
+items. The compaction digest is validated when an export is read; its source
+thread, time, model, and checkpoint fields are editable claims. Injection
+receipts and perspective boundaries identify them as export metadata rather
+than local rollout provenance. Both export forms should be handled as sensitive
+session material.

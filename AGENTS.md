@@ -84,8 +84,10 @@ command should remain bound to one state surface.
   expose credit data or consumable resets.
 - `codex-memoryctl` discovers and transfers opaque compaction memory without
   owning a catalog. Keep memory-only transfer distinct from a full checkpoint,
-  preserve item order, and report app-server acceptance without implying model
-  interpretation or temporary scope.
+  preserve item order, and frame each memory-only source without altering the
+  opaque item. Treat semantic use, source awareness, assimilation, and workflow
+  isolation as separate outcomes. Report app-server acceptance without
+  implying model interpretation or temporary scope.
 
 ## Documentation Roles
 

@@ -155,7 +155,7 @@ def build_parser() -> argparse.ArgumentParser:
     export.set_defaults(func=cmd_export)
 
     inject = sub.add_parser(
-        "inject", help="append compaction memory with an explicit turn binding"
+        "inject", help="append framed compaction memory with an explicit turn binding"
     )
     target = inject.add_mutually_exclusive_group(required=True)
     target.add_argument(
@@ -193,14 +193,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--purpose",
         type=nonempty,
         help=(
-            "caller intent; delivered after memory with --self and recorded "
-            "only in output with --to"
+            "caller intent; included in the closing perspective boundary for "
+            "memory-only transfer"
         ),
     )
     inject.add_argument(
         "--allow-duplicate",
         action="store_true",
-        help="inject memory already present in the target's current history",
+        help=(
+            "repeat memory within the requested batch or already present in "
+            "the target's current history"
+        ),
     )
     inject.add_argument(
         "--allow-non-openai",

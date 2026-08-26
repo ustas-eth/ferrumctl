@@ -69,6 +69,12 @@
       ]
     },
     {
+      "source": "packages/codex-memoryctl/docs/perspective-framing.md",
+      "targets": [
+        "packages/codex-memoryctl/plugins/codex-memoryctl/skills/codex-memoryctl/references/perspective-framing.md"
+      ]
+    },
+    {
       "source": "packages/codex-goalctl/docs/goal-lifecycle.md",
       "targets": [
         "packages/codex-goalctl/plugins/codex-goalctl/skills/codex-goalctl/references/goal-lifecycle.md"

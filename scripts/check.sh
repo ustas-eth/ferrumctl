@@ -99,7 +99,7 @@ run git diff --check
   run "$UV" pip check --python "$tool_dir/codex-wakectl/bin/python"
   test "$("$bin_dir/codex-goalctl" --version)" = "codex-goalctl 0.1.10"
   test "$("$bin_dir/codex-limitctl" --version)" = "codex-limitctl 0.2.8"
-  test "$("$bin_dir/codex-memoryctl" --version)" = "codex-memoryctl 0.3.0"
+  test "$("$bin_dir/codex-memoryctl" --version)" = "codex-memoryctl 0.4.0"
   test "$("$bin_dir/streamctl" --version)" = "streamctl 0.2.2"
   test "$("$bin_dir/codex-threadctl" --version)" = "codex-threadctl 0.6.2"
   test "$("$bin_dir/codex-wakectl" --version)" = "codex-wakectl 0.5.1"

@@ -89,6 +89,9 @@ original conversation must remain unchanged.
 - Materialized history and rollout evidence can change or grow independently.
 - Memory injection acceptance, model receipt, and later assimilation are
   separate events.
+- Model-visible delivery, semantic use, and retained source awareness are
+  separate outcomes. Carry an actor or source label in ordinary content when
+  later attribution matters; transport metadata alone is not enough.
 
 ## Composition
 

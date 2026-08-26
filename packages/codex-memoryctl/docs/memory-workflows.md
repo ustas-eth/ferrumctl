@@ -15,14 +15,21 @@ retained perspective is needed, but a clear current prompt is often enough.
 This topology makes the consultation temporary at the workflow level; memoryctl
 itself has no removal operation.
 
+Temporary workflow scope and model-level perspective separation are different.
+The consultant may use donor memory as its own retained continuity while
+answering the question. When the answer must preserve which perspective
+supplied a claim, use the framing described in [Perspective
+framing](perspective-framing.md).
+
 ## Older-Self Recall And In-Place Assimilation
 
 An established agent can use `inject --self` to revisit an older checkpoint or
 accept a donated perspective into its continuing work. It must call the command
 during an active turn and state the purpose explicitly. Memoryctl replaces the
-donor turn association with current-turn binding and records that exact purpose
-after the memory batch. The purpose should say how the retained perspective
-relates to the current question; it does not need to restate the current role.
+donor turn association with current-turn binding, brackets each memory with its
+source reference, and records that exact purpose in the closing boundary. The
+purpose should say how the retained perspective relates to the current
+question; it does not need to restate the current role.
 
 The retained current instructions and evidence remain the authority. Extract
 useful details from the recalled state and check them against the present
@@ -36,8 +43,12 @@ in ordinary project artifacts.
 
 A fresh thread can assimilate one or more memory-only states with `--self`.
 Their order is model-visible, and a short current instruction can define the
-handoff or synthesis task. This is normally preferable to copying retained
-message history.
+handoff or synthesis task. Memoryctl places a source boundary around each
+state. This is normally preferable to copying retained message history.
+
+An ordered batch is not a set of isolated channels. The boundaries improve
+attribution but cannot guarantee it. When donors must remain independently
+isolated, consult them in separate threads.
 
 `inject --to TARGET` preserves each donor's source turn association. Use it
 when a loaded fresh target needs source-associated state, not as neutral context

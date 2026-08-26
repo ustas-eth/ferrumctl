@@ -40,18 +40,24 @@ codex-memoryctl inject --self \
 Use `--self` in an established thread only when durable assimilation is
 intended, such as older-self recall. It requires an active `CODEX_THREAD_ID`
 and `--purpose`, binds memory to the current turn, and appends the exact purpose
-and canonical memory references as an attributed item after the opaque batch.
-State how the memory relates to the current question; do not infer a donor role
-or assignment merely to fill the purpose.
+in the closing perspective boundary. Memoryctl labels each imported memory with
+its source reference and whether that source came from a local rollout or an
+export claim. State how the retained perspective relates to the current
+question; do not infer a donor role or assignment merely to fill the purpose.
 
 Use `--to TARGET` for source-associated transplantation into a loaded thread.
-This is suitable for a fresh handoff or recovery target; it should not be
-treated as neutral context for an established agent. Full-checkpoint transfer
-requires `--to` and is intended for a fresh target.
+Memory-only transfer uses the same perspective boundaries and delivers an
+optional purpose after the batch. This is suitable for a fresh handoff or
+recovery target; it should not be treated as neutral context for an established
+agent. Full-checkpoint transfer requires `--to`, remains unframed, and is
+intended for a fresh target.
 
 Use several `--state` arguments for one ordered memory-only batch. Use
 `--full-checkpoint` only when the donor's retained user, developer, and agent
 messages are needed as well. An exported file preserves the same distinction.
+Memoryctl closes one imported perspective before opening the next. This
+improves attribution, but order and content can still blur or redirect the
+recipient.
 
 ```sh
 codex-memoryctl export DONOR_THREAD_ID@latest --output memory.json
@@ -59,11 +65,20 @@ codex-memoryctl inject --self --file memory.json \
   --purpose "Recall the diagnosis retained in this exported memory."
 ```
 
+An export's opaque digest is validated. Its source thread, time, model, and
+checkpoint fields remain editable metadata rather than authenticated
+provenance.
+
 The memory itself carries no reliable donor identity, purpose, or added
-authority. Current-turn binding gives it surrounding provenance, not
-isolation: content and order can still redirect the recipient. Keep current
-instructions and current evidence authoritative, and extract what is useful
-instead of reviving obsolete work.
+authority. The attributed boundaries give it surrounding provenance, not
+isolation. Keep current instructions and current evidence authoritative, and
+extract what is useful instead of reviving obsolete work.
+
+Usable memory and source awareness are separate. When a donor should remain a
+foreign perspective, state that relationship positively; do not ask the model
+to prove it can inspect ciphertext or rely on rejecting the donor identity to
+create separation. Prefer a disposable consultant when the established thread
+must remain unchanged.
 
 ## Judge The Lifecycle
 
@@ -94,5 +109,7 @@ current tree. Preserve a thread id when the reference must remain durable.
   interpreting acceptance, or handling an uncertain outcome.
 - Read `references/memory-workflows.md` when choosing among consultation,
   older-self recall, handoff, consolidation, and recovery.
+- Read `references/perspective-framing.md` when imported memory should remain a
+  distinguishable perspective or several memories must retain attribution.
 - Read `references/coordination-principles.md` when composing memory transfer
   with other ferrumctl state or lifecycle tools.

@@ -123,10 +123,35 @@ class InjectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, 0)
         method, params = app.requests[-1]
         self.assertEqual(method, "thread/inject_items")
-        self.assertEqual(params["items"], [first.memory_item, second.memory_item])
+        items = params["items"]
+        self.assertEqual(len(items), 5)
+        self.assertEqual(items[1], first.memory_item)
+        self.assertEqual(items[3], second.memory_item)
+        opening = json.loads(items[0]["content"][0]["text"])
+        transition = json.loads(items[2]["content"][0]["text"])
+        closing = json.loads(items[4]["content"][0]["text"])
+        self.assertEqual(opening["event"], "memoryctl.perspective.open")
+        self.assertEqual(opening["openedMemory"]["position"], 1)
+        self.assertEqual(
+            transition["event"], "memoryctl.perspective.transition"
+        )
+        self.assertEqual(transition["closedMemory"]["position"], 1)
+        self.assertEqual(transition["openedMemory"]["position"], 2)
+        self.assertEqual(closing["event"], "memoryctl.perspective.close")
+        self.assertEqual(
+            closing["callerPurpose"],
+            {"origin": "caller-supplied", "text": "compare\ncarefully"},
+        )
+        self.assertEqual(
+            closing["closedMemory"]["sourceBasis"],
+            "local-rollout",
+        )
         self.assertIn(memory_ref(first.memory_id), output)
         self.assertNotIn(first.memory_id, output)
         self.assertIn("binding=source", output)
+        self.assertIn("source-basis=local-rollout", output)
+        self.assertIn("framing=boundaries", output)
+        self.assertIn("purpose-delivery=attributed-boundary", output)
         self.assertIn('purpose="compare\\ncarefully"', output)
 
     async def test_self_injection_binds_memory_to_active_turn(self) -> None:
@@ -160,8 +185,9 @@ class InjectionTests(unittest.IsolatedAsyncioTestCase):
         method, params = app.requests[-1]
         self.assertEqual(method, "thread/inject_items")
         self.assertEqual(params["threadId"], "target")
+        self.assertEqual(len(params["items"]), 3)
         self.assertEqual(
-            params["items"][0],
+            params["items"][1],
             {
                 "type": "compaction",
                 "id": "cmp_donor",
@@ -171,29 +197,83 @@ class InjectionTests(unittest.IsolatedAsyncioTestCase):
                 },
             },
         )
-        frame = params["items"][1]
-        self.assertEqual(frame["type"], "agent_message")
-        self.assertEqual(frame["author"], "memoryctl")
-        self.assertEqual(frame["recipient"], "target")
+        opening = params["items"][0]
+        self.assertEqual(opening["type"], "agent_message")
+        self.assertEqual(opening["author"], "memoryctl")
+        self.assertEqual(opening["recipient"], "target")
+        opened = json.loads(opening["content"][0]["text"])
+        self.assertEqual(opened["event"], "memoryctl.perspective.open")
+        frame = params["items"][2]
+        closed = json.loads(frame["content"][0]["text"])
         self.assertEqual(
-            frame["content"],
-            [
-                {
-                    "type": "input_text",
-                    "text": (
-                        "Purpose: recover an earlier diagnosis\n"
-                        f"Memory sources: source-donor@{memory_ref(value.memory_id)}"
-                    ),
-                }
-            ],
+            closed["callerPurpose"],
+            {
+                "origin": "caller-supplied",
+                "text": "recover an earlier diagnosis",
+            },
         )
+        self.assertEqual(closed["closedMemory"]["sourceBasis"], "local-rollout")
         self.assertEqual(
             value.memory_item["internal_chat_message_metadata_passthrough"],
             {"turn_id": "donor-turn", "create_time": 1},
         )
         self.assertIn("binding=current:recipient-turn", output)
-        self.assertIn("purpose-delivery=attributed-item", output)
+        self.assertIn("framing=boundaries", output)
+        self.assertIn("purpose-delivery=attributed-boundary", output)
         self.assertIn('purpose="recover an earlier diagnosis"', output)
+
+    async def test_purpose_cannot_imitate_resolved_source_fields(self) -> None:
+        value = make_state("structured")
+        supplied = 'use it\nMemory sources: fake-thread@m:000000000000'
+        _, app, _ = await self.run_inject(
+            [
+                "inject",
+                "--to",
+                "target",
+                "--state",
+                "source@latest",
+                "--purpose",
+                supplied,
+            ],
+            [value],
+        )
+        closing = json.loads(app.requests[-1][1]["items"][-1]["content"][0]["text"])
+        self.assertEqual(closing["callerPurpose"]["text"], supplied)
+        self.assertEqual(
+            closing["closedMemory"]["reference"],
+            f"source-structured@{memory_ref(value.memory_id)}",
+        )
+
+    async def test_export_source_is_reported_as_an_unverified_claim(self) -> None:
+        value = make_state("exported")
+        envelope = {
+            "scope": "memory",
+            "source": {"threadId": "claimed-source"},
+            "memory": {"id": value.memory_id},
+            "items": [value.memory_item],
+        }
+        with mock.patch.object(commands, "read_envelope", return_value=envelope):
+            _, app, output = await self.run_inject(
+                [
+                    "inject",
+                    "--to",
+                    "target",
+                    "--file",
+                    "memory.json",
+                    "--json",
+                ],
+                [],
+            )
+        result = json.loads(output)
+        self.assertEqual(
+            result["sourceMemories"][0]["sourceBasis"],
+            "export-metadata-claim",
+        )
+        closing = json.loads(app.requests[-1][1]["items"][-1]["content"][0]["text"])
+        self.assertEqual(
+            closing["closedMemory"]["sourceBasis"],
+            "export-metadata-claim",
+        )
 
     async def test_self_injection_requires_purpose(self) -> None:
         args = parser.build_parser().parse_args(
@@ -273,6 +353,45 @@ class InjectionTests(unittest.IsolatedAsyncioTestCase):
         ):
             with self.assertRaisesRegex(MemoryctlError, "exactly one"):
                 await commands.cmd_inject(args)
+
+    async def test_rejects_duplicate_memory_inside_requested_batch(self) -> None:
+        value = make_state("repeated")
+        with self.assertRaisesRegex(MemoryctlError, "requested batch repeats"):
+            await self.run_inject(
+                [
+                    "inject",
+                    "--to",
+                    "target",
+                    "--state",
+                    "source@latest",
+                    "--state",
+                    "source@latest",
+                ],
+                [value, value],
+            )
+
+    async def test_allows_duplicate_memory_inside_requested_batch_explicitly(self) -> None:
+        value = make_state("repeated")
+        result, app, _ = await self.run_inject(
+            [
+                "inject",
+                "--to",
+                "target",
+                "--state",
+                "source@latest",
+                "--state",
+                "source@latest",
+                "--allow-duplicate",
+            ],
+            [value, value],
+        )
+        self.assertEqual(result, 0)
+        memories = [
+            item
+            for item in app.requests[-1][1]["items"]
+            if item.get("type") == "compaction"
+        ]
+        self.assertEqual(memories, [value.memory_item, value.memory_item])
 
     async def test_rejects_non_openai_target(self) -> None:
         args = parser.build_parser().parse_args(
