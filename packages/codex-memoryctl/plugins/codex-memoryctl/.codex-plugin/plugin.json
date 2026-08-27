@@ -1,6 +1,6 @@
 {
   "name": "codex-memoryctl",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Codex skill for locating, describing, and reusing opaque compaction memory.",
   "author": {
     "name": "ustas-eth"

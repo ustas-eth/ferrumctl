@@ -2,14 +2,19 @@ import io
 import json
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
 from codex_memoryctl import generated_commands, parser
 from codex_memoryctl.cache import CachedArtifact
 from codex_memoryctl.generation import GenerationResult
-from codex_memoryctl.rollouts import MemoryState, RolloutMemory, memory_id
+from codex_memoryctl.rollouts import (
+    MemoryState,
+    RolloutMemory,
+    TranscriptMessage,
+    memory_id,
+)
 
 
 def make_state(name: str, position: int) -> MemoryState:
@@ -25,6 +30,7 @@ def make_state(name: str, position: int) -> MemoryState:
         payload_bytes=size,
         model="gpt-test",
         model_provider="openai",
+        line_number=position * 10,
         checkpoint_index=position,
     )
 
@@ -200,5 +206,110 @@ class GeneratedCommandTests(unittest.IsolatedAsyncioTestCase):
             parsed = json.loads(output.getvalue())
             self.assertEqual(parsed["cachedCount"], 1)
             self.assertEqual(parsed["generatedCount"], 1)
+            self.assertEqual(parsed["checkpointCount"], 2)
+            self.assertEqual(parsed["matchingCheckpointCount"], 2)
+            self.assertEqual(parsed["selectedCheckpointCount"], 2)
             self.assertEqual([record["position"] for record in parsed["records"]], [1, 2])
             self.assertTrue(parsed["sourceAdvanced"])
+
+    async def test_index_limits_generation_and_keeps_global_predecessor(self) -> None:
+        states = tuple(make_state(str(position), position) for position in range(1, 13))
+        messages = (
+            TranscriptMessage(125, "2026-01-02T03:05:00Z", "user", None, "tail"),
+        )
+        rollout = RolloutMemory(
+            "thread-test",
+            Path("/tmp/source.jsonl"),
+            states,
+            messages=messages,
+        )
+        args = parser.build_parser().parse_args(
+            ["index", "thread-test", "--database", "/tmp/test.sqlite3", "--json"]
+        )
+        calls = []
+
+        async def build(_args, *, operation, states, prompt):
+            del prompt
+            calls.append((operation, states))
+            return generated(f"checkpoint {states[-1].checkpoint_index}", cache_hit=False)
+
+        with (
+            mock.patch.object(
+                generated_commands,
+                "resolve_source",
+                mock.AsyncMock(side_effect=lambda value, _args: value),
+            ),
+            mock.patch.object(
+                generated_commands,
+                "load_rollout",
+                return_value=rollout,
+            ),
+            mock.patch.object(
+                generated_commands,
+                "generated_text",
+                side_effect=build,
+            ),
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            await generated_commands.cmd_index(args)
+
+        self.assertEqual(len(calls), 10)
+        self.assertEqual(calls[0][0], "diff-v1")
+        self.assertEqual(
+            [state.checkpoint_index for state in calls[0][1]],
+            [2, 3],
+        )
+        parsed = json.loads(output.getvalue())
+        self.assertEqual(parsed["checkpointCount"], 12)
+        self.assertEqual(parsed["matchingCheckpointCount"], 12)
+        self.assertEqual(parsed["selectedCheckpointCount"], 10)
+        self.assertEqual(
+            [record["position"] for record in parsed["records"]],
+            list(range(3, 13)),
+        )
+        self.assertEqual(parsed["selection"]["firstIndex"], 3)
+        self.assertTrue(parsed["selection"]["hasEarlier"])
+        self.assertTrue(parsed["hasUncompactedTail"])
+        self.assertEqual(parsed["uncompactedMessageCount"], 1)
+
+    async def test_plain_index_explains_pagination_and_uncompacted_tail(self) -> None:
+        states = tuple(make_state(str(position), position) for position in range(1, 12))
+        rollout = RolloutMemory(
+            "thread-test",
+            Path("/tmp/source.jsonl"),
+            states,
+            messages=(TranscriptMessage(115, None, "user", None, "tail"),),
+        )
+        args = parser.build_parser().parse_args(["index", "thread-test"])
+
+        async def build(_args, *, operation, states, prompt):
+            del operation, prompt
+            return generated(f"checkpoint {states[-1].checkpoint_index}", cache_hit=True)
+
+        with (
+            mock.patch.object(
+                generated_commands,
+                "resolve_source",
+                mock.AsyncMock(side_effect=lambda value, _args: value),
+            ),
+            mock.patch.object(
+                generated_commands,
+                "load_rollout",
+                return_value=rollout,
+            ),
+            mock.patch.object(
+                generated_commands,
+                "generated_text",
+                side_effect=build,
+            ),
+            redirect_stdout(io.StringIO()),
+            redirect_stderr(io.StringIO()) as errors,
+        ):
+            await generated_commands.cmd_index(args)
+
+        self.assertIn(
+            "showing checkpoint indices 2-11 (10 of 11 matching",
+            errors.getvalue(),
+        )
+        self.assertIn("use --to-index 1", errors.getvalue())
+        self.assertIn("uncompacted tail", errors.getvalue())

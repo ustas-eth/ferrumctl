@@ -49,15 +49,23 @@ render a sequential view of the whole thread:
 ```sh
 codex-memoryctl summarize THREAD_ID@latest
 codex-memoryctl diff THREAD_ID@index:12 THREAD_ID@index:13
-codex-memoryctl index THREAD_ID | rg -i "preset|aggregator"
+codex-memoryctl index THREAD_ID
+codex-memoryctl index THREAD_ID --limit 0 | rg -i "preset|aggregator"
 ```
 
 `summarize` and `diff` produce one concise text field. `index` summarizes the
 first portable checkpoint and describes each later checkpoint relative to its
-predecessor. It renders the current rollout together with cached results rather
-than maintaining a separate catalog. The default model is GPT-5.6 Luna at
-medium effort; `--model`, `--effort`, and `--refresh` are available when a
-different tradeoff or a fresh result is needed.
+predecessor. It renders the newest ten matching checkpoints by default;
+`--limit 0` deliberately selects the complete range. Use `--from-index` and
+`--to-index` for checkpoint bounds or `--since` and `--until` for UTC dates and
+RFC3339 timestamps. Bounds and limits apply before model requests.
+
+The view joins the current rollout with cached results rather than maintaining
+a separate catalog. It reports when ordinary conversation follows the newest
+portable checkpoint because those uncompacted messages are not described by
+the index. The default model is GPT-5.6 Luna at medium effort; `--model`,
+`--effort`, and `--refresh` are available when a different tradeoff or a fresh
+result is needed.
 
 Generated text is a model-derived aid for orientation and search. It may omit
 retained details, so an omission is not evidence that the opaque state lacks

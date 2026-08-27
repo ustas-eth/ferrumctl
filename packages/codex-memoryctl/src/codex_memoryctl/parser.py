@@ -13,8 +13,10 @@ from .commands import (
     cmd_show,
 )
 from .constants import CLIENT_VERSION, DEFAULT_TIMEOUT
+from .errors import MemoryctlError
 from .generation import DEFAULT_EFFORT, DEFAULT_MODEL
 from .generated_commands import cmd_diff, cmd_index, cmd_summarize
+from .indexing import TimeBoundary, parse_time_boundary
 
 
 def positive_float(value: str) -> float:
@@ -48,6 +50,13 @@ def nonempty(value: str) -> str:
     if not value.strip():
         raise argparse.ArgumentTypeError("must not be empty")
     return value
+
+
+def index_time_boundary(value: str) -> TimeBoundary:
+    try:
+        return parse_time_boundary(value)
+    except MemoryctlError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
 def add_global_options(parser: argparse.ArgumentParser, *, defaults: bool) -> None:
@@ -193,6 +202,32 @@ def build_parser() -> argparse.ArgumentParser:
         "source",
         nargs="?",
         help="thread id, task name, or rollout path (default: CODEX_THREAD_ID)",
+    )
+    index.add_argument(
+        "--from-index",
+        type=positive_int,
+        help="first checkpoint index to include",
+    )
+    index.add_argument(
+        "--to-index",
+        type=positive_int,
+        help="last checkpoint index to include",
+    )
+    index.add_argument(
+        "--since",
+        type=index_time_boundary,
+        help="include checkpoints on or after this UTC date or RFC3339 timestamp",
+    )
+    index.add_argument(
+        "--until",
+        type=index_time_boundary,
+        help="include checkpoints on or before this UTC date or RFC3339 timestamp",
+    )
+    index.add_argument(
+        "--limit",
+        type=nonnegative_int,
+        default=10,
+        help="newest matching checkpoints to render; 0 renders all (default: 10)",
     )
     add_generation_options(index, include_focus=False, include_jobs=True)
     add_global_options(index, defaults=False)

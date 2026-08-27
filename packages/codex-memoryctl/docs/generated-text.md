@@ -47,13 +47,37 @@ credentials. It is still sensitive because the text can describe private
 session work. `--database PATH` selects another cache, and `--refresh` replaces
 the matching generated artifact after a successful request.
 
-`index THREAD` is a current view, not another stored index. It reads portable
-checkpoints in rollout order, uses a summary for the first checkpoint and an
-adjacent diff for each later one, and joins those positions with cached text.
-The result can be skimmed or piped to tools such as `rg`. `--jobs N` limits
-concurrent requests. If one request fails, successful entries remain cached for
-the next run. If the rollout gains another portable checkpoint during
-generation, the command reports that the view should be rerun.
+`index THREAD` is a current view, not another stored index. It renders the
+newest ten matching portable checkpoints by default, in chronological order.
+`--limit 0` selects the complete matching range. `--from-index` and
+`--to-index` set inclusive checkpoint bounds. `--since` and `--until` accept a
+UTC date or RFC3339 timestamp; a date includes that complete UTC day. Bounds
+are applied first, then a nonzero limit keeps the newest matches. Only selected
+cards make model requests.
+
+Each card keeps its global meaning across slices: if a view starts at
+checkpoint 41, that card still compares checkpoint 40 with 41. Checkpoint 1 is
+the only summary; later cards are adjacent diffs. This makes cached cards
+reusable across navigation commands.
+
+Plain output reports how much of a matching range was shown and gives the next
+`--to-index` value for older checkpoints. JSON reports total, matching, and
+selected counts together with the selected index and time range. The result can
+be skimmed or piped to ordinary tools:
+
+```sh
+codex-memoryctl index THREAD --limit 0 | rg -i "suspected subject"
+```
+
+`--jobs N` limits concurrent requests. If one request fails, successful entries
+remain cached for the next run. If the rollout gains another portable
+checkpoint during generation, the command reports that the view should be
+rerun.
+
+The command also reports `hasUncompactedTail` and
+`uncompactedMessageCount`. These identify ordinary user or assistant messages
+after the newest portable checkpoint. They do not summarize that tail; use
+transcript inspection when current conversation details matter.
 
 Standalone injected memory is omitted from `index` because it is not a
 generated checkpoint in the thread's sequential compaction history. It remains

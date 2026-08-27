@@ -33,16 +33,24 @@ When the words are unknown, use model-derived text to orient or search:
 ```sh
 codex-memoryctl summarize THREAD_ID@latest
 codex-memoryctl diff THREAD_ID@index:12 THREAD_ID@index:13
-codex-memoryctl index THREAD_ID | rg -i "suspected subject"
+codex-memoryctl index THREAD_ID
+codex-memoryctl index THREAD_ID --limit 0 | rg -i "suspected subject"
 ```
 
 Use `summarize` for one checkpoint, `diff` for a directed comparison, and
-`index` for a compact sequential view. These commands make subscription model
-requests on cache misses. Their plaintext is useful for locating a likely
-state, not for proving that an omitted detail is absent. Use `--focus` only
-when the current question gives a real subject to emphasize. If the task needs
-the opaque state's retained fidelity, use an appropriate consultation or
-recall workflow instead of treating generated text as equivalent memory.
+`index` for a compact sequential view. Index renders the newest ten matching
+checkpoints by default; use `--from-index`, `--to-index`, `--since`, or
+`--until` to browse, and use `--limit 0` only when the complete range is
+needed. Selection happens before model requests. If index reports an
+uncompacted tail, inspect that conversation separately rather than treating the
+newest card as current thread state.
+
+These commands make subscription model requests on cache misses. Their
+plaintext is useful for locating a likely state, not for proving that an
+omitted detail is absent. Use `--focus` only when the current question gives a
+real subject to emphasize. If the task needs the opaque state's retained
+fidelity, use an appropriate consultation or recall workflow instead of
+treating generated text as equivalent memory.
 
 For a foreign perspective, prefer a disposable consultant when the established
 agent should keep its trajectory. Frame the question in a fresh thread, then

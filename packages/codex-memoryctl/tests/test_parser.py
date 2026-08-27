@@ -10,7 +10,7 @@ class ParserTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 parser.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-memoryctl 0.5.0\n")
+        self.assertEqual(output.getvalue(), "codex-memoryctl 0.5.1\n")
 
     def test_parses_public_commands(self) -> None:
         cases = [
@@ -21,7 +21,21 @@ class ParserTests(unittest.TestCase):
             ["summarize", "thread@latest", "--focus", "network roots"],
             ["diff", "thread@index:1", "thread@index:2"],
             ["index"],
-            ["index", "thread", "--jobs", "2", "--refresh"],
+            [
+                "index",
+                "thread",
+                "--jobs",
+                "2",
+                "--refresh",
+                "--from-index",
+                "2",
+                "--to-index",
+                "20",
+                "--since",
+                "2026-01-01",
+                "--until",
+                "2026-01-31T23:59:59Z",
+            ],
             ["search", "thread", "preset mismatch"],
             ["search", "thread", "preset.*mismatch", "--match", "regex"],
             ["export", "thread@window:2", "--output", "memory.json"],
@@ -51,6 +65,23 @@ class ParserTests(unittest.TestCase):
     def test_index_jobs_must_be_positive(self) -> None:
         with self.assertRaises(SystemExit):
             parser.build_parser().parse_args(["index", "thread", "--jobs", "0"])
+
+    def test_index_defaults_and_time_boundaries(self) -> None:
+        args = parser.build_parser().parse_args(["index", "thread"])
+        self.assertEqual(args.limit, 10)
+        self.assertIsNone(args.since)
+
+        args = parser.build_parser().parse_args(
+            ["index", "thread", "--since", "2026-01-02"]
+        )
+        self.assertEqual(args.since.raw, "2026-01-02")
+        self.assertTrue(args.since.date_only)
+
+    def test_index_rejects_invalid_time_boundary(self) -> None:
+        with self.assertRaises(SystemExit):
+            parser.build_parser().parse_args(
+                ["index", "thread", "--since", "2026-01-02T12:00:00"]
+            )
 
     def test_inject_requires_one_source_form(self) -> None:
         for argv in (
