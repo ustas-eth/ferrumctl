@@ -5,6 +5,7 @@ import math
 from pathlib import Path
 
 from .cache import default_database_path
+from .cache_commands import cmd_cache_clear, cmd_cache_info
 from .commands import (
     cmd_export,
     cmd_inject,
@@ -114,10 +115,16 @@ def add_generation_options(
         default=DEFAULT_EFFORT,
         help=f"reasoning effort used for generation (default: {DEFAULT_EFFORT})",
     )
-    parser.add_argument(
+    cache_mode = parser.add_mutually_exclusive_group()
+    cache_mode.add_argument(
         "--refresh",
         action="store_true",
         help="regenerate and replace matching cached output",
+    )
+    cache_mode.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="generate without reading or writing the plaintext cache",
     )
     if include_focus:
         parser.add_argument(
@@ -146,6 +153,37 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add_global_options(parser, defaults=True)
     sub = parser.add_subparsers(dest="command", required=True)
+
+    cache = sub.add_parser("cache", help="inspect or clear generated plaintext")
+    cache_sub = cache.add_subparsers(dest="cache_command", required=True)
+    cache_info = cache_sub.add_parser("info", help="show cache location and contents")
+    cache_info.add_argument(
+        "--database",
+        type=Path,
+        default=default_database_path(),
+        help="private SQLite cache for generated memory text",
+    )
+    cache_info.add_argument(
+        "--json",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="print JSON output",
+    )
+    cache_info.set_defaults(func=cmd_cache_info)
+    cache_clear = cache_sub.add_parser("clear", help="remove all cached descriptions")
+    cache_clear.add_argument(
+        "--database",
+        type=Path,
+        default=default_database_path(),
+        help="private SQLite cache for generated memory text",
+    )
+    cache_clear.add_argument(
+        "--json",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="print JSON output",
+    )
+    cache_clear.set_defaults(func=cmd_cache_clear)
 
     list_parser = sub.add_parser(
         "list", help="list memory checkpoints and standalone memory sightings"

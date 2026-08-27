@@ -69,13 +69,15 @@ the inspection process. Keep the description under 120 words."""
 
 def diff_prompt(focus: str | None = None) -> str:
     prompt = """Describe the newer retained state and how it materially differs
-from the older retained state. Include enough concrete detail to recognize or
-find the newer checkpoint later. Do not infer removal or reversal merely from
-an omission. Compare the two supplied outer states: if either describes
-imported, quoted, or inspected memory, treat that material as content and
-explain what the outer state was doing with it. If the states concern different
-work, describe that difference directly. Avoid narrating the comparison
-process. Keep the description under 120 words."""
+from the older retained state. Begin with a concrete name, artifact, result, or
+unresolved action from the newer state; use temporal labels later only when they
+clarify the comparison. Include enough concrete detail to recognize or find
+the newer checkpoint later. Do not infer removal or reversal merely from an
+omission. Compare the two supplied outer states: if either describes imported,
+quoted, or inspected memory, treat that material as content and explain what
+the outer state was doing with it. If the states concern different work,
+describe that difference directly. Avoid narrating the comparison process.
+Keep the description under 120 words."""
     if focus is not None:
         prompt += "\n\nGive particular attention to this caller-supplied focus: "
         prompt += json.dumps(focus, ensure_ascii=False)
@@ -297,6 +299,7 @@ def generate(
     model: str,
     effort: str,
     refresh: bool,
+    use_cache: bool = True,
 ) -> GenerationResult:
     memory_ids = [state.memory_id for state in states]
     key = artifact_key(
@@ -307,7 +310,7 @@ def generate(
         INSPECTOR_INSTRUCTIONS,
         prompt,
     )
-    if not refresh:
+    if use_cache and not refresh:
         cached = get_artifact(database, key)
         if cached is not None:
             return GenerationResult(cached, True)
@@ -343,13 +346,14 @@ def generate(
                 usage=usage,
                 response_id=response_id,
             )
-            put_artifact(
-                database,
-                artifact,
-                memory_ids=memory_ids,
-                instructions=INSPECTOR_INSTRUCTIONS,
-                prompt=prompt,
-            )
+            if use_cache:
+                put_artifact(
+                    database,
+                    artifact,
+                    memory_ids=memory_ids,
+                    instructions=INSPECTOR_INSTRUCTIONS,
+                    prompt=prompt,
+                )
             return GenerationResult(artifact, False)
         except _GenerationFailure as exc:
             last_error = exc

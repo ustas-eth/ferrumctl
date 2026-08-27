@@ -96,6 +96,30 @@ class GeneratedCommandTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(parsed["generation"]["cacheHit"])
         self.assertEqual(parsed["state"]["checkpointIndex"], 1)
 
+    async def test_summarize_reports_cache_bypass(self) -> None:
+        state = make_state("one", 1)
+        args = parser.build_parser().parse_args(
+            ["summarize", "thread@index:1", "--no-cache", "--json"]
+        )
+        with (
+            mock.patch.object(
+                generated_commands,
+                "load_state",
+                mock.AsyncMock(return_value=state),
+            ),
+            mock.patch.object(
+                generated_commands,
+                "generated_text",
+                mock.AsyncMock(return_value=generated("fresh state", cache_hit=False)),
+            ) as built,
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            await generated_commands.cmd_summarize(args)
+        parsed = json.loads(output.getvalue())
+        self.assertFalse(parsed["cacheEnabled"])
+        self.assertIsNone(parsed["database"])
+        self.assertTrue(built.call_args.args[0].no_cache)
+
     async def test_diff_keeps_older_and_newer_sources_directed(self) -> None:
         older = make_state("older", 1)
         newer = make_state("newer", 2)

@@ -47,6 +47,7 @@ async def generated_text(
         model=args.model,
         effort=args.effort,
         refresh=args.refresh,
+        use_cache=not args.no_cache,
     )
 
 
@@ -63,7 +64,10 @@ async def cmd_summarize(args: argparse.Namespace) -> int:
         "state": state.metadata(),
         "text": result.artifact.text,
         "generation": generation_metadata(result),
-        "database": str(Path(args.database).expanduser()),
+        "database": (
+            str(Path(args.database).expanduser()) if not args.no_cache else None
+        ),
+        "cacheEnabled": not args.no_cache,
     }
     if args.json:
         print(json.dumps(output, indent=2))
@@ -87,7 +91,10 @@ async def cmd_diff(args: argparse.Namespace) -> int:
         "newer": newer.metadata(),
         "text": result.artifact.text,
         "generation": generation_metadata(result),
-        "database": str(Path(args.database).expanduser()),
+        "database": (
+            str(Path(args.database).expanduser()) if not args.no_cache else None
+        ),
+        "cacheEnabled": not args.no_cache,
     }
     if args.json:
         print(json.dumps(output, indent=2))
@@ -194,7 +201,10 @@ async def cmd_index(args: argparse.Namespace) -> int:
         "operation": "index",
         "threadId": rollout.thread_id,
         "rolloutPath": str(rollout.path),
-        "database": str(Path(args.database).expanduser()),
+        "database": (
+            str(Path(args.database).expanduser()) if not args.no_cache else None
+        ),
+        "cacheEnabled": not args.no_cache,
         "model": args.model,
         "effort": args.effort,
         "checkpointCount": len(selection.states),

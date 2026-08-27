@@ -2,14 +2,17 @@ import os
 import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
 from codex_memoryctl.cache import (
     CachedArtifact,
     artifact_key,
+    clear_cache,
     default_database_path,
     get_artifact,
+    inspect_cache,
     put_artifact,
 )
 
@@ -115,3 +118,33 @@ class CacheTests(unittest.TestCase):
                 self.assertIsNotNone(artifact)
                 assert artifact is not None
                 self.assertEqual(artifact.text, f"text-{position}")
+
+    def test_inspect_and_clear_cache(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "derived.sqlite3"
+            missing = inspect_cache(path)
+            self.assertFalse(missing.exists)
+            self.assertEqual(missing.entry_count, 0)
+            self.assertFalse(path.exists())
+
+            for position, operation in enumerate(("summarize-v1", "diff-v1")):
+                artifact = replace(
+                    self.artifact(f"key-{position}"),
+                    operation=operation,
+                )
+                put_artifact(
+                    path,
+                    artifact,
+                    memory_ids=[f"sha256:{position}"],
+                    instructions="instructions",
+                    prompt="prompt",
+                )
+
+            info = inspect_cache(path)
+            self.assertTrue(info.exists)
+            self.assertEqual(info.entry_count, 2)
+            self.assertGreater(info.size_bytes, 0)
+            self.assertEqual(info.operations, {"diff-v1": 1, "summarize-v1": 1})
+            self.assertEqual(clear_cache(path), 2)
+            self.assertEqual(inspect_cache(path).entry_count, 0)
+            self.assertEqual(clear_cache(Path(directory) / "missing.sqlite3"), 0)

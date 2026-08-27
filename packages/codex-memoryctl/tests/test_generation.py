@@ -30,6 +30,7 @@ class PromptTests(unittest.TestCase):
         self.assertIn("under 120 words", generation.summary_prompt())
         self.assertIn("outer retained state", generation.summary_prompt())
         self.assertIn("outer states", generation.diff_prompt())
+        self.assertIn("Begin with a concrete name", generation.diff_prompt())
         focused = generation.summary_prompt("network roots")
         self.assertIn('"network roots"', focused)
 
@@ -158,6 +159,45 @@ class GenerationCacheTests(unittest.TestCase):
         self.assertEqual(second.artifact.text, "second")
         self.assertTrue(cached.cache_hit)
         self.assertEqual(cached.artifact.text, "second")
+
+    def test_no_cache_bypasses_reads_and_writes(self) -> None:
+        state = make_state("uncached")
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "derived.sqlite3"
+            with mock.patch.object(
+                generation,
+                "_call_once",
+                side_effect=[
+                    ("first", {}, "resp_1", 1.0),
+                    ("second", {}, "resp_2", 1.0),
+                ],
+            ) as called:
+                first = generation.generate(
+                    database,
+                    Path(directory),
+                    operation="summarize-v1",
+                    states=[state],
+                    prompt="prompt",
+                    model="gpt-test",
+                    effort="medium",
+                    refresh=False,
+                    use_cache=False,
+                )
+                second = generation.generate(
+                    database,
+                    Path(directory),
+                    operation="summarize-v1",
+                    states=[state],
+                    prompt="prompt",
+                    model="gpt-test",
+                    effort="medium",
+                    refresh=False,
+                    use_cache=False,
+                )
+        self.assertFalse(first.cache_hit)
+        self.assertFalse(second.cache_hit)
+        self.assertEqual(called.call_count, 2)
+        self.assertFalse(database.exists())
 
     def test_retries_one_transient_generation_failure(self) -> None:
         state = make_state("retry")

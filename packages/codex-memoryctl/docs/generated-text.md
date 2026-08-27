@@ -28,7 +28,8 @@ non-transient request failures are returned directly; the command does not
 silently switch models.
 
 `--focus TEXT` gives `summarize` or `diff` a subject to emphasize without
-changing the source state. The text is included in the cache key.
+changing the source state. Its hash is included in the cache key; the focus
+text itself is not stored in the cache.
 
 ## Cache And Index
 
@@ -45,7 +46,19 @@ directory with mode `0700` and the database with mode `0600`. The database
 contains generated plaintext and response metadata, not opaque ciphertext or
 credentials. It is still sensitive because the text can describe private
 session work. `--database PATH` selects another cache, and `--refresh` replaces
-the matching generated artifact after a successful request.
+the matching generated artifact after a successful request. `--no-cache`
+bypasses both cache reads and writes, and does not create the selected database.
+`--refresh` and `--no-cache` are mutually exclusive.
+
+`cache info` reports the database path, allocated size, entry count, time
+range, and counts by generated operation without making a model request.
+`cache clear` removes every generated description from the selected database:
+
+```sh
+codex-memoryctl cache info
+codex-memoryctl cache clear
+codex-memoryctl cache clear --database /path/to/derived.sqlite3
+```
 
 `index THREAD` is a current view, not another stored index. It renders the
 newest ten matching portable checkpoints by default, in chronological order.
@@ -58,7 +71,9 @@ cards make model requests.
 Each card keeps its global meaning across slices: if a view starts at
 checkpoint 41, that card still compares checkpoint 40 with 41. Checkpoint 1 is
 the only summary; later cards are adjacent diffs. This makes cached cards
-reusable across navigation commands.
+reusable across navigation commands. The diff request asks the model to put a
+concrete name, artifact, result, or unresolved action near the opening so
+repeated temporal framing does not hide the distinguishing text.
 
 Plain output reports how much of a matching range was shown and gives the next
 `--to-index` value for older checkpoints. JSON reports total, matching, and

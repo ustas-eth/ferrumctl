@@ -25,6 +25,17 @@ class CachedArtifact:
     response_id: str | None
 
 
+@dataclass(frozen=True)
+class CacheInfo:
+    path: Path
+    exists: bool
+    entry_count: int
+    size_bytes: int
+    oldest_at: str | None
+    newest_at: str | None
+    operations: dict[str, int]
+
+
 def default_database_path() -> Path:
     root = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state"))
     return root / "codex-memoryctl" / "derived.sqlite3"
@@ -133,6 +144,71 @@ def get_artifact(path: Path, key: str) -> CachedArtifact | None:
             str(row["response_id"]) if row["response_id"] is not None else None
         ),
     )
+
+
+def inspect_cache(path: Path) -> CacheInfo:
+    path = path.expanduser().resolve()
+    if not path.exists():
+        return CacheInfo(path, False, 0, 0, None, None, {})
+    connection = open_database(path)
+    try:
+        summary = connection.execute(
+            """
+            SELECT COUNT(*) AS entry_count,
+                   MIN(created_at) AS oldest_at,
+                   MAX(created_at) AS newest_at
+            FROM generated_artifacts
+            """
+        ).fetchone()
+        rows = connection.execute(
+            """
+            SELECT operation, COUNT(*) AS entry_count
+            FROM generated_artifacts
+            GROUP BY operation
+            ORDER BY operation
+            """
+        ).fetchall()
+    except sqlite3.Error as exc:
+        raise MemoryctlError(f"failed to inspect cache database {path}: {exc}") from exc
+    finally:
+        connection.close()
+    assert summary is not None
+    try:
+        size_bytes = path.stat().st_size
+    except OSError as exc:
+        raise MemoryctlError(f"failed to inspect cache database {path}: {exc}") from exc
+    return CacheInfo(
+        path=path,
+        exists=True,
+        entry_count=int(summary["entry_count"]),
+        size_bytes=size_bytes,
+        oldest_at=(str(summary["oldest_at"]) if summary["oldest_at"] else None),
+        newest_at=(str(summary["newest_at"]) if summary["newest_at"] else None),
+        operations={str(row["operation"]): int(row["entry_count"]) for row in rows},
+    )
+
+
+def clear_cache(path: Path) -> int:
+    path = path.expanduser().resolve()
+    if not path.exists():
+        return 0
+    connection = open_database(path)
+    try:
+        connection.execute("PRAGMA secure_delete = ON")
+        connection.execute("BEGIN IMMEDIATE")
+        row = connection.execute(
+            "SELECT COUNT(*) AS entry_count FROM generated_artifacts"
+        ).fetchone()
+        assert row is not None
+        count = int(row["entry_count"])
+        connection.execute("DELETE FROM generated_artifacts")
+        connection.commit()
+        return count
+    except sqlite3.Error as exc:
+        connection.rollback()
+        raise MemoryctlError(f"failed to clear cache database {path}: {exc}") from exc
+    finally:
+        connection.close()
 
 
 def put_artifact(

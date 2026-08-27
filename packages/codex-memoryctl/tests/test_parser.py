@@ -10,15 +10,18 @@ class ParserTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 parser.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-memoryctl 0.5.1\n")
+        self.assertEqual(output.getvalue(), "codex-memoryctl 0.5.2\n")
 
     def test_parses_public_commands(self) -> None:
         cases = [
+            ["cache", "info"],
+            ["cache", "clear", "--json"],
             ["list"],
             ["list", "thread", "--origin", "standalone", "--limit", "0"],
             ["show", "thread@latest"],
             ["summarize", "thread@latest"],
             ["summarize", "thread@latest", "--focus", "network roots"],
+            ["summarize", "thread@latest", "--no-cache"],
             ["diff", "thread@index:1", "thread@index:2"],
             ["index"],
             [
@@ -65,6 +68,12 @@ class ParserTests(unittest.TestCase):
     def test_index_jobs_must_be_positive(self) -> None:
         with self.assertRaises(SystemExit):
             parser.build_parser().parse_args(["index", "thread", "--jobs", "0"])
+
+    def test_refresh_and_no_cache_are_exclusive(self) -> None:
+        with self.assertRaises(SystemExit):
+            parser.build_parser().parse_args(
+                ["summarize", "thread@latest", "--refresh", "--no-cache"]
+            )
 
     def test_index_defaults_and_time_boundaries(self) -> None:
         args = parser.build_parser().parse_args(["index", "thread"])

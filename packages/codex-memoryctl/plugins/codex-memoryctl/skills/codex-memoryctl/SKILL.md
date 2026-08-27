@@ -48,9 +48,10 @@ newest card as current thread state.
 These commands make subscription model requests on cache misses. Their
 plaintext is useful for locating a likely state, not for proving that an
 omitted detail is absent. Use `--focus` only when the current question gives a
-real subject to emphasize. If the task needs the opaque state's retained
-fidelity, use an appropriate consultation or recall workflow instead of
-treating generated text as equivalent memory.
+real subject to emphasize. Use `--no-cache` when generated text should not
+persist locally. If the task needs the opaque state's retained fidelity, use an
+appropriate consultation or recall workflow instead of treating generated text
+as equivalent memory.
 
 For a foreign perspective, prefer a disposable consultant when the established
 agent should keep its trajectory. Frame the question in a fresh thread, then

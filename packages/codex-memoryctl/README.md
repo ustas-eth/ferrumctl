@@ -65,14 +65,20 @@ a separate catalog. It reports when ordinary conversation follows the newest
 portable checkpoint because those uncompacted messages are not described by
 the index. The default model is GPT-5.6 Luna at medium effort; `--model`,
 `--effort`, and `--refresh` are available when a different tradeoff or a fresh
-result is needed.
+result is needed. Use `--no-cache` to generate without reading or writing the
+plaintext cache.
 
 Generated text is a model-derived aid for orientation and search. It may omit
 retained details, so an omission is not evidence that the opaque state lacks
 them. The cache defaults to
 `$XDG_STATE_HOME/codex-memoryctl/derived.sqlite3`, or
 `~/.local/state/codex-memoryctl/derived.sqlite3`, and should be treated as
-sensitive session material.
+sensitive session material. Inspect or remove its derived contents explicitly:
+
+```sh
+codex-memoryctl cache info
+codex-memoryctl cache clear
+```
 
 Find which memory checkpoints followed relevant transcript text:
 
