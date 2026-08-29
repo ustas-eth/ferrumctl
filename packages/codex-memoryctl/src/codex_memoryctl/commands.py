@@ -15,6 +15,7 @@ from codex_threadctl.appserver import (
     AppServer,
     current_active_turn,
     list_loaded,
+    list_thread_turns,
     read_thread,
     require_object,
 )
@@ -297,14 +298,54 @@ def repeated_memory_ids(memory_ids: list[str]) -> list[str]:
     return sorted(value for value, count in counts.items() if count > 1)
 
 
+async def target_has_materialized_turn(app: AppServer, target: str) -> bool:
+    try:
+        return bool(await list_thread_turns(app, target, limit=1))
+    except AppServerResponseError as exc:
+        payload = exc.payload
+        message = payload.get("message") if isinstance(payload, dict) else None
+        if (
+            isinstance(payload, dict)
+            and payload.get("code") == -32600
+            and isinstance(message, str)
+            and "thread/turns/list is unavailable before first user message" in message
+        ):
+            return False
+        raise
+
+
 async def cmd_inject(args: argparse.Namespace) -> int:
     self_target = bool(args.self_target)
     if self_target and args.purpose is None:
         raise MemoryctlError("--self requires --purpose")
+    if self_target and args.binding not in (None, "current"):
+        raise MemoryctlError(
+            "--self uses current-turn binding; use --to for source binding"
+        )
+    if self_target and args.framing not in (None, "boundaries"):
+        raise MemoryctlError(
+            "--self uses perspective boundaries; use --to for unframed transfer"
+        )
+    if self_target and args.expect_no_turns:
+        raise MemoryctlError("--expect-no-turns applies only to --to")
+    if args.expect_no_turns and args.binding == "current":
+        raise MemoryctlError(
+            "--expect-no-turns cannot be combined with current-turn binding"
+        )
+    if args.framing == "none" and args.purpose is not None:
+        raise MemoryctlError("--purpose requires --framing boundaries")
     if self_target and args.full_checkpoint:
         raise MemoryctlError(
             "--self accepts memory only; use --to with a fresh target when "
             "transferring a full checkpoint"
+        )
+    if args.full_checkpoint and args.binding == "current":
+        raise MemoryctlError("full checkpoints preserve source turn binding")
+    if args.full_checkpoint and args.framing == "boundaries":
+        raise MemoryctlError("full checkpoints are unframed")
+    if args.full_checkpoint and args.purpose is not None:
+        raise MemoryctlError(
+            "full checkpoints do not carry --purpose; give the target its task separately"
         )
     target_reference = current_thread_id(
         None if self_target else args.target,
@@ -323,6 +364,12 @@ async def cmd_inject(args: argparse.Namespace) -> int:
                 f"target is not loaded on the selected app-server: {target}"
             )
         thread = await read_thread(app, target)
+        status = thread.get("status")
+        target_status = (
+            str(status.get("type"))
+            if isinstance(status, dict) and isinstance(status.get("type"), str)
+            else "unknown"
+        )
         provider = thread.get("modelProvider")
         if provider != "openai" and not args.allow_non_openai:
             shown = provider if isinstance(provider, str) and provider else "unknown"
@@ -330,6 +377,12 @@ async def cmd_inject(args: argparse.Namespace) -> int:
                 f"target model provider is {shown}; opaque compaction memory is "
                 "OpenAI-specific (pass --allow-non-openai to override this check)"
             )
+        if args.expect_no_turns:
+            if await target_has_materialized_turn(app, target):
+                raise MemoryctlError(
+                    "target already has a materialized turn; "
+                    "--expect-no-turns precondition failed"
+                )
 
         if args.file is not None:
             if args.full_checkpoint:
@@ -399,21 +452,35 @@ async def cmd_inject(args: argparse.Namespace) -> int:
             )
         ]
 
-        active_turn_id: str | None = None
-        if self_target:
-            if scope != "memory":
+        if scope != "memory":
+            if self_target:
                 raise MemoryctlError(
                     "--self accepts memory-only exports; use --to with a fresh "
                     "target for a full checkpoint"
                 )
+            if args.binding == "current":
+                raise MemoryctlError("full checkpoints preserve source turn binding")
+            if args.framing == "boundaries":
+                raise MemoryctlError("full checkpoints are unframed")
+            if args.purpose is not None:
+                raise MemoryctlError(
+                    "full checkpoints do not carry --purpose; "
+                    "give the target its task separately"
+                )
+
+        turn_binding = args.binding or ("current" if self_target else "source")
+        perspective_framing = args.framing or (
+            "boundaries" if scope == "memory" else "none"
+        )
+
+        active_turn_id: str | None = None
+        if turn_binding == "current":
             turn = await current_active_turn(app, target)
             active_turn_id = str(turn["id"])
             items = bind_to_current_turn(items)
 
-        perspective_framing = "none"
-        if scope == "memory":
+        if perspective_framing == "boundaries":
             items = frame_memory_batch(target, items, source_memories, args.purpose)
-            perspective_framing = "boundaries"
 
         target_path = thread.get("path")
         if isinstance(target_path, str) and Path(target_path).is_file():
@@ -444,10 +511,8 @@ async def cmd_inject(args: argparse.Namespace) -> int:
     shown_memory_ids = [memory_ref(value) for value in memory_ids]
     if args.purpose is None:
         purpose_delivery = "none"
-    elif perspective_framing == "boundaries":
-        purpose_delivery = "attributed-boundary"
     else:
-        purpose_delivery = "receipt-only"
+        purpose_delivery = "attributed-boundary"
 
     result: dict[str, Any] = {
         "outcome": "accepted",
@@ -458,9 +523,11 @@ async def cmd_inject(args: argparse.Namespace) -> int:
         "sourceMemoryRefs": source_refs,
         "sourceBasis": source_basis,
         "sourceMemories": source_memories,
-        "turnBinding": "current" if active_turn_id is not None else "source",
+        "targetStatusBefore": target_status,
+        "turnBinding": turn_binding,
         "perspectiveFraming": perspective_framing,
         "purposeDelivery": purpose_delivery,
+        "expectNoTurns": bool(args.expect_no_turns),
     }
     if active_turn_id is not None:
         result["activeTurnId"] = active_turn_id
@@ -476,6 +543,7 @@ async def cmd_inject(args: argparse.Namespace) -> int:
             f"memories={','.join(shown_memory_ids)}",
             f"sources={','.join(sources)}",
             f"source-basis={source_basis}",
+            f"target-status-before={target_status}",
             (
                 f"binding=current:{active_turn_id}"
                 if active_turn_id is not None
@@ -484,6 +552,8 @@ async def cmd_inject(args: argparse.Namespace) -> int:
             f"framing={perspective_framing}",
             f"purpose-delivery={result['purposeDelivery']}",
         ]
+        if args.expect_no_turns:
+            fields.append("expect-no-turns=yes")
         if args.purpose is not None:
             fields.append(f"purpose={json.dumps(args.purpose)}")
         print("\t".join(fields))

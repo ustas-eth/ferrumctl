@@ -323,22 +323,25 @@ def build_parser() -> argparse.ArgumentParser:
     export.set_defaults(func=cmd_export)
 
     inject = sub.add_parser(
-        "inject", help="append framed compaction memory with an explicit turn binding"
+        "inject", help="append compaction memory with explicit binding and framing"
     )
     target = inject.add_mutually_exclusive_group(required=True)
     target.add_argument(
         "--self",
         dest="self_target",
         action="store_true",
-        help="inject into this active CODEX_THREAD_ID with current-turn binding",
+        help=(
+            "inject into this active CODEX_THREAD_ID with current-turn binding "
+            "and perspective boundaries"
+        ),
     )
     target.add_argument(
         "--to",
         dest="target",
         metavar="TARGET",
         help=(
-            "inject into a loaded thread id or task name while preserving "
-            "source turn association"
+            "inject into a loaded thread id or task name; defaults to source "
+            "turn association"
         ),
     )
     source = inject.add_mutually_exclusive_group(required=True)
@@ -353,8 +356,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--full-checkpoint",
         action="store_true",
         help=(
-            "inject one source checkpoint including its retained history "
-            "into a --to target; intended for a fresh thread"
+            "append one source checkpoint's retained history without memory-only "
+            "framing; valid only with --to"
         ),
     )
     inject.add_argument(
@@ -362,7 +365,31 @@ def build_parser() -> argparse.ArgumentParser:
         type=nonempty,
         help=(
             "caller intent; included in the closing perspective boundary for "
-            "memory-only transfer"
+            "memory-only transfer and unavailable with --framing none"
+        ),
+    )
+    inject.add_argument(
+        "--binding",
+        choices=("source", "current"),
+        help=(
+            "turn association for memory-only transfer; defaults to current for "
+            "--self and source for --to"
+        ),
+    )
+    inject.add_argument(
+        "--framing",
+        choices=("boundaries", "none"),
+        help=(
+            "surround memory with attributed perspective boundaries or omit the "
+            "surrounding items (memory-only default: boundaries)"
+        ),
+    )
+    inject.add_argument(
+        "--expect-no-turns",
+        action="store_true",
+        help=(
+            "refuse an external transfer if the target already has a materialized "
+            "turn"
         ),
     )
     inject.add_argument(

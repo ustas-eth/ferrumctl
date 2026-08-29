@@ -63,10 +63,11 @@ RFC3339 timestamps. Bounds and limits apply before model requests.
 The view joins the current rollout with cached results rather than maintaining
 a separate catalog. It reports when ordinary conversation follows the newest
 portable checkpoint because those uncompacted messages are not described by
-the index. The default model is GPT-5.6 Luna at medium effort; `--model`,
-`--effort`, and `--refresh` are available when a different tradeoff or a fresh
-result is needed. Use `--no-cache` to generate without reading or writing the
-plaintext cache.
+the index. `summarize` gives the same warning when its selected state is the
+latest checkpoint. The default model is GPT-5.6 Luna at medium effort;
+`--model`, `--effort`, and `--refresh` are available when a different tradeoff
+or a fresh result is needed. Use `--no-cache` to generate without reading or
+writing the plaintext cache.
 
 Generated text is a model-derived aid for orientation and search. It may omit
 retained details, so an omission is not evidence that the opaque state lacks
@@ -93,8 +94,8 @@ segment. Results identify the first later portable checkpoint and show ordinary
 nearby messages. `uncompacted` means the matching text has no later memory
 checkpoint yet. Search does not inspect the encrypted memory itself.
 
-For consultation or older-self recall, the receiving agent injects memory into
-its own active turn and records why:
+For consultation or older-self recall, the receiving agent adds memory to its
+own active turn and records how it relates to the current question:
 
 ```sh
 codex-memoryctl inject --self \
@@ -102,30 +103,30 @@ codex-memoryctl inject --self \
   --purpose "Compare this diagnosis with the evidence in my current investigation."
 ```
 
-Several `--state` arguments form one ordered memory-only batch:
+`--self` is the recipient-owned preset: it requires an active
+`CODEX_THREAD_ID`, binds the memory to the current turn, adds source boundaries,
+and requires a purpose. When another established agent should use a memory,
+give it the reference and question so it can run this command itself. Use a
+disposable consultant when the original conversation should remain unchanged.
 
-```sh
-codex-memoryctl inject --self \
-  --state HUNTER_THREAD_ID@latest \
-  --state ENGINEER_THREAD_ID@latest \
-  --purpose "Compare these perspectives against my current evidence."
-```
+Several `--state` arguments form one ordered batch. Memoryctl closes one
+attributed perspective before opening the next, but the model may still combine
+or confuse their contents.
 
-Memoryctl labels the first perspective, closes it before opening the next, and
-closes the final perspective with the caller purpose. Each boundary carries
-the relevant source reference and whether it came from a local rollout or an
-export claim. This improves attribution without guaranteeing that the model
-will keep the perspectives separate.
-
-`--self` requires an active `CODEX_THREAD_ID` and uses current-turn binding. It
-also frames the opaque batch with attributed source items. Use `--to TARGET`
-when a fresh loaded thread should retain the source turn association;
-memory-only transfers keep the same perspective framing:
+`--to TARGET` transfers memory externally to any loaded target. It preserves
+source turn association and adds the same boundaries by default. A caller that
+expects no materialized target turns yet can request that precondition:
 
 ```sh
 codex-memoryctl inject --to FRESH_THREAD_ID \
-  --state DONOR_THREAD_ID@latest
+  --state DONOR_THREAD_ID@latest \
+  --purpose "Use this perspective for the handoff question." \
+  --expect-no-turns
 ```
+
+With `--to`, low-level callers can choose `--binding source|current` and
+`--framing boundaries|none`. Current binding requires an active target turn.
+Unframed transfer adds no source boundary and therefore accepts no purpose.
 
 Export a portable memory file without printing its encrypted content:
 
@@ -135,14 +136,14 @@ codex-memoryctl inject --self --file memory.json \
   --purpose "Recall the diagnosis retained in this exported memory."
 ```
 
-Use a full checkpoint only when the donor's retained user, developer, and
-agent messages are needed for a fresh recovery target:
+A full checkpoint is useful when a fresh recovery target needs the donor's
+retained user, developer, and agent messages:
 
 ```sh
 codex-memoryctl export THREAD_ID@latest \
   --full-checkpoint --output checkpoint.json
 codex-memoryctl inject --to FRESH_THREAD_ID \
-  --state THREAD_ID@latest --full-checkpoint
+  --file checkpoint.json --expect-no-turns
 ```
 
 Exports are written with private file permissions. Passing `--output -`
@@ -152,10 +153,11 @@ explicitly writes the complete object to stdout.
 
 - Injection appends model-visible history; it does not replace history, wake a
   thread, or start a turn.
-- `--self` binds memory to the caller's current turn. `--to` preserves source
-  turn association.
-- Memory-only transfers use attributed perspective boundaries. They improve
-  provenance but do not isolate foreign memory or guarantee interpretation.
+- `--self` selects current-turn binding and source boundaries. `--to` defaults
+  to source binding and boundaries while exposing both choices explicitly.
+- Perspective boundaries improve provenance but do not isolate foreign memory
+  or guarantee interpretation. Unframed transfer is available when the caller
+  needs the underlying append primitive.
 - A model can use imported memory without retaining awareness that it came from
   another perspective. State the intended relationship positively and use a
   disposable consultant when the original thread must remain unchanged.
@@ -163,8 +165,8 @@ explicitly writes the complete object to stdout.
   appear in the rollout until Codex processes it. An idle target records it
   immediately for a later turn.
 - App-server acceptance does not prove that the model interpreted the memory.
-- Opaque memory carries no reliable donor identity or purpose; memoryctl adds
-  source labels around it rather than changing the object.
+- Opaque memory carries no reliable donor identity or purpose. Boundary framing
+  adds source labels around it without changing the object.
 - Later compaction may absorb injected memory into the target's next
   checkpoint, and there is no paired removal operation.
 - Export digests validate the opaque item. Exported source thread, time, model,

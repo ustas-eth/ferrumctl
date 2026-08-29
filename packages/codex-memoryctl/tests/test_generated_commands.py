@@ -3,6 +3,7 @@ import json
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
+from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
@@ -119,6 +120,107 @@ class GeneratedCommandTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(parsed["cacheEnabled"])
         self.assertIsNone(parsed["database"])
         self.assertTrue(built.call_args.args[0].no_cache)
+
+    async def test_summarize_warns_when_latest_checkpoint_has_a_tail(self) -> None:
+        state = make_state("one", 1)
+        with tempfile.TemporaryDirectory() as directory:
+            rollout_path = Path(directory) / "rollout.jsonl"
+            rollout_path.write_text("{}\n")
+            state = replace(state, rollout_path=rollout_path)
+            rollout = RolloutMemory(
+                "thread-test",
+                rollout_path,
+                (state,),
+                messages=(
+                    TranscriptMessage(11, None, "user", None, "new instruction"),
+                ),
+            )
+            args = parser.build_parser().parse_args(
+                ["summarize", "thread@latest", "--json"]
+            )
+            with (
+                mock.patch.object(
+                    generated_commands,
+                    "load_state",
+                    mock.AsyncMock(return_value=state),
+                ),
+                mock.patch.object(
+                    generated_commands,
+                    "load_rollout",
+                    return_value=rollout,
+                ),
+                mock.patch.object(
+                    generated_commands,
+                    "generated_text",
+                    mock.AsyncMock(return_value=generated("older state", cache_hit=True)),
+                ),
+                redirect_stdout(io.StringIO()) as output,
+            ):
+                await generated_commands.cmd_summarize(args)
+
+            parsed = json.loads(output.getvalue())
+            self.assertFalse(parsed["sourceAdvanced"])
+            self.assertTrue(parsed["hasUncompactedTail"])
+            self.assertEqual(parsed["uncompactedMessageCount"], 1)
+
+            args.json = False
+            with (
+                mock.patch.object(
+                    generated_commands,
+                    "load_state",
+                    mock.AsyncMock(return_value=state),
+                ),
+                mock.patch.object(
+                    generated_commands,
+                    "load_rollout",
+                    return_value=rollout,
+                ),
+                mock.patch.object(
+                    generated_commands,
+                    "generated_text",
+                    mock.AsyncMock(return_value=generated("older state", cache_hit=True)),
+                ),
+                redirect_stdout(io.StringIO()),
+                redirect_stderr(io.StringIO()) as errors,
+            ):
+                await generated_commands.cmd_summarize(args)
+            self.assertIn("does not describe the uncompacted tail", errors.getvalue())
+
+    async def test_summarize_reports_when_latest_advances_during_generation(self) -> None:
+        selected = make_state("selected", 1)
+        newer = make_state("newer", 2)
+        with tempfile.TemporaryDirectory() as directory:
+            rollout_path = Path(directory) / "rollout.jsonl"
+            rollout_path.write_text("{}\n")
+            selected = replace(selected, rollout_path=rollout_path)
+            newer = replace(newer, rollout_path=rollout_path)
+            rollout = RolloutMemory("thread-test", rollout_path, (selected, newer))
+            args = parser.build_parser().parse_args(
+                ["summarize", "thread@latest", "--json"]
+            )
+            with (
+                mock.patch.object(
+                    generated_commands,
+                    "load_state",
+                    mock.AsyncMock(return_value=selected),
+                ),
+                mock.patch.object(
+                    generated_commands,
+                    "load_rollout",
+                    return_value=rollout,
+                ),
+                mock.patch.object(
+                    generated_commands,
+                    "generated_text",
+                    mock.AsyncMock(return_value=generated("selected state", cache_hit=True)),
+                ),
+                redirect_stdout(io.StringIO()) as output,
+            ):
+                await generated_commands.cmd_summarize(args)
+
+            parsed = json.loads(output.getvalue())
+            self.assertTrue(parsed["sourceAdvanced"])
+            self.assertIsNone(parsed["uncompactedMessageCount"])
 
     async def test_diff_keeps_older_and_newer_sources_directed(self) -> None:
         older = make_state("older", 1)

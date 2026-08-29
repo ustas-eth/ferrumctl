@@ -37,11 +37,12 @@ identity can suppress useful access along with assimilation.
 `inject --self` provides useful surrounding context when an agent calls it in
 its own active turn: the call establishes intent before the imported state,
 and memoryctl brackets the state with attributed source context and places the
-exact purpose afterward. Memory-only `inject --to` uses the same boundaries
-while preserving the source turn association. This improves framing but does
-not guarantee source awareness. Full-checkpoint transfer remains unframed
-because it copies an exact retained history into a fresh handoff or recovery
-target.
+exact purpose afterward. Memory-only `inject --to` uses the same boundaries by
+default while preserving the source turn association. This improves framing
+but does not guarantee source awareness. `--framing none` is available for
+low-level transfer when no surrounding source items should be added.
+Full-checkpoint transfer remains unframed because it copies an exact retained
+history into a handoff or recovery target.
 
 ## Bound A Perspective
 

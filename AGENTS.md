@@ -86,11 +86,13 @@ command should remain bound to one state surface.
   owning a catalog. Generated descriptions are cached, lossy views: keep
   rollout order and source references authoritative, bound selection before
   remote generation, and never infer absence from omitted text. Keep
-  memory-only transfer distinct from a full checkpoint,
-  preserve item order, and frame each memory-only source without altering the
-  opaque item. Treat semantic use, source awareness, assimilation, and workflow
-  isolation as separate outcomes. Report app-server acceptance without
-  implying model interpretation or temporary scope.
+  memory-only transfer distinct from a full checkpoint and preserve item order.
+  The recipient-owned mode supplies current-turn binding and source boundaries;
+  external transfer must also expose source/current binding and framed/unframed
+  low-level operation without altering the opaque item. Treat semantic use,
+  source awareness, assimilation, and workflow isolation as separate outcomes.
+  Report app-server acceptance without implying model interpretation or
+  temporary scope.
 
 ## Documentation Roles
 

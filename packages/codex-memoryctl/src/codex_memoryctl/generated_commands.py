@@ -12,7 +12,7 @@ from .errors import MemoryctlError
 from .generation import GenerationResult, diff_prompt, generate, summary_prompt
 from .indexing import select_checkpoints, uncompacted_message_count
 from .rollouts import MemoryState, load_rollout, memory_ref, resolve_codex_home
-from .selectors import StateReference
+from .selectors import StateReference, parse_state_reference
 
 
 def generation_metadata(result: GenerationResult) -> dict[str, Any]:
@@ -51,6 +51,33 @@ async def generated_text(
     )
 
 
+def latest_checkpoint_status(
+    args: argparse.Namespace,
+    state: MemoryState,
+) -> tuple[int | None, bool]:
+    if state.origin != "checkpoint" or not state.rollout_path.is_file():
+        return None, False
+    rollout = load_rollout(
+        resolve_codex_home(args.codex_home),
+        str(state.rollout_path),
+        include_messages=True,
+    )
+    checkpoints = [item for item in rollout.states if item.origin == "checkpoint"]
+    if not checkpoints:
+        return None, False
+    latest = checkpoints[-1]
+    selected_latest = (
+        latest.memory_id == state.memory_id
+        and latest.checkpoint_index == state.checkpoint_index
+    )
+    source_advanced = (
+        parse_state_reference(args.state).selector == "latest" and not selected_latest
+    )
+    if not selected_latest:
+        return None, source_advanced
+    return uncompacted_message_count(rollout), source_advanced
+
+
 async def cmd_summarize(args: argparse.Namespace) -> int:
     state = await load_state(args.state, args)
     result = await generated_text(
@@ -59,6 +86,7 @@ async def cmd_summarize(args: argparse.Namespace) -> int:
         states=[state],
         prompt=summary_prompt(args.focus),
     )
+    tail_messages, source_advanced = latest_checkpoint_status(args, state)
     output = {
         "operation": "summarize",
         "state": state.metadata(),
@@ -68,11 +96,27 @@ async def cmd_summarize(args: argparse.Namespace) -> int:
             str(Path(args.database).expanduser()) if not args.no_cache else None
         ),
         "cacheEnabled": not args.no_cache,
+        "sourceAdvanced": source_advanced,
+        "hasUncompactedTail": bool(tail_messages),
+        "uncompactedMessageCount": tail_messages,
     }
     if args.json:
         print(json.dumps(output, indent=2))
     else:
         print(result.artifact.text)
+        if tail_messages:
+            print(
+                f"codex-memoryctl: {tail_messages} conversation message(s) follow "
+                f"checkpoint {state.checkpoint_index}; "
+                "this summary does not describe the uncompacted tail",
+                file=sys.stderr,
+            )
+        if source_advanced:
+            print(
+                "codex-memoryctl: rollout advanced while the summary was generated; "
+                "rerun @latest to describe the new checkpoint",
+                file=sys.stderr,
+            )
     return 0
 
 

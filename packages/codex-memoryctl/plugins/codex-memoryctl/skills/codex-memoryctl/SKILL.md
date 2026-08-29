@@ -41,9 +41,9 @@ Use `summarize` for one checkpoint, `diff` for a directed comparison, and
 `index` for a compact sequential view. Index renders the newest ten matching
 checkpoints by default; use `--from-index`, `--to-index`, `--since`, or
 `--until` to browse, and use `--limit 0` only when the complete range is
-needed. Selection happens before model requests. If index reports an
-uncompacted tail, inspect that conversation separately rather than treating the
-newest card as current thread state.
+needed. Selection happens before model requests. If `summarize` or `index`
+reports an uncompacted tail, inspect that conversation separately rather than
+treating the newest memory description as current thread state.
 
 These commands make subscription model requests on cache misses. Their
 plaintext is useful for locating a likely state, not for proving that an
@@ -53,37 +53,40 @@ persist locally. If the task needs the opaque state's retained fidelity, use an
 appropriate consultation or recall workflow instead of treating generated text
 as equivalent memory.
 
-For a foreign perspective, prefer a disposable consultant when the established
-agent should keep its trajectory. Frame the question in a fresh thread, then
-have that thread assimilate the donor memory itself:
+Let an established recipient own in-place memory use. Give it the memory
+reference and concrete question, then have it run:
 
 ```sh
 codex-memoryctl inject --self \
   --state DONOR_THREAD_ID@latest \
-  --purpose "Consult this perspective for the handoff question in my current turn."
+  --purpose "Compare this perspective with the current handoff diagnosis."
 ```
 
-Use `--self` in an established thread only when durable assimilation is
-intended, such as older-self recall. It requires an active `CODEX_THREAD_ID`
-and `--purpose`, binds memory to the current turn, and appends the exact purpose
-in the closing perspective boundary. Memoryctl labels each imported memory with
-its source reference and whether that source came from a local rollout or an
-export claim. State how the retained perspective relates to the current
-question; do not infer a donor role or assignment merely to fill the purpose.
+`--self` requires an active `CODEX_THREAD_ID` and a purpose. It binds memory to
+the current turn and adds attributed source boundaries. Use it when the memory
+may become part of the continuing thread, including older-self recall. Make the
+purpose name the recipient's actual subject and intended use; a generic
+statement about authority adds little useful context.
 
-Use `--to TARGET` for source-associated transplantation into a loaded thread.
-Memory-only transfer uses the same perspective boundaries and delivers an
-optional purpose after the batch. This is suitable for a fresh handoff or
-recovery target; it should not be treated as neutral context for an established
-agent. Full-checkpoint transfer requires `--to`, remains unframed, and is
-intended for a fresh target.
+Use a fresh disposable consultant when the original agent should remain
+unchanged. The consultant receives the question and performs its own `--self`
+injection.
 
-Use several `--state` arguments for one ordered memory-only batch. Use
-`--full-checkpoint` only when the donor's retained user, developer, and agent
-messages are needed as well. An exported file preserves the same distinction.
-Memoryctl closes one imported perspective before opening the next. This
-improves attribution, but order and content can still blur or redirect the
-recipient.
+`--to TARGET` exposes deliberate external transfer to any loaded thread. It
+defaults to source binding and the same boundaries. Use `--expect-no-turns`
+when a handoff or recovery workflow depends on there being no materialized
+target turn yet. External transfer into an established agent is a lasting
+change to its history, not neutral reference material.
+
+With `--to`, low-level work can select `--binding source|current` and
+`--framing boundaries|none`. Current binding requires an active target turn.
+Unframed transfer adds no model-visible source labels and accepts no purpose.
+Several `--state` arguments form one ordered batch; both order and content can
+change the result.
+
+Use `--full-checkpoint` only when the donor's retained user, developer, and
+agent messages are needed. It requires `--to`, source binding, and no framing
+or purpose. Prefer `--expect-no-turns` when the target is intended to be fresh.
 
 ```sh
 codex-memoryctl export DONOR_THREAD_ID@latest --output memory.json
@@ -95,16 +98,10 @@ An export's opaque digest is validated. Its source thread, time, model, and
 checkpoint fields remain editable metadata rather than authenticated
 provenance.
 
-The memory itself carries no reliable donor identity, purpose, or added
-authority. The attributed boundaries give it surrounding provenance, not
-isolation. Keep current instructions and current evidence authoritative, and
-extract what is useful instead of reviving obsolete work.
-
-Usable memory and source awareness are separate. When a donor should remain a
-foreign perspective, state that relationship positively; do not ask the model
-to prove it can inspect ciphertext or rely on rejecting the donor identity to
-create separation. Prefer a disposable consultant when the established thread
-must remain unchanged.
+Opaque memory carries no reliable donor identity, purpose, or added authority.
+Boundaries provide surrounding provenance rather than isolation. Keep current
+instructions and evidence authoritative, and state positively when imported
+memory is a foreign perspective.
 
 ## Judge The Lifecycle
 

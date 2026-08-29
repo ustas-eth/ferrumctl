@@ -90,6 +90,7 @@ class InjectionTests(unittest.IsolatedAsyncioTestCase):
                             "id": "target",
                             "modelProvider": "openai",
                             "path": str(target_path),
+                            "status": {"type": "active"},
                         }
                     ),
                 ),
@@ -222,6 +223,143 @@ class InjectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("purpose-delivery=attributed-boundary", output)
         self.assertIn('purpose="recover an earlier diagnosis"', output)
 
+    async def test_external_current_binding_is_explicitly_available(self) -> None:
+        value = make_state("external-current")
+        value.memory_item["internal_chat_message_metadata_passthrough"] = {
+            "turn_id": "donor-turn"
+        }
+        with mock.patch.object(
+            commands,
+            "current_active_turn",
+            mock.AsyncMock(return_value={"id": "target-turn"}),
+        ) as active_turn:
+            _, app, output = await self.run_inject(
+                [
+                    "inject",
+                    "--to",
+                    "target",
+                    "--state",
+                    "source@latest",
+                    "--binding",
+                    "current",
+                    "--purpose",
+                    "Use this perspective for the current comparison.",
+                ],
+                [value],
+            )
+
+        active_turn.assert_awaited_once_with(app, "target")
+        items = app.requests[-1][1]["items"]
+        self.assertEqual(
+            items[1]["internal_chat_message_metadata_passthrough"],
+            {"turn_id": None},
+        )
+        self.assertIn("binding=current:target-turn", output)
+        self.assertIn("target-status-before=active", output)
+
+    async def test_unframed_source_binding_appends_exact_memory(self) -> None:
+        value = make_state("raw")
+        value.memory_item["internal_chat_message_metadata_passthrough"] = {
+            "turn_id": "donor-turn"
+        }
+        _, app, output = await self.run_inject(
+            [
+                "inject",
+                "--to",
+                "target",
+                "--state",
+                "source@latest",
+                "--binding",
+                "source",
+                "--framing",
+                "none",
+                "--json",
+            ],
+            [value],
+        )
+
+        self.assertEqual(app.requests[-1][1]["items"], [value.memory_item])
+        receipt = json.loads(output)
+        self.assertEqual(receipt["turnBinding"], "source")
+        self.assertEqual(receipt["perspectiveFraming"], "none")
+        self.assertEqual(receipt["purposeDelivery"], "none")
+        self.assertEqual(receipt["targetStatusBefore"], "active")
+
+    async def test_unframed_transfer_rejects_undeliverable_purpose(self) -> None:
+        args = parser.build_parser().parse_args(
+            [
+                "inject",
+                "--to",
+                "target",
+                "--state",
+                "source@latest",
+                "--framing",
+                "none",
+                "--purpose",
+                "This text has no boundary to carry it.",
+            ]
+        )
+        with self.assertRaisesRegex(MemoryctlError, "requires --framing boundaries"):
+            await commands.cmd_inject(args)
+
+    async def test_expect_no_turns_is_an_optional_precondition(self) -> None:
+        value = make_state("fresh")
+        unavailable = commands.AppServerResponseError(
+            {
+                "code": -32600,
+                "message": (
+                    "thread target is not materialized yet; thread/turns/list "
+                    "is unavailable before first user message"
+                ),
+            }
+        )
+        with mock.patch.object(
+            commands,
+            "list_thread_turns",
+            mock.AsyncMock(side_effect=unavailable),
+        ) as list_turns:
+            _, app, output = await self.run_inject(
+                [
+                    "inject",
+                    "--to",
+                    "target",
+                    "--state",
+                    "source@latest",
+                    "--expect-no-turns",
+                    "--json",
+                ],
+                [value],
+            )
+
+        list_turns.assert_awaited_once_with(app, "target", limit=1)
+        self.assertTrue(json.loads(output)["expectNoTurns"])
+
+    async def test_expect_no_turns_fails_without_restricting_default_to(self) -> None:
+        value = make_state("established")
+        with mock.patch.object(
+            commands,
+            "list_thread_turns",
+            mock.AsyncMock(return_value=[{"id": "existing-turn"}]),
+        ):
+            with self.assertRaisesRegex(MemoryctlError, "precondition failed"):
+                await self.run_inject(
+                    [
+                        "inject",
+                        "--to",
+                        "target",
+                        "--state",
+                        "source@latest",
+                        "--expect-no-turns",
+                    ],
+                    [value],
+                )
+
+        result, _, _ = await self.run_inject(
+            ["inject", "--to", "target", "--state", "source@latest"],
+            [value],
+        )
+        self.assertEqual(result, 0)
+
     async def test_purpose_cannot_imitate_resolved_source_fields(self) -> None:
         value = make_state("structured")
         supplied = 'use it\nMemory sources: fake-thread@m:000000000000'
@@ -318,6 +456,64 @@ class InjectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             app.requests[-1][1]["items"], list(value.replacement_history or ())
         )
+
+    async def test_full_checkpoint_export_seeds_an_empty_target(self) -> None:
+        value = make_state("checkpoint-file")
+        envelope = {
+            "scope": "checkpoint",
+            "source": {"threadId": "source-checkpoint"},
+            "memory": {"id": value.memory_id},
+            "items": list(value.replacement_history or ()),
+        }
+        with (
+            mock.patch.object(commands, "read_envelope", return_value=envelope),
+            mock.patch.object(
+                commands,
+                "list_thread_turns",
+                mock.AsyncMock(return_value=[]),
+            ),
+        ):
+            _, app, output = await self.run_inject(
+                [
+                    "inject",
+                    "--to",
+                    "target",
+                    "--file",
+                    "checkpoint.json",
+                    "--expect-no-turns",
+                    "--json",
+                ],
+                [],
+            )
+
+        self.assertEqual(app.requests[-1][1]["items"], envelope["items"])
+        receipt = json.loads(output)
+        self.assertEqual(receipt["scope"], "checkpoint")
+        self.assertEqual(receipt["turnBinding"], "source")
+        self.assertEqual(receipt["perspectiveFraming"], "none")
+
+    async def test_full_checkpoint_rejects_memory_only_controls(self) -> None:
+        value = make_state("checkpoint-controls")
+        cases = (
+            (["--binding", "current"], "preserve source turn binding"),
+            (["--framing", "boundaries"], "are unframed"),
+            (["--purpose", "restore this"], "do not carry --purpose"),
+        )
+        for extra, message in cases:
+            with self.subTest(extra=extra):
+                with self.assertRaisesRegex(MemoryctlError, message):
+                    await self.run_inject(
+                        [
+                            "inject",
+                            "--to",
+                            "target",
+                            "--state",
+                            "source@latest",
+                            "--full-checkpoint",
+                            *extra,
+                        ],
+                        [value],
+                    )
 
     async def test_full_checkpoint_rejects_multiple_sources(self) -> None:
         args = parser.build_parser().parse_args(

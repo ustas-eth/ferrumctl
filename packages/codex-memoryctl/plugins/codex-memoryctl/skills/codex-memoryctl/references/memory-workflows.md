@@ -41,6 +41,12 @@ This operation is durable. A later compaction may absorb the recalled material
 into the agent's next memory, so save any conclusions that must remain explicit
 in ordinary project artifacts.
 
+The same mode works when another controller finds the memory first. Give the
+established recipient the memory reference and the concrete question, then let
+the recipient run `inject --self` during its own turn. This keeps the request,
+injection, and purpose together without requiring the controller to alter the
+thread externally.
+
 ## Fresh Handoff And Consolidation
 
 A fresh thread can assimilate one or more memory-only states with `--self`.
@@ -52,15 +58,24 @@ An ordered batch is not a set of isolated channels. The boundaries improve
 attribution but cannot guarantee it. When donors must remain independently
 isolated, consult them in separate threads.
 
-`inject --to TARGET` preserves each donor's source turn association. Use it
-when a loaded fresh target needs source-associated state, not as neutral context
-for an established agent.
+An external controller can use `inject --to TARGET`. The memory-only defaults
+preserve each donor's source turn association and add source boundaries. Use
+`--expect-no-turns` when an automation depends on the target having no
+materialized turns; the command otherwise permits established targets.
+
+External injection into an established thread is durable transplantation. It
+can be useful for controlled consolidation, recovery, and low-level studies,
+but it cannot promise the effect of neutral reference material. The controller
+can select `--binding source|current` and `--framing boundaries|none` when those
+mechanics matter. Current binding requires an active target turn. Unframed
+transfer adds no model-visible source labels.
 
 ## Recovery With A Full Checkpoint
 
 A full checkpoint includes the donor's retained user, developer, and agent
 messages as well as opaque memory. It requires `--to` and is intended for a
 fresh recovery target where those messages are part of the needed state.
+`--expect-no-turns` can check that assumption before submission.
 
 The transfer still appends after the target's initial context rather than
 replacing its history. Treat the result as a seeded recovery thread, not an
