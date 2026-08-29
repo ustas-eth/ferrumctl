@@ -9,6 +9,7 @@ from unittest import mock
 from codex_memoryctl import commands, parser
 from codex_memoryctl.errors import InjectionUncertain, MemoryctlError
 from codex_memoryctl.rollouts import MemoryState, memory_id, memory_ref
+from codex_memoryctl.selectors import StateReference
 
 
 class FakeContext:
@@ -64,6 +65,22 @@ def make_state(name: str, *, checkpoint: bool = True) -> MemoryState:
 
 
 class InjectionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_existing_root_path_is_not_resolved_as_an_agent(self) -> None:
+        reference = StateReference("/root/rollout.jsonl", "latest")
+        args = parser.build_parser().parse_args(["show", "/tmp/source.jsonl"])
+        with (
+            mock.patch.object(commands.Path, "is_file", return_value=True),
+            mock.patch.object(
+                commands,
+                "resolve_thread_reference",
+                mock.AsyncMock(),
+            ) as resolved,
+        ):
+            result = await commands.resolve_source(reference, args, FakeApp())
+
+        self.assertEqual(result, reference)
+        resolved.assert_not_awaited()
+
     async def run_inject(self, argv, states):
         args = parser.build_parser().parse_args(argv)
         app = FakeApp()

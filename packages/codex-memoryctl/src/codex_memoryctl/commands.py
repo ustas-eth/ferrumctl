@@ -60,6 +60,8 @@ async def resolve_source(
     args: argparse.Namespace,
     app: AppServer | None = None,
 ) -> StateReference:
+    if Path(reference.source).expanduser().is_file():
+        return reference
     if not is_agent_path(reference.source):
         return reference
     if app is not None:
