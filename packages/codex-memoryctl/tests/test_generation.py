@@ -1,3 +1,5 @@
+import http.client
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -74,6 +76,69 @@ class PromptTests(unittest.TestCase):
 
 
 class GenerationCacheTests(unittest.TestCase):
+    def test_retries_when_response_stream_breaks(self) -> None:
+        class BrokenResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def __iter__(self):
+                raise http.client.IncompleteRead(b"partial", 10)
+
+        completed = {
+            "type": "response.completed",
+            "response": {
+                "id": "resp_recovered",
+                "usage": {},
+                "output": [],
+            },
+        }
+
+        class CompleteResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def __iter__(self):
+                return iter(
+                    [
+                        b'data: {"type":"response.output_text.delta",'
+                        b'"delta":"{\\"text\\":\\"recovered\\"}"}\n',
+                        ("data: " + json.dumps(completed) + "\n").encode(),
+                        b"data: [DONE]\n",
+                    ]
+                )
+
+        state = make_state("broken-stream")
+        with tempfile.TemporaryDirectory() as directory:
+            with (
+                mock.patch.object(generation, "_credentials", return_value={}),
+                mock.patch.object(
+                    generation.urllib.request,
+                    "urlopen",
+                    side_effect=[BrokenResponse(), CompleteResponse()],
+                ) as opened,
+            ):
+                result = generation.generate(
+                    Path(directory) / "derived.sqlite3",
+                    Path(directory),
+                    operation="summarize-v1",
+                    states=[state],
+                    prompt="prompt",
+                    model="gpt-test",
+                    effort="medium",
+                    refresh=False,
+                    use_cache=False,
+                )
+
+        self.assertEqual(opened.call_count, 2)
+        self.assertEqual(result.artifact.text, "recovered")
+        self.assertEqual(result.artifact.attempts, 2)
+
     def test_reuses_validated_cached_generation(self) -> None:
         state = make_state("cached")
         with tempfile.TemporaryDirectory() as directory:

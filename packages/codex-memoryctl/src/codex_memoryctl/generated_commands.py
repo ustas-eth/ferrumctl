@@ -11,7 +11,13 @@ from .commands import current_thread_id, load_state, resolve_source
 from .errors import MemoryctlError
 from .generation import GenerationResult, diff_prompt, generate, summary_prompt
 from .indexing import select_checkpoints, uncompacted_message_count
-from .rollouts import MemoryState, load_rollout, memory_ref, resolve_codex_home
+from .rollouts import (
+    MemoryState,
+    RolloutMemory,
+    load_rollout,
+    memory_ref,
+    resolve_codex_home,
+)
 from .selectors import StateReference, parse_state_reference
 
 
@@ -28,6 +34,17 @@ def generation_metadata(result: GenerationResult) -> dict[str, Any]:
         "usage": artifact.usage,
         "responseId": artifact.response_id,
     }
+
+
+def _rollout_compaction_count(rollout: RolloutMemory) -> int:
+    return rollout.compaction_count or max(
+        (
+            item.checkpoint_index or 0
+            for item in rollout.states
+            if item.origin == "checkpoint"
+        ),
+        default=0,
+    )
 
 
 async def generated_text(
@@ -54,28 +71,37 @@ async def generated_text(
 def latest_checkpoint_status(
     args: argparse.Namespace,
     state: MemoryState,
+    value: str,
 ) -> tuple[int | None, bool]:
-    if state.origin != "checkpoint" or not state.rollout_path.is_file():
+    if (
+        parse_state_reference(value).selector != "latest"
+        or state.origin != "checkpoint"
+        or not state.rollout_path.is_file()
+    ):
         return None, False
     rollout = load_rollout(
         resolve_codex_home(args.codex_home),
         str(state.rollout_path),
         include_messages=True,
     )
-    checkpoints = [item for item in rollout.states if item.origin == "checkpoint"]
-    if not checkpoints:
-        return None, False
-    latest = checkpoints[-1]
-    selected_latest = (
-        latest.memory_id == state.memory_id
-        and latest.checkpoint_index == state.checkpoint_index
+    compaction_count = _rollout_compaction_count(rollout)
+    current = next(
+        (
+            item
+            for item in rollout.states
+            if item.origin == "checkpoint"
+            and item.checkpoint_index == compaction_count
+        ),
+        None,
     )
-    source_advanced = (
-        parse_state_reference(args.state).selector == "latest" and not selected_latest
+    selected_latest = (
+        current is not None
+        and current.memory_id == state.memory_id
+        and current.checkpoint_index == state.checkpoint_index
     )
     if not selected_latest:
-        return None, source_advanced
-    return uncompacted_message_count(rollout), source_advanced
+        return None, True
+    return uncompacted_message_count(rollout), False
 
 
 async def cmd_summarize(args: argparse.Namespace) -> int:
@@ -86,7 +112,7 @@ async def cmd_summarize(args: argparse.Namespace) -> int:
         states=[state],
         prompt=summary_prompt(args.focus),
     )
-    tail_messages, source_advanced = latest_checkpoint_status(args, state)
+    tail_messages, source_advanced = latest_checkpoint_status(args, state, args.state)
     output = {
         "operation": "summarize",
         "state": state.metadata(),
@@ -129,6 +155,8 @@ async def cmd_diff(args: argparse.Namespace) -> int:
         states=[older, newer],
         prompt=diff_prompt(args.focus),
     )
+    _, older_source_advanced = latest_checkpoint_status(args, older, args.older)
+    _, newer_source_advanced = latest_checkpoint_status(args, newer, args.newer)
     output = {
         "operation": "diff",
         "older": older.metadata(),
@@ -139,11 +167,26 @@ async def cmd_diff(args: argparse.Namespace) -> int:
             str(Path(args.database).expanduser()) if not args.no_cache else None
         ),
         "cacheEnabled": not args.no_cache,
+        "olderSourceAdvanced": older_source_advanced,
+        "newerSourceAdvanced": newer_source_advanced,
     }
     if args.json:
         print(json.dumps(output, indent=2))
     else:
         print(result.artifact.text)
+        if older_source_advanced or newer_source_advanced:
+            changed = []
+            if older_source_advanced:
+                changed.append("older")
+            if newer_source_advanced:
+                changed.append("newer")
+            print(
+                "codex-memoryctl: "
+                + " and ".join(changed)
+                + " @latest source advanced while the diff was generated; rerun "
+                "to compare the new checkpoint",
+                file=sys.stderr,
+            )
     return 0
 
 
@@ -232,8 +275,17 @@ async def cmd_index(args: argparse.Namespace) -> int:
         if state.origin == "checkpoint"
     ]
     current_checkpoints = [state.memory_id for state in refreshed_checkpoints]
-    source_advanced = current_checkpoints != initial_checkpoints
+    initial_compaction_count = _rollout_compaction_count(rollout)
+    refreshed_compaction_count = _rollout_compaction_count(refreshed)
+    source_advanced = (
+        refreshed_compaction_count != initial_compaction_count
+        or current_checkpoints != initial_checkpoints
+    )
     tail_messages = uncompacted_message_count(refreshed)
+    latest_portable_index = refreshed_checkpoints[-1].checkpoint_index
+    latest_compaction_portable = (
+        latest_portable_index == refreshed_compaction_count
+    )
     first_state = selection.selected_states[0]
     last_state = selection.selected_states[-1]
     first_index = first_state.checkpoint_index
@@ -252,6 +304,9 @@ async def cmd_index(args: argparse.Namespace) -> int:
         "model": args.model,
         "effort": args.effort,
         "checkpointCount": len(selection.states),
+        "compactionCount": refreshed_compaction_count,
+        "latestPortableCheckpointIndex": latest_portable_index,
+        "latestCompactionPortable": latest_compaction_portable,
         "matchingCheckpointCount": len(selection.matching_positions),
         "selectedCheckpointCount": len(selection.selected_positions),
         "generatedCount": sum(not result.cache_hit for result in results.values()),
@@ -296,10 +351,9 @@ async def cmd_index(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
         if tail_messages:
-            latest_checkpoint_index = refreshed_checkpoints[-1].checkpoint_index
             print(
                 f"codex-memoryctl: {tail_messages} conversation message(s) follow "
-                f"checkpoint {latest_checkpoint_index}; "
+                f"compaction {refreshed_compaction_count}; "
                 "the index does not describe this uncompacted tail",
                 file=sys.stderr,
             )
@@ -307,6 +361,13 @@ async def cmd_index(args: argparse.Namespace) -> int:
             print(
                 "codex-memoryctl: rollout advanced while the index was generated; "
                 "rerun to include the new checkpoint",
+                file=sys.stderr,
+            )
+        if not latest_compaction_portable:
+            print(
+                "codex-memoryctl: latest compaction "
+                f"{refreshed_compaction_count} has no portable memory; "
+                f"the index ends at checkpoint {latest_portable_index}",
                 file=sys.stderr,
             )
     return 0

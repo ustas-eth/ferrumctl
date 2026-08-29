@@ -85,17 +85,19 @@ codex-memoryctl index THREAD --limit 0 | rg -i "suspected subject"
 ```
 
 `--jobs N` limits concurrent requests. If one request fails, successful entries
-remain cached for the next run. If the rollout gains another portable
-checkpoint during generation, the command reports that the view should be
-rerun.
+remain cached for the next run. If the rollout gains another compaction during
+generation, the command reports that the view should be rerun. The structured
+result also distinguishes the total compaction count from the latest portable
+checkpoint; plain output warns when the newest compaction has no reusable
+opaque memory.
 
 `index` and a summary of the latest checkpoint report `hasUncompactedTail` and
 `uncompactedMessageCount`. These identify ordinary user or assistant messages
-after the newest portable checkpoint. A historical summary reports no tail
-count. Generated text does not describe the tail; use transcript inspection
-when current conversation details matter. If a new checkpoint appears during a
-`summarize @latest` request, `sourceAdvanced` reports that the selected memory
-is no longer latest.
+after the newest compaction. A historical summary reports no tail count.
+Generated text does not describe the tail; use transcript inspection when
+current conversation details matter. If a compaction appears during a
+`summarize @latest` or `diff ... @latest` request, the source-advancement fields
+report that the selected memory is no longer latest.
 
 Standalone injected memory is omitted from `index` because it is not a
 generated checkpoint in the thread's sequential compaction history. It remains

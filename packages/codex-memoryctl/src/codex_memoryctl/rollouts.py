@@ -87,6 +87,7 @@ class RolloutMemory:
     session_meta_thread_id: str | None = None
     messages: tuple[TranscriptMessage, ...] = ()
     compaction_count: int = 0
+    last_compaction_line: int | None = None
 
 
 def distinct_session_meta_thread_id(
@@ -203,6 +204,7 @@ def scan_rollout(path: Path, *, include_messages: bool = False) -> RolloutMemory
     visible_state_indices: set[int] = set()
     messages: list[TranscriptMessage] = []
     checkpoint_index = 0
+    last_compaction_line: int | None = None
 
     try:
         with path.open("r", encoding="utf-8", errors="strict") as handle:
@@ -281,6 +283,7 @@ def scan_rollout(path: Path, *, include_messages: bool = False) -> RolloutMemory
                     continue
                 if record_type == "compacted":
                     checkpoint_index += 1
+                    last_compaction_line = line_number
                     replacement = payload.get("replacement_history")
                     items = _memory_items(replacement)
                     visible_memory_ids = {
@@ -355,6 +358,7 @@ def scan_rollout(path: Path, *, include_messages: bool = False) -> RolloutMemory
         session_meta_thread_id,
         tuple(messages),
         checkpoint_index,
+        last_compaction_line,
     )
 
 

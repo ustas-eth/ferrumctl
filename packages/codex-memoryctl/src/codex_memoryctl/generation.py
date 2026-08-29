@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import http.client
 import json
 import time
 import urllib.error
@@ -244,32 +245,45 @@ def _call_once(
 
     deltas: list[str] = []
     completed: dict[str, Any] | None = None
-    with opened:
-        for encoded in opened:
-            line = encoded.decode("utf-8", "replace").rstrip("\r\n")
-            if not line.startswith("data: "):
-                continue
-            raw = line[6:]
-            if raw == "[DONE]":
-                break
-            try:
-                event = json.loads(raw)
-            except json.JSONDecodeError:
-                continue
-            event_type = event.get("type")
-            if event_type == "response.output_text.delta":
-                delta = event.get("delta")
-                if isinstance(delta, str):
-                    deltas.append(delta)
-            elif event_type == "response.completed" and isinstance(
-                event.get("response"), dict
-            ):
-                completed = event["response"]
-            elif event_type in {"response.failed", "response.incomplete", "error"}:
-                raise _GenerationFailure(
-                    f"model request did not complete: {json.dumps(event)[:1000]}",
-                    retryable=True,
-                )
+    try:
+        with opened:
+            for encoded in opened:
+                line = encoded.decode("utf-8", "replace").rstrip("\r\n")
+                if not line.startswith("data: "):
+                    continue
+                raw = line[6:]
+                if raw == "[DONE]":
+                    break
+                try:
+                    event = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                event_type = event.get("type")
+                if event_type == "response.output_text.delta":
+                    delta = event.get("delta")
+                    if isinstance(delta, str):
+                        deltas.append(delta)
+                elif event_type == "response.completed" and isinstance(
+                    event.get("response"), dict
+                ):
+                    completed = event["response"]
+                elif event_type in {
+                    "response.failed",
+                    "response.incomplete",
+                    "error",
+                }:
+                    raise _GenerationFailure(
+                        "model request did not complete: "
+                        f"{json.dumps(event)[:1000]}",
+                        retryable=True,
+                    )
+    except _GenerationFailure:
+        raise
+    except (http.client.HTTPException, OSError) as exc:
+        raise _GenerationFailure(
+            "model response stream failed before completion",
+            retryable=True,
+        ) from exc
     if completed is None:
         raise _GenerationFailure(
             "model response stream ended without completion",

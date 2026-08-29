@@ -196,6 +196,7 @@ class RolloutTests(unittest.TestCase):
             )
             rollout = scan_rollout(path)
         self.assertEqual(rollout.compaction_count, 2)
+        self.assertEqual(rollout.last_compaction_line, 2)
         self.assertEqual(rollout.states[0].checkpoint_index, 2)
 
     def test_latest_fails_closed_after_nonportable_compaction(self) -> None:

@@ -62,9 +62,10 @@ RFC3339 timestamps. Bounds and limits apply before model requests.
 
 The view joins the current rollout with cached results rather than maintaining
 a separate catalog. It reports when ordinary conversation follows the newest
-portable checkpoint because those uncompacted messages are not described by
-the index. `summarize` gives the same warning when its selected state is the
-latest checkpoint. The default model is GPT-5.6 Luna at medium effort;
+compaction because those messages are not described by the index. It also
+warns when the newest compaction has no portable memory. `summarize` gives the
+tail warning when its selected state is the latest checkpoint. The default
+model is GPT-5.6 Luna at medium effort;
 `--model`, `--effort`, and `--refresh` are available when a different tradeoff
 or a fresh result is needed. Use `--no-cache` to generate without reading or
 writing the plaintext cache.

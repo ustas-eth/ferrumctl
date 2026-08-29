@@ -118,14 +118,17 @@ def select_checkpoints(
 
 
 def uncompacted_message_count(rollout: RolloutMemory) -> int:
-    checkpoint_lines = [
-        state.line_number
-        for state in rollout.states
-        if state.origin == "checkpoint" and state.line_number is not None
-    ]
-    if not checkpoint_lines:
+    last_compaction_line = rollout.last_compaction_line
+    if last_compaction_line is None:
+        checkpoint_lines = [
+            state.line_number
+            for state in rollout.states
+            if state.origin == "checkpoint" and state.line_number is not None
+        ]
+        last_compaction_line = max(checkpoint_lines, default=None)
+    if last_compaction_line is None:
         return len(rollout.messages)
-    last_checkpoint_line = max(checkpoint_lines)
     return sum(
-        message.line_number > last_checkpoint_line for message in rollout.messages
+        message.line_number > last_compaction_line
+        for message in rollout.messages
     )

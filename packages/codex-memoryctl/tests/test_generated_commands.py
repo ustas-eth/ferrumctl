@@ -134,6 +134,8 @@ class GeneratedCommandTests(unittest.IsolatedAsyncioTestCase):
                 messages=(
                     TranscriptMessage(11, None, "user", None, "new instruction"),
                 ),
+                compaction_count=1,
+                last_compaction_line=10,
             )
             args = parser.build_parser().parse_args(
                 ["summarize", "thread@latest", "--json"]
@@ -194,7 +196,13 @@ class GeneratedCommandTests(unittest.IsolatedAsyncioTestCase):
             rollout_path.write_text("{}\n")
             selected = replace(selected, rollout_path=rollout_path)
             newer = replace(newer, rollout_path=rollout_path)
-            rollout = RolloutMemory("thread-test", rollout_path, (selected, newer))
+            rollout = RolloutMemory(
+                "thread-test",
+                rollout_path,
+                (selected, newer),
+                compaction_count=2,
+                last_compaction_line=20,
+            )
             args = parser.build_parser().parse_args(
                 ["summarize", "thread@latest", "--json"]
             )
@@ -221,6 +229,52 @@ class GeneratedCommandTests(unittest.IsolatedAsyncioTestCase):
             parsed = json.loads(output.getvalue())
             self.assertTrue(parsed["sourceAdvanced"])
             self.assertIsNone(parsed["uncompactedMessageCount"])
+
+    async def test_summarize_detects_a_later_nonportable_compaction(self) -> None:
+        selected = make_state("selected", 1)
+        with tempfile.TemporaryDirectory() as directory:
+            rollout_path = Path(directory) / "rollout.jsonl"
+            rollout_path.write_text("{}\n")
+            selected = replace(selected, rollout_path=rollout_path)
+            rollout = RolloutMemory(
+                "thread-test",
+                rollout_path,
+                (selected,),
+                messages=(
+                    TranscriptMessage(15, None, "user", None, "already compacted"),
+                    TranscriptMessage(21, None, "assistant", None, "new tail"),
+                ),
+                compaction_count=2,
+                last_compaction_line=20,
+            )
+            args = parser.build_parser().parse_args(
+                ["summarize", "thread@latest", "--json"]
+            )
+            with (
+                mock.patch.object(
+                    generated_commands,
+                    "load_state",
+                    mock.AsyncMock(return_value=selected),
+                ),
+                mock.patch.object(
+                    generated_commands,
+                    "load_rollout",
+                    return_value=rollout,
+                ),
+                mock.patch.object(
+                    generated_commands,
+                    "generated_text",
+                    mock.AsyncMock(
+                        return_value=generated("selected state", cache_hit=True)
+                    ),
+                ),
+                redirect_stdout(io.StringIO()) as output,
+            ):
+                await generated_commands.cmd_summarize(args)
+
+        parsed = json.loads(output.getvalue())
+        self.assertTrue(parsed["sourceAdvanced"])
+        self.assertIsNone(parsed["uncompactedMessageCount"])
 
     async def test_diff_keeps_older_and_newer_sources_directed(self) -> None:
         older = make_state("older", 1)
@@ -255,6 +309,49 @@ class GeneratedCommandTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(parsed["older"]["checkpointIndex"], 1)
         self.assertEqual(parsed["newer"]["checkpointIndex"], 2)
         self.assertEqual(parsed["text"], "material change")
+
+    async def test_diff_reports_when_a_latest_source_advances(self) -> None:
+        older = make_state("older", 1)
+        newer = make_state("newer", 2)
+        with tempfile.TemporaryDirectory() as directory:
+            rollout_path = Path(directory) / "rollout.jsonl"
+            rollout_path.write_text("{}\n")
+            newer = replace(newer, rollout_path=rollout_path)
+            rollout = RolloutMemory(
+                "thread-test",
+                rollout_path,
+                (older, newer),
+                compaction_count=3,
+                last_compaction_line=30,
+            )
+            args = parser.build_parser().parse_args(
+                ["diff", "thread@index:1", "thread@latest", "--json"]
+            )
+            with (
+                mock.patch.object(
+                    generated_commands,
+                    "load_state",
+                    mock.AsyncMock(side_effect=[older, newer]),
+                ),
+                mock.patch.object(
+                    generated_commands,
+                    "load_rollout",
+                    return_value=rollout,
+                ),
+                mock.patch.object(
+                    generated_commands,
+                    "generated_text",
+                    mock.AsyncMock(
+                        return_value=generated("material change", cache_hit=False)
+                    ),
+                ),
+                redirect_stdout(io.StringIO()) as output,
+            ):
+                await generated_commands.cmd_diff(args)
+
+        parsed = json.loads(output.getvalue())
+        self.assertFalse(parsed["olderSourceAdvanced"])
+        self.assertTrue(parsed["newerSourceAdvanced"])
 
     async def test_index_renders_rollout_order_and_cache_counts(self) -> None:
         first = make_state("first", 1)
@@ -396,6 +493,58 @@ class GeneratedCommandTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(parsed["selection"]["firstIndex"], 3)
         self.assertTrue(parsed["selection"]["hasEarlier"])
         self.assertTrue(parsed["hasUncompactedTail"])
+        self.assertEqual(parsed["uncompactedMessageCount"], 1)
+
+    async def test_index_reports_a_nonportable_latest_compaction(self) -> None:
+        first = make_state("first", 1)
+        second = make_state("second", 2)
+        rollout = RolloutMemory(
+            "thread-test",
+            Path("/tmp/source.jsonl"),
+            (first, second),
+            messages=(
+                TranscriptMessage(25, None, "user", None, "consumed"),
+                TranscriptMessage(31, None, "assistant", None, "tail"),
+            ),
+            compaction_count=3,
+            last_compaction_line=30,
+        )
+        args = parser.build_parser().parse_args(
+            ["index", "thread-test", "--json"]
+        )
+
+        async def build(_args, *, operation, states, prompt):
+            del operation, prompt
+            return generated(
+                f"checkpoint {states[-1].checkpoint_index}",
+                cache_hit=True,
+            )
+
+        with (
+            mock.patch.object(
+                generated_commands,
+                "resolve_source",
+                mock.AsyncMock(side_effect=lambda value, _args: value),
+            ),
+            mock.patch.object(
+                generated_commands,
+                "load_rollout",
+                return_value=rollout,
+            ),
+            mock.patch.object(
+                generated_commands,
+                "generated_text",
+                side_effect=build,
+            ),
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            await generated_commands.cmd_index(args)
+
+        parsed = json.loads(output.getvalue())
+        self.assertEqual(parsed["compactionCount"], 3)
+        self.assertEqual(parsed["latestPortableCheckpointIndex"], 2)
+        self.assertFalse(parsed["latestCompactionPortable"])
+        self.assertFalse(parsed["sourceAdvanced"])
         self.assertEqual(parsed["uncompactedMessageCount"], 1)
 
     async def test_plain_index_explains_pagination_and_uncompacted_tail(self) -> None:
