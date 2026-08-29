@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
@@ -148,3 +149,30 @@ class CacheTests(unittest.TestCase):
             self.assertEqual(clear_cache(path), 2)
             self.assertEqual(inspect_cache(path).entry_count, 0)
             self.assertEqual(clear_cache(Path(directory) / "missing.sqlite3"), 0)
+
+    def test_inspect_does_not_add_tables_to_another_database(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "other.sqlite3"
+            connection = sqlite3.connect(path)
+            try:
+                connection.execute("CREATE TABLE unrelated (value TEXT)")
+                connection.commit()
+            finally:
+                connection.close()
+            before = path.read_bytes()
+
+            info = inspect_cache(path)
+
+            self.assertTrue(info.exists)
+            self.assertEqual(info.entry_count, 0)
+            self.assertEqual(info.operations, {})
+            self.assertEqual(clear_cache(path), 0)
+            self.assertEqual(path.read_bytes(), before)
+            connection = sqlite3.connect(path)
+            try:
+                tables = connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                ).fetchall()
+            finally:
+                connection.close()
+            self.assertEqual(tables, [("unrelated",)])

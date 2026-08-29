@@ -150,8 +150,28 @@ def inspect_cache(path: Path) -> CacheInfo:
     path = path.expanduser().resolve()
     if not path.exists():
         return CacheInfo(path, False, 0, 0, None, None, {})
-    connection = open_database(path)
     try:
+        size_bytes = path.stat().st_size
+    except OSError as exc:
+        raise MemoryctlError(f"failed to inspect cache database {path}: {exc}") from exc
+    try:
+        connection = sqlite3.connect(
+            path.as_uri() + "?mode=ro",
+            uri=True,
+            timeout=30,
+        )
+        connection.row_factory = sqlite3.Row
+    except (OSError, sqlite3.Error) as exc:
+        raise MemoryctlError(f"failed to inspect cache database {path}: {exc}") from exc
+    try:
+        table = connection.execute(
+            """
+            SELECT 1 FROM sqlite_master
+            WHERE type = 'table' AND name = 'generated_artifacts'
+            """
+        ).fetchone()
+        if table is None:
+            return CacheInfo(path, True, 0, size_bytes, None, None, {})
         summary = connection.execute(
             """
             SELECT COUNT(*) AS entry_count,
@@ -173,10 +193,6 @@ def inspect_cache(path: Path) -> CacheInfo:
     finally:
         connection.close()
     assert summary is not None
-    try:
-        size_bytes = path.stat().st_size
-    except OSError as exc:
-        raise MemoryctlError(f"failed to inspect cache database {path}: {exc}") from exc
     return CacheInfo(
         path=path,
         exists=True,
@@ -192,8 +208,21 @@ def clear_cache(path: Path) -> int:
     path = path.expanduser().resolve()
     if not path.exists():
         return 0
-    connection = open_database(path)
     try:
+        connection = sqlite3.connect(path, timeout=30, isolation_level=None)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA busy_timeout = 30000")
+    except (OSError, sqlite3.Error) as exc:
+        raise MemoryctlError(f"failed to clear cache database {path}: {exc}") from exc
+    try:
+        table = connection.execute(
+            """
+            SELECT 1 FROM sqlite_master
+            WHERE type = 'table' AND name = 'generated_artifacts'
+            """
+        ).fetchone()
+        if table is None:
+            return 0
         connection.execute("PRAGMA secure_delete = ON")
         connection.execute("BEGIN IMMEDIATE")
         row = connection.execute(
