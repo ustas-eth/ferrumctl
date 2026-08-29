@@ -32,6 +32,7 @@ class CommitMessageTests(unittest.TestCase):
             "BREAKING CHANGE: reader cursors now include authored entries.\n"
         )
         self.assert_valid("docs(repo): explain local development setup")
+        self.assert_valid("feat(memoryctl): make compaction memory transferable")
 
     def test_accepts_git_generated_headers(self) -> None:
         for message in (

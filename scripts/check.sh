@@ -28,6 +28,7 @@ run test -x scripts/codex-smoke.sh
 run test -x .githooks/commit-msg
 run cmp LICENSE packages/codex-goalctl/LICENSE
 run cmp LICENSE packages/codex-limitctl/LICENSE
+run cmp LICENSE packages/codex-memoryctl/LICENSE
 run cmp LICENSE packages/streamctl/LICENSE
 run cmp LICENSE packages/codex-wakectl/LICENSE
 run cmp LICENSE packages/codex-threadctl/LICENSE
@@ -43,6 +44,11 @@ run git diff --check
 (
   cd packages/codex-limitctl
   run env PYTHONPATH=src "$PYTHON" -m unittest discover -s tests -v
+)
+
+(
+  cd packages/codex-memoryctl
+  run env PYTHONPATH=src:../codex-threadctl/src "$PYTHON" -m unittest discover -s tests -v
 )
 
 (
@@ -79,23 +85,27 @@ run git diff --check
 
   run "$UV" tool install ./packages/codex-goalctl
   run "$UV" tool install ./packages/codex-limitctl
+  run "$UV" tool install ./packages/codex-memoryctl
   run "$UV" tool install ./packages/streamctl
   run "$UV" tool install ./packages/codex-threadctl
   run "$UV" tool install ./packages/codex-wakectl
   run "$bin_dir/codex-goalctl" --version
   run "$bin_dir/codex-limitctl" --version
+  run "$bin_dir/codex-memoryctl" --version
   run "$bin_dir/streamctl" --version
   run "$bin_dir/codex-threadctl" --version
   run "$bin_dir/codex-wakectl" --version
+  run "$UV" pip check --python "$tool_dir/codex-memoryctl/bin/python"
   run "$UV" pip check --python "$tool_dir/codex-wakectl/bin/python"
-  test "$("$bin_dir/codex-goalctl" --version)" = "codex-goalctl 0.1.9"
-  test "$("$bin_dir/codex-limitctl" --version)" = "codex-limitctl 0.2.7"
-  test "$("$bin_dir/streamctl" --version)" = "streamctl 0.2.1"
-  test "$("$bin_dir/codex-threadctl" --version)" = "codex-threadctl 0.6.1"
-  test "$("$bin_dir/codex-wakectl" --version)" = "codex-wakectl 0.5.0"
+  test "$("$bin_dir/codex-goalctl" --version)" = "codex-goalctl 0.1.10"
+  test "$("$bin_dir/codex-limitctl" --version)" = "codex-limitctl 0.2.8"
+  test "$("$bin_dir/codex-memoryctl" --version)" = "codex-memoryctl 0.5.2"
+  test "$("$bin_dir/streamctl" --version)" = "streamctl 0.2.2"
+  test "$("$bin_dir/codex-threadctl" --version)" = "codex-threadctl 0.6.2"
+  test "$("$bin_dir/codex-wakectl" --version)" = "codex-wakectl 0.5.1"
 )
 
 run packages/codex-readcov/target/debug/codex-readcov --version
-test "$(packages/codex-readcov/target/debug/codex-readcov --version)" = "codex-readcov 0.1.9"
+test "$(packages/codex-readcov/target/debug/codex-readcov --version)" = "codex-readcov 0.1.10"
 
 printf '\nchecks passed\n'

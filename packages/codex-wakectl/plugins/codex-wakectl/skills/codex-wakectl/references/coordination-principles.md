@@ -19,6 +19,7 @@ workflow layers; they do not change the semantics of the remaining tools.
 | Stream state | Ordered entries and reader acknowledgements | Notification, membership, or authorization |
 | Limit state | Current account observations and local usage history | Reserved capacity or exact thread attribution |
 | Read coverage | Transcript-recorded file-read actions | Verified file access or complete model context |
+| Compaction memory | Opaque memory items and their rollout sightings | Donor identity, temporary scope, or model interpretation |
 
 The surfaces can differ in freshness. Output and documentation should preserve
 which source produced an observation rather than presenting a synthetic state
@@ -69,6 +70,10 @@ Use account limits to gate work only when a policy supplies the threshold. Use
 read coverage as evidence about a defined transcript interval, not as a proxy
 for task correctness.
 
+Use memory transfer only when opaque compaction state is itself the needed
+input. An in-place injection is durable; use a disposable thread when the
+original conversation must remain unchanged.
+
 ## Independent Boundaries
 
 - Goal completion and turn completion are separate. Observe the turn when the
@@ -82,6 +87,11 @@ for task correctness.
 - Account capacity, goal token usage, and context-window usage are different
   measurements.
 - Materialized history and rollout evidence can change or grow independently.
+- Memory injection acceptance, model receipt, and later assimilation are
+  separate events.
+- Model-visible delivery, semantic use, and retained source awareness are
+  separate outcomes. Carry an actor or source label in ordinary content when
+  later attribution matters; transport metadata alone is not enough.
 
 ## Composition
 

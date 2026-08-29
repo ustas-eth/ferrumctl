@@ -1,6 +1,6 @@
 {
   "name": "codex-wakectl",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Codex skill for scheduling thread attention by time or condition.",
   "author": {
     "name": "ustas-eth"

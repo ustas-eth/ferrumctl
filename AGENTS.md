@@ -46,6 +46,7 @@ The tools observe or mutate independent state surfaces:
 - materialized thread and turn history
 - persisted goal state
 - rollout transcript files
+- opaque compaction memory observed in rollouts and appended through app-server
 - account rate-limit snapshots
 - the streamctl SQLite exchange store
 - the wakectl SQLite queue
@@ -81,6 +82,17 @@ command should remain bound to one state surface.
 - `codex-limitctl` exposes read-only capacity and usage signals. Keep current
   account reads distinct from account-unscoped rollout history, and do not
   expose credit data or consumable resets.
+- `codex-memoryctl` discovers and transfers opaque compaction memory without
+  owning a catalog. Generated descriptions are cached, lossy views: keep
+  rollout order and source references authoritative, bound selection before
+  remote generation, and never infer absence from omitted text. Keep
+  memory-only transfer distinct from a full checkpoint and preserve item order.
+  The recipient-owned mode supplies current-turn binding and source boundaries;
+  external transfer must also expose source/current binding and framed/unframed
+  low-level operation without altering the opaque item. Treat semantic use,
+  source awareness, assimilation, and workflow isolation as separate outcomes.
+  Report app-server acceptance without implying model interpretation or
+  temporary scope.
 
 ## Documentation Roles
 

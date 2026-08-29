@@ -1,0 +1,93 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from .errors import MemoryctlError
+from .rollouts import MemoryState, RolloutMemory
+
+
+@dataclass(frozen=True)
+class StateReference:
+    source: str
+    selector: str
+
+
+def parse_state_reference(value: str) -> StateReference:
+    if "@" not in value:
+        return StateReference(value, "latest")
+    source, selector = value.rsplit("@", 1)
+    if not source or not selector:
+        raise MemoryctlError(
+            "state reference must use SOURCE@latest, SOURCE@window:N, "
+            "SOURCE@index:N, or SOURCE@m:PREFIX"
+        )
+    return StateReference(source, selector)
+
+
+def _number(value: str, label: str, *, allow_zero: bool) -> int:
+    try:
+        number = int(value)
+    except ValueError as exc:
+        raise MemoryctlError(f"{label} must be a positive integer") from exc
+    if number < 0 or (number == 0 and not allow_zero):
+        qualification = "non-negative" if allow_zero else "positive"
+        raise MemoryctlError(f"{label} must be a {qualification} integer")
+    return number
+
+
+def select_state(
+    rollout: RolloutMemory,
+    selector: str,
+    *,
+    require_checkpoint: bool = False,
+) -> MemoryState:
+    states = list(rollout.states)
+    if selector == "latest":
+        checkpoints = [state for state in states if state.origin == "checkpoint"]
+        if rollout.compaction_count and (
+            not checkpoints
+            or checkpoints[-1].checkpoint_index != rollout.compaction_count
+        ):
+            raise MemoryctlError(
+                f"latest compaction in {rollout.thread_id} has no portable "
+                "opaque memory; select an earlier checkpoint explicitly with "
+                "@index:N, @window:N, or @m:PREFIX"
+            )
+        matches = checkpoints[-1:] or states[-1:]
+    elif selector.startswith("window:"):
+        number = _number(
+            selector.removeprefix("window:"), "window", allow_zero=True
+        )
+        matches = [state for state in states if state.window_number == number]
+    elif selector.startswith("index:"):
+        number = _number(
+            selector.removeprefix("index:"), "index", allow_zero=False
+        )
+        matches = [state for state in states if state.checkpoint_index == number]
+    elif selector.startswith(("m:", "sha256:")):
+        prefix = selector.split(":", 1)[1].lower()
+        if not prefix or any(char not in "0123456789abcdef" for char in prefix):
+            raise MemoryctlError("memory selector must contain hexadecimal characters")
+        matches = [
+            state
+            for state in states
+            if state.memory_id.removeprefix("sha256:").startswith(prefix)
+        ]
+        distinct = {state.memory_id for state in matches}
+        if len(distinct) > 1:
+            raise MemoryctlError(f"memory selector is ambiguous: {prefix}")
+    else:
+        raise MemoryctlError(
+            "unknown state selector; use latest, window:N, index:N, or m:PREFIX"
+        )
+
+    if require_checkpoint:
+        matches = [state for state in matches if state.origin == "checkpoint"]
+    if matches:
+        matches = matches[-1:]
+    if not matches:
+        qualification = " checkpoint" if require_checkpoint else ""
+        raise MemoryctlError(
+            f"memory{qualification} not found in {rollout.thread_id}: {selector}"
+        )
+    return matches[-1]

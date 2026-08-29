@@ -17,6 +17,7 @@ Install one or more Python commands with `uv`:
 ```sh
 uv tool install ./packages/codex-goalctl
 uv tool install ./packages/codex-limitctl
+uv tool install ./packages/codex-memoryctl
 uv tool install ./packages/streamctl
 uv tool install ./packages/codex-threadctl
 uv tool install ./packages/codex-wakectl
@@ -39,6 +40,7 @@ you use:
 codex plugin marketplace add ustas-eth/ferrumctl
 codex plugin add codex-goalctl@ferrumctl
 codex plugin add codex-limitctl@ferrumctl
+codex plugin add codex-memoryctl@ferrumctl
 codex plugin add streamctl@ferrumctl
 codex plugin add codex-threadctl@ferrumctl
 codex plugin add codex-wakectl@ferrumctl
@@ -52,8 +54,9 @@ refresh such as compaction.
 
 ## Shared App Server
 
-`codex-threadctl` live control and `codex-wakectl` delivery require the target
-sessions to be loaded on the same app-server endpoint:
+`codex-threadctl` live control, `codex-wakectl` delivery, and
+`codex-memoryctl` injection require the target sessions to be loaded on the
+same app-server endpoint:
 
 ```sh
 codex app-server --listen unix://
@@ -63,8 +66,8 @@ codex-threadctl loaded
 
 Keep the app-server process running while those sessions need live control.
 `codex-goalctl` and `codex-limitctl` use short-lived app-server processes.
-`codex-readcov` and `streamctl` use local files. Their normal operation is
-independent of the shared server.
+`codex-readcov` and `streamctl` use local files. Memory discovery and export
+also use local files; only memory injection needs the shared server.
 
 The `codex-wakectl` systemd timer checks the default queue at a fixed interval:
 
@@ -82,7 +85,7 @@ Update the checkout and reinstall the commands you use:
 ```sh
 git pull
 
-for package in codex-goalctl codex-limitctl streamctl codex-threadctl codex-wakectl; do
+for package in codex-goalctl codex-limitctl codex-memoryctl streamctl codex-threadctl codex-wakectl; do
   uv tool install --reinstall "./packages/$package"
 done
 cargo install --locked --force --path ./packages/codex-readcov

@@ -1,6 +1,6 @@
 {
   "name": "codex-goalctl",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Codex skill for managing persisted thread goals with codex-goalctl.",
   "author": {
     "name": "ustas-eth"

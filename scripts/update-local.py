@@ -19,6 +19,7 @@ MARKETPLACE = ROOT / ".agents" / "plugins" / "marketplace.json"
 PYTHON_PACKAGES = (
     "codex-goalctl",
     "codex-limitctl",
+    "codex-memoryctl",
     "streamctl",
     "codex-threadctl",
     "codex-wakectl",

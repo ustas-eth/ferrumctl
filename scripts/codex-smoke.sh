@@ -95,6 +95,11 @@ threadctl() {
     "$PYTHON" -c 'import sys; from codex_threadctl.cli import main; raise SystemExit(main(sys.argv[1:]))' "$@"
 }
 
+memoryctl() {
+  PYTHONPATH="$ROOT/packages/codex-threadctl/src:$ROOT/packages/codex-memoryctl/src${PYTHONPATH:+:$PYTHONPATH}" \
+    "$PYTHON" -c 'import sys; from codex_memoryctl.cli import main; raise SystemExit(main(sys.argv[1:]))' "$@"
+}
+
 readcov() {
   "$CARGO" run --quiet --manifest-path "$ROOT/packages/codex-readcov/Cargo.toml" -- "$@"
 }
@@ -116,6 +121,8 @@ inspect_turn="00000000-0000-4000-8000-000000000011"
 inspect_rollout="$CODEX_HOME/sessions/2026/01/02/rollout-2026-01-02T03-04-05-$inspect_thread.jsonl"
 agent_thread="00000000-0000-4000-8000-000000000012"
 agent_rollout="$CODEX_HOME/sessions/2026/01/02/rollout-2026-01-02T03-03-00-$agent_thread.jsonl"
+memory_thread="00000000-0000-4000-8000-000000000013"
+memory_rollout="$CODEX_HOME/sessions/2026/01/02/rollout-2026-01-02T03-02-00-$memory_thread.jsonl"
 mkdir -p "$(dirname "$inspect_rollout")"
 "$PYTHON" - "$inspect_rollout" "$inspect_thread" "$inspect_turn" "$SMOKE_ROOT" <<'PY'
 import json
@@ -246,6 +253,57 @@ with open(rollout, "w", encoding="utf-8") as handle:
         handle.write(json.dumps(event, separators=(",", ":")) + "\n")
 PY
 
+"$PYTHON" - "$memory_rollout" "$memory_thread" "$SMOKE_ROOT" <<'PY'
+import json
+import sys
+
+rollout, thread_id, cwd = sys.argv[1:]
+timestamp = "2026-01-02T03:02:00Z"
+memory = {
+    "type": "compaction",
+    "id": "cmp_smoke",
+    "encrypted_content": "opaque-memory-smoke",
+    "internal_chat_message_metadata_passthrough": {"turn_id": "memory-turn"},
+}
+events = [
+    {
+        "timestamp": timestamp,
+        "type": "session_meta",
+        "payload": {
+            "id": thread_id,
+            "timestamp": timestamp,
+            "cwd": cwd,
+            "originator": "ferrumctl-codex-smoke",
+            "cli_version": "0.0.0",
+            "source": "cli",
+            "thread_source": "user",
+            "model_provider": "openai",
+        },
+    },
+    {
+        "timestamp": timestamp,
+        "type": "turn_context",
+        "payload": {"model": "gpt-smoke", "service_tier": "default"},
+    },
+    {
+        "timestamp": timestamp,
+        "type": "compacted",
+        "payload": {
+            "message": "",
+            "replacement_history": [memory],
+            "window_number": 1,
+            "first_window_id": "00000000-0000-4000-8000-000000000014",
+            "previous_window_id": None,
+            "window_id": "00000000-0000-4000-8000-000000000014",
+        },
+    },
+]
+
+with open(rollout, "w", encoding="utf-8") as handle:
+    for event in events:
+        handle.write(json.dumps(event, separators=(",", ":")) + "\n")
+PY
+
 "$PYTHON" - "$agent_rollout" "$agent_thread" "$inspect_thread" "$SMOKE_ROOT" <<'PY'
 import json
 import sys
@@ -334,7 +392,12 @@ usage_requests = list(request_definitions(requests, "account/usage/read"))
 assert len(usage_requests) == 1
 request = usage_requests[0]
 assert set(request["required"]) == {"id", "method"}
-assert request["properties"]["params"] == {"type": "null"}
+usage_params = request["properties"]["params"]
+if usage_params != {"type": "null"}:
+    assert {
+        entry.get("$ref") or entry.get("type")
+        for entry in usage_params["anyOf"]
+    } == {"#/definitions/GetAccountTokenUsageParams", "null"}
 
 definitions = protocol["definitions"]
 thread = definitions["Thread"]["properties"]
@@ -872,6 +935,71 @@ grep -Eq 'thread not found|thread (is )?not loaded|invalid thread id' "$SMOKE_RO
   fail "unexpected turn/interrupt error"
 }
 printf 'threadctl reached turn interruption API\n'
+
+log "memoryctl compaction discovery and injection"
+memoryctl --json list "$memory_thread" >"$SMOKE_ROOT/memory-list.json"
+memoryctl --json export "$memory_thread@window:1" \
+  --output "$SMOKE_ROOT/memory-export.json" >"$SMOKE_ROOT/memory-export-result.json"
+threadctl --timeout 5 resume "$agent_thread" --continue-goal \
+  >"$SMOKE_ROOT/memory-target-resume.out"
+memoryctl --timeout 5 --json inject --to "$agent_thread" \
+  --state "$memory_thread@window:1" --purpose "isolated app-server smoke" \
+  >"$SMOKE_ROOT/memory-inject.json"
+memoryctl --json list "$agent_thread" --origin standalone \
+  >"$SMOKE_ROOT/memory-target.json"
+"$PYTHON" - "$SMOKE_ROOT/memory-list.json" \
+  "$SMOKE_ROOT/memory-export.json" "$SMOKE_ROOT/memory-inject.json" \
+  "$SMOKE_ROOT/memory-target.json" "$memory_thread" "$agent_thread" <<'PY'
+import json
+import os
+import sys
+
+list_path, export_path, inject_path, target_path, source_id, target_id = sys.argv[1:]
+with open(list_path, encoding="utf-8") as handle:
+    source = json.load(handle)
+with open(export_path, encoding="utf-8") as handle:
+    exported = json.load(handle)
+with open(inject_path, encoding="utf-8") as handle:
+    injected = json.load(handle)
+with open(target_path, encoding="utf-8") as handle:
+    target = json.load(handle)
+
+state = source["states"][0]
+assert source["threadId"] == source_id
+assert state["origin"] == "checkpoint"
+assert state["windowNumber"] == 1
+assert exported["scope"] == "memory"
+exported_digest = exported["memory"]["id"].removeprefix("sha256:")
+assert state["memoryId"] == f"m:{exported_digest[:12]}"
+assert os.stat(export_path).st_mode & 0o777 == 0o600
+assert injected["outcome"] == "accepted"
+assert injected["targetThreadId"] == target_id
+assert injected["memoryIds"] == [state["memoryId"]]
+assert injected["turnBinding"] == "source"
+assert injected["sourceBasis"] == "local-rollout"
+assert injected["perspectiveFraming"] == "boundaries"
+assert injected["purposeDelivery"] == "attributed-boundary"
+assert "activeTurnId" not in injected
+assert target["states"][0]["origin"] == "standalone"
+assert target["states"][0]["memoryId"] == state["memoryId"]
+with open(target["rolloutPath"], encoding="utf-8") as handle:
+    records = [json.loads(line) for line in handle if line.strip()]
+frames = [
+    record["payload"]
+    for record in records
+    if record.get("type") == "response_item"
+    and record.get("payload", {}).get("type") == "agent_message"
+    and record["payload"].get("author") == "memoryctl"
+]
+assert len(frames) == 2
+frame_events = [json.loads(frame["content"][0]["text"]) for frame in frames]
+assert [event["event"] for event in frame_events] == [
+    "memoryctl.perspective.open",
+    "memoryctl.perspective.close",
+]
+assert frame_events[1]["callerPurpose"]["text"] == "isolated app-server smoke"
+PY
+printf 'memoryctl discovered, exported, injected, and re-observed opaque memory\n'
 
 log "readcov rollout parser compatibility"
 project="$SMOKE_ROOT/project"
