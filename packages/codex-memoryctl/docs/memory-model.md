@@ -37,6 +37,12 @@ Visibility is occurrence-specific: the same memory digest can appear in both
 an older replaced checkpoint and a current standalone item. It describes
 history structure, not whether the model attended to or adopted the memory.
 
+`list` returns the newest 20 matching observations by default. Its inventory
+metadata distinguishes selected observations, all matching observations, all
+memory observations, reusable checkpoints, and total compactions. Plain output
+writes the same orientation summary to stderr, including the reusable index
+bounds and whether `--limit 0` is needed for the full set.
+
 A SHA-256 digest of `encrypted_content` identifies the opaque memory. Portable
 exports retain the full digest for validation. Normal command output uses its
 first 12 hexadecimal characters as a compact `m:` reference; selectors reject
@@ -69,6 +75,9 @@ Checkpoint selectors are local to one rollout:
 
 Window metadata is absent from some older rollouts. The checkpoint index and
 digest remain available when the record contains portable memory.
+Because the index counts every compaction while `list` can report only reusable
+opaque memory, displayed indices can begin above one or contain gaps. Treat an
+index as a stable position, not as the number of rows returned by `list`.
 
 ## Transcript Discovery
 

@@ -4,6 +4,7 @@ import argparse
 import copy
 import json
 import os
+import sys
 import uuid
 from collections import Counter
 from pathlib import Path
@@ -32,6 +33,7 @@ from .rollouts import (
     distinct_session_meta_thread_id,
     is_memory_item,
     load_rollout,
+    memory_id,
     memory_ref,
     resolve_codex_home,
     scan_rollout,
@@ -101,11 +103,34 @@ async def cmd_list(args: argparse.Namespace) -> int:
     source = current_thread_id(args.source, "source thread")
     reference = await resolve_source(StateReference(source, "latest"), args)
     rollout = load_rollout(resolve_codex_home(args.codex_home), reference.source)
-    states = list(reversed(rollout.states))
+    all_states = list(reversed(rollout.states))
+    states = all_states
     if args.origin != "all":
         states = [state for state in states if state.origin == args.origin]
+    matching_count = len(states)
     if args.limit:
         states = states[: args.limit]
+    checkpoints = [
+        state
+        for state in rollout.states
+        if state.origin == "checkpoint" and state.checkpoint_index is not None
+    ]
+    first_checkpoint_index = (
+        checkpoints[0].checkpoint_index if checkpoints else None
+    )
+    last_checkpoint_index = (
+        checkpoints[-1].checkpoint_index if checkpoints else None
+    )
+    inventory = {
+        "observationCount": len(all_states),
+        "matchingObservationCount": matching_count,
+        "selectedObservationCount": len(states),
+        "hasMore": len(states) < matching_count,
+        "compactionCount": rollout.compaction_count,
+        "portableCheckpointCount": len(checkpoints),
+        "firstPortableCheckpointIndex": first_checkpoint_index,
+        "lastPortableCheckpointIndex": last_checkpoint_index,
+    }
     if args.json:
         print(
             json.dumps(
@@ -116,6 +141,7 @@ async def cmd_list(args: argparse.Namespace) -> int:
                         rollout.session_meta_thread_id,
                     ),
                     "rolloutPath": str(rollout.path),
+                    **inventory,
                     "states": [state.metadata() for state in states],
                 },
                 indent=2,
@@ -124,6 +150,23 @@ async def cmd_list(args: argparse.Namespace) -> int:
     else:
         for state in states:
             print(format_state(state))
+        selected = inventory["selectedObservationCount"]
+        matching = inventory["matchingObservationCount"]
+        if selected == matching:
+            selection = f"showing all {matching} matching observations"
+        else:
+            selection = f"showing {selected} of {matching} matching observations"
+        checkpoint_span = "none"
+        if first_checkpoint_index is not None and last_checkpoint_index is not None:
+            checkpoint_span = f"{first_checkpoint_index}-{last_checkpoint_index}"
+        suffix = "; use --limit 0 to show all" if selected < matching else ""
+        print(
+            "codex-memoryctl: "
+            f"{selection}; reusable-checkpoints={len(checkpoints)} "
+            f"indices={checkpoint_span} compactions={rollout.compaction_count}"
+            f"{suffix}",
+            file=sys.stderr,
+        )
     return 0
 
 
@@ -405,6 +448,9 @@ async def cmd_inject(args: argparse.Namespace) -> int:
             ]
             source_basis = "export-metadata-claim"
             source_refs = [f"{sources[0]}@{memory_ref(memory_ids[0])}"]
+            _, payload_bytes = memory_id(
+                next(item for item in items if is_memory_item(item))
+            )
         else:
             if args.full_checkpoint and len(args.state) != 1:
                 raise MemoryctlError("--full-checkpoint requires exactly one --state")
@@ -434,6 +480,10 @@ async def cmd_inject(args: argparse.Namespace) -> int:
             source_refs = [
                 f"{state.thread_id}@{memory_ref(state.memory_id)}" for state in states
             ]
+            payload_bytes = sum(state.payload_bytes for state in states)
+
+        source_item_count = len(items)
+        retained_item_count = source_item_count - 1 if scope == "checkpoint" else None
 
         requested_duplicates = repeated_memory_ids(memory_ids)
         if requested_duplicates and not args.allow_duplicate:
@@ -484,6 +534,7 @@ async def cmd_inject(args: argparse.Namespace) -> int:
 
         if perspective_framing == "boundaries":
             items = frame_memory_batch(target, items, source_memories, args.purpose)
+        framing_item_count = len(items) - source_item_count
 
         target_path = thread.get("path")
         if isinstance(target_path, str) and Path(target_path).is_file():
@@ -496,25 +547,26 @@ async def cmd_inject(args: argparse.Namespace) -> int:
                     + "; pass --allow-duplicate to repeat it deliberately"
                 )
 
-        try:
-            require_object(
-                await app.request(
-                    "thread/inject_items",
-                    {"threadId": target, "items": items},
-                ),
-                "thread/inject_items result",
-            )
-        except AppServerResponseError as exc:
-            if is_parent_owned_input_error(exc):
-                raise MemoryctlError(
-                    "thread is controlled by its native parent; external memory "
-                    "injection is unavailable"
+        if not args.preview:
+            try:
+                require_object(
+                    await app.request(
+                        "thread/inject_items",
+                        {"threadId": target, "items": items},
+                    ),
+                    "thread/inject_items result",
+                )
+            except AppServerResponseError as exc:
+                if is_parent_owned_input_error(exc):
+                    raise MemoryctlError(
+                        "thread is controlled by its native parent; external memory "
+                        "injection is unavailable"
+                    ) from exc
+                raise
+            except (OSError, ThreadctlError, websockets.WebSocketException) as exc:
+                raise InjectionUncertain(
+                    target, [memory_ref(value) for value in memory_ids]
                 ) from exc
-            raise
-        except (OSError, ThreadctlError, websockets.WebSocketException) as exc:
-            raise InjectionUncertain(
-                target, [memory_ref(value) for value in memory_ids]
-            ) from exc
 
     shown_memory_ids = [memory_ref(value) for value in memory_ids]
     if args.purpose is None:
@@ -523,20 +575,28 @@ async def cmd_inject(args: argparse.Namespace) -> int:
         purpose_delivery = "attributed-boundary"
 
     result: dict[str, Any] = {
-        "outcome": "accepted",
+        "outcome": "preview" if args.preview else "accepted",
         "targetThreadId": target,
         "scope": scope,
+        "memoryCount": len(memory_ids),
         "memoryIds": shown_memory_ids,
+        "payloadBytes": payload_bytes,
         "sourceThreadIds": sources,
+        "distinctSourceThreadIds": list(dict.fromkeys(sources)),
         "sourceMemoryRefs": source_refs,
         "sourceBasis": source_basis,
         "sourceMemories": source_memories,
+        "sourceItemCount": source_item_count,
+        "framingItemCount": framing_item_count,
+        "batchItemCount": len(items),
         "targetStatusBefore": target_status,
         "turnBinding": turn_binding,
         "perspectiveFraming": perspective_framing,
         "purposeDelivery": purpose_delivery,
         "expectNoTurns": bool(args.expect_no_turns),
     }
+    if retained_item_count is not None:
+        result["retainedItemCount"] = retained_item_count
     if active_turn_id is not None:
         result["activeTurnId"] = active_turn_id
     if args.purpose is not None:
@@ -544,12 +604,29 @@ async def cmd_inject(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(result, indent=2))
     else:
+        if len(shown_memory_ids) == 1:
+            memory_fields = [f"memory={shown_memory_ids[0]}"]
+        else:
+            memory_fields = [
+                f"memory-count={len(shown_memory_ids)}",
+                f"memory-first={shown_memory_ids[0]}",
+                f"memory-last={shown_memory_ids[-1]}",
+            ]
+        distinct_sources = result["distinctSourceThreadIds"]
+        if len(distinct_sources) == 1:
+            source_fields = [f"source={distinct_sources[0]}"]
+        else:
+            source_fields = [f"sources={','.join(distinct_sources)}"]
         fields = [
             result["outcome"],
             target,
             f"scope={scope}",
-            f"memories={','.join(shown_memory_ids)}",
-            f"sources={','.join(sources)}",
+            *memory_fields,
+            *source_fields,
+            f"payload-bytes={payload_bytes}",
+            f"source-items={source_item_count}",
+            f"framing-items={framing_item_count}",
+            f"batch-items={len(items)}",
             f"source-basis={source_basis}",
             f"target-status-before={target_status}",
             (
@@ -560,6 +637,8 @@ async def cmd_inject(args: argparse.Namespace) -> int:
             f"framing={perspective_framing}",
             f"purpose-delivery={result['purposeDelivery']}",
         ]
+        if retained_item_count is not None:
+            fields.append(f"retained-items={retained_item_count}")
         if args.expect_no_turns:
             fields.append("expect-no-turns=yes")
         if args.purpose is not None:

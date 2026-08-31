@@ -22,6 +22,12 @@ codex-memoryctl search THREAD_ID "earlier diagnosis"
 `visible=yes` means that observation remains in the thread's current
 model-visible history. It does not prove that the model used it.
 
+`list` shows the newest 20 matching observations by default and reports the
+complete inventory separately. Checkpoint indices are 1-based positions among
+all compactions, not row numbers; compactions without reusable opaque memory
+can make the reported indices begin later or contain gaps. Use `--limit 0` when
+every memory reference is needed.
+
 `search` finds ordinary transcript text and reports the first later portable
 checkpoint. Its default token mode can match words across messages in one
 checkpoint segment; use `--match phrase` or `--match regex` when exact matching
@@ -35,13 +41,16 @@ codex-memoryctl summarize THREAD_ID@latest
 codex-memoryctl diff THREAD_ID@index:12 THREAD_ID@index:13
 codex-memoryctl index THREAD_ID
 codex-memoryctl index THREAD_ID --limit 0 | rg -i "suspected subject"
+codex-memoryctl index THREAD_ID --limit 0 --no-records
 ```
 
 Use `summarize` for one checkpoint, `diff` for a directed comparison, and
 `index` for a compact sequential view. Index renders the newest ten matching
 checkpoints by default; use `--from-index`, `--to-index`, `--since`, or
 `--until` to browse, and use `--limit 0` only when the complete range is
-needed. Selection happens before model requests. If `summarize` or `index`
+needed. Use `--no-records` to generate and cache a complete selection with
+progress and a compact receipt instead of returning every card. Selection
+happens before model requests. If `summarize` or `index`
 reports an uncompacted tail, inspect that conversation separately rather than
 treating the newest memory description as current thread state.
 
@@ -79,6 +88,11 @@ boundaries. Use `--expect-no-turns` when a handoff or recovery workflow depends
 on there being no materialized target turn yet. External transfer into an
 established agent is a lasting change to its history, not neutral reference
 material.
+
+For a large or consequential batch, add `--preview` first. It performs the
+read-only preflight and reports payload and item counts without estimating
+model tokens or reserving the target. Repeat the command without `--preview`
+to submit it.
 
 With `--to`, low-level work can select `--binding source|current` and
 `--framing boundaries|none`. Current binding requires an active target turn.

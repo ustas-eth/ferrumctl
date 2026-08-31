@@ -435,6 +435,80 @@ class GeneratedCommandTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual([record["position"] for record in parsed["records"]], [1, 2])
             self.assertTrue(parsed["sourceAdvanced"])
 
+    async def test_index_can_prepare_cache_without_printing_records(self) -> None:
+        states = tuple(make_state(str(position), position) for position in range(1, 4))
+        rollout = RolloutMemory(
+            "thread-test",
+            Path("/tmp/source.jsonl"),
+            states,
+        )
+        args = parser.build_parser().parse_args(
+            ["index", "thread-test", "--no-records", "--json"]
+        )
+
+        async def build(_args, *, operation, states, prompt):
+            del operation, prompt
+            return generated(
+                f"checkpoint {states[-1].checkpoint_index}",
+                cache_hit=False,
+            )
+
+        with (
+            mock.patch.object(
+                generated_commands,
+                "resolve_source",
+                mock.AsyncMock(side_effect=lambda value, _args: value),
+            ),
+            mock.patch.object(
+                generated_commands,
+                "load_rollout",
+                return_value=rollout,
+            ),
+            mock.patch.object(
+                generated_commands,
+                "generated_text",
+                side_effect=build,
+            ),
+            redirect_stdout(io.StringIO()) as output,
+            redirect_stderr(io.StringIO()) as errors,
+        ):
+            await generated_commands.cmd_index(args)
+
+        parsed = json.loads(output.getvalue())
+        self.assertFalse(parsed["recordsIncluded"])
+        self.assertNotIn("records", parsed)
+        self.assertEqual(parsed["selectedCheckpointCount"], 3)
+        self.assertEqual(parsed["generatedCount"], 3)
+        self.assertIn("preparing 3 checkpoint descriptions", errors.getvalue())
+        self.assertIn("prepared 3/3", errors.getvalue())
+
+        args.json = False
+        with (
+            mock.patch.object(
+                generated_commands,
+                "resolve_source",
+                mock.AsyncMock(side_effect=lambda value, _args: value),
+            ),
+            mock.patch.object(
+                generated_commands,
+                "load_rollout",
+                return_value=rollout,
+            ),
+            mock.patch.object(
+                generated_commands,
+                "generated_text",
+                side_effect=build,
+            ),
+            redirect_stdout(io.StringIO()) as output,
+            redirect_stderr(io.StringIO()),
+        ):
+            await generated_commands.cmd_index(args)
+
+        rendered = output.getvalue()
+        self.assertTrue(rendered.startswith("indexed\tthread-test\t"))
+        self.assertIn("selected=3", rendered)
+        self.assertNotIn("checkpoint 1", rendered)
+
     async def test_index_limits_generation_and_keeps_global_predecessor(self) -> None:
         states = tuple(make_state(str(position), position) for position in range(1, 13))
         messages = (
@@ -583,7 +657,7 @@ class GeneratedCommandTests(unittest.IsolatedAsyncioTestCase):
             await generated_commands.cmd_index(args)
 
         self.assertIn(
-            "showing checkpoint indices 2-11 (10 of 11 matching",
+            "rendered checkpoint indices 2-11 (10 of 11 matching",
             errors.getvalue(),
         )
         self.assertIn("use --to-index 1", errors.getvalue())

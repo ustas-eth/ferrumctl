@@ -2,14 +2,15 @@ import io
 import json
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
+from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
 from codex_threadctl.errors import AppServerResponseError
 from codex_memoryctl import commands, parser
 from codex_memoryctl.errors import InjectionUncertain, MemoryctlError
-from codex_memoryctl.rollouts import MemoryState, memory_id, memory_ref
+from codex_memoryctl.rollouts import MemoryState, RolloutMemory, memory_id, memory_ref
 from codex_memoryctl.selectors import StateReference
 
 
@@ -77,6 +78,67 @@ def make_state(name: str, *, checkpoint: bool = True) -> MemoryState:
         checkpoint_index=1 if checkpoint else None,
         replacement_history=history,
     )
+
+
+class ListTests(unittest.IsolatedAsyncioTestCase):
+    async def test_list_reports_partial_inventory_and_portable_bounds(self) -> None:
+        states = tuple(
+            replace(
+                make_state(str(index)),
+                thread_id="thread-test",
+                checkpoint_index=index,
+            )
+            for index in range(5, 30)
+        )
+        rollout = RolloutMemory(
+            "thread-test",
+            Path("/tmp/source.jsonl"),
+            states,
+            compaction_count=29,
+        )
+        args = parser.build_parser().parse_args(["list", "thread-test"])
+        with (
+            mock.patch.object(
+                commands,
+                "resolve_source",
+                mock.AsyncMock(side_effect=lambda value, _args: value),
+            ),
+            mock.patch.object(commands, "load_rollout", return_value=rollout),
+            redirect_stdout(io.StringIO()) as output,
+            redirect_stderr(io.StringIO()) as errors,
+        ):
+            await commands.cmd_list(args)
+
+        self.assertEqual(len(output.getvalue().splitlines()), 20)
+        self.assertIn("showing 20 of 25 matching observations", errors.getvalue())
+        self.assertIn("reusable-checkpoints=25 indices=5-29", errors.getvalue())
+        self.assertIn("compactions=29", errors.getvalue())
+        self.assertIn("use --limit 0", errors.getvalue())
+
+        args = parser.build_parser().parse_args(
+            ["list", "thread-test", "--limit", "0", "--json"]
+        )
+        with (
+            mock.patch.object(
+                commands,
+                "resolve_source",
+                mock.AsyncMock(side_effect=lambda value, _args: value),
+            ),
+            mock.patch.object(commands, "load_rollout", return_value=rollout),
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            await commands.cmd_list(args)
+
+        result = json.loads(output.getvalue())
+        self.assertEqual(result["observationCount"], 25)
+        self.assertEqual(result["matchingObservationCount"], 25)
+        self.assertEqual(result["selectedObservationCount"], 25)
+        self.assertFalse(result["hasMore"])
+        self.assertEqual(result["portableCheckpointCount"], 25)
+        self.assertEqual(result["firstPortableCheckpointIndex"], 5)
+        self.assertEqual(result["lastPortableCheckpointIndex"], 29)
+        self.assertEqual(result["compactionCount"], 29)
+        self.assertEqual(len(result["states"]), 25)
 
 
 class InjectionTests(unittest.IsolatedAsyncioTestCase):
@@ -186,6 +248,38 @@ class InjectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("framing=boundaries", output)
         self.assertIn("purpose-delivery=attributed-boundary", output)
         self.assertIn('purpose="compare\\ncarefully"', output)
+
+    async def test_preview_validates_batch_without_appending_items(self) -> None:
+        first = make_state("first")
+        second = make_state("second")
+        _, app, output = await self.run_inject(
+            [
+                "inject",
+                "--to",
+                "target",
+                "--state",
+                "first@latest",
+                "--state",
+                "second@latest",
+                "--purpose",
+                "compare these perspectives",
+                "--preview",
+                "--json",
+            ],
+            [first, second],
+        )
+
+        self.assertEqual(app.requests, [])
+        result = json.loads(output)
+        self.assertEqual(result["outcome"], "preview")
+        self.assertEqual(result["memoryCount"], 2)
+        self.assertEqual(
+            result["payloadBytes"], first.payload_bytes + second.payload_bytes
+        )
+        self.assertEqual(result["sourceItemCount"], 2)
+        self.assertEqual(result["framingItemCount"], 3)
+        self.assertEqual(result["batchItemCount"], 5)
+        self.assertNotIn("retainedItemCount", result)
 
     async def test_parent_owned_v2_injection_has_actionable_error(self) -> None:
         with self.assertRaisesRegex(
@@ -499,6 +593,30 @@ class InjectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             app.requests[-1][1]["items"], list(value.replacement_history or ())
         )
+
+    async def test_full_checkpoint_preview_reports_retained_items(self) -> None:
+        value = make_state("checkpoint-preview")
+        _, app, output = await self.run_inject(
+            [
+                "inject",
+                "--to",
+                "target",
+                "--state",
+                "source@latest",
+                "--full-checkpoint",
+                "--preview",
+                "--json",
+            ],
+            [value],
+        )
+
+        self.assertEqual(app.requests, [])
+        result = json.loads(output)
+        self.assertEqual(result["outcome"], "preview")
+        self.assertEqual(result["sourceItemCount"], 2)
+        self.assertEqual(result["retainedItemCount"], 1)
+        self.assertEqual(result["framingItemCount"], 0)
+        self.assertEqual(result["batchItemCount"], 2)
 
     async def test_full_checkpoint_export_seeds_an_empty_target(self) -> None:
         value = make_state("checkpoint-file")

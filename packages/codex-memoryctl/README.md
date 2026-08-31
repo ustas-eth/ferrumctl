@@ -36,12 +36,19 @@ List memory observations without printing their encrypted content:
 
 ```sh
 codex-memoryctl list THREAD_ID
+codex-memoryctl list THREAD_ID --limit 0
 codex-memoryctl show THREAD_ID@latest
 codex-memoryctl show THREAD_ID@window:14 --json
 ```
 
 Each observation reports whether it remains in the thread's current
 model-visible history. Visibility does not prove that the model used it.
+`list` shows the newest 20 matching observations by default and reports the
+complete inventory separately: selected and matching counts, total
+compactions, and the first and last reusable checkpoint indices. Those indices
+are positions among all compactions, so older compactions without reusable
+opaque memory can make the range begin above one or contain gaps. JSON keeps
+the observations under `states` and exposes the inventory counts alongside it.
 
 Generate a short description of one checkpoint, compare two checkpoints, or
 render a sequential view of the whole thread:
@@ -51,6 +58,7 @@ codex-memoryctl summarize THREAD_ID@latest
 codex-memoryctl diff THREAD_ID@index:12 THREAD_ID@index:13
 codex-memoryctl index THREAD_ID
 codex-memoryctl index THREAD_ID --limit 0 | rg -i "preset|aggregator"
+codex-memoryctl index THREAD_ID --limit 0 --no-records
 ```
 
 `summarize` and `diff` produce one concise text field. `index` summarizes the
@@ -59,6 +67,10 @@ predecessor. It renders the newest ten matching checkpoints by default;
 `--limit 0` deliberately selects the complete range. Use `--from-index` and
 `--to-index` for checkpoint bounds or `--since` and `--until` for UTC dates and
 RFC3339 timestamps. Bounds and limits apply before model requests.
+`--no-records` still generates and caches every selected card but returns only
+counts and bounds. It reports bounded progress on stderr, which is useful when
+preparing a large index without placing every generated description in the
+caller's context.
 
 The view joins the current rollout with cached results rather than maintaining
 a separate catalog. It reports when ordinary conversation follows the newest
@@ -124,8 +136,17 @@ can request that precondition:
 codex-memoryctl inject --to FRESH_THREAD_ID \
   --state DONOR_THREAD_ID@latest \
   --purpose "Use this perspective for the handoff question." \
+  --expect-no-turns --preview
+codex-memoryctl inject --to FRESH_THREAD_ID \
+  --state DONOR_THREAD_ID@latest \
+  --purpose "Use this perspective for the handoff question." \
   --expect-no-turns
 ```
+
+`--preview` performs the read-only preflight and reports memory count, opaque
+payload bytes, source items, framing items, retained items for a full
+checkpoint, and the resulting item count. It does not estimate model tokens or
+reserve the target state; repeat the command without `--preview` to submit it.
 
 Current Codex rejects injection into parent-owned v2 children, including a
 child invoking `--self`. Use an independently controlled root or disposable
@@ -172,6 +193,8 @@ explicitly writes the complete object to stdout.
   appear in the rollout until Codex processes it. An idle target records it
   immediately for a later turn.
 - App-server acceptance does not prove that the model interpreted the memory.
+- Preview counts describe the proposed item batch, not its eventual context
+  token cost or a guarantee that the later submission will see the same state.
 - Opaque memory carries no reliable donor identity or purpose. Boundary framing
   adds source labels around it without changing the object.
 - Later compaction may absorb injected memory into the target's next
