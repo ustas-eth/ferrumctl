@@ -94,10 +94,99 @@ class FakeApp:
 
 
 class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_create_thread_uses_explicit_workspace_and_optional_model(self):
+        class CreateApp:
+            def __init__(self):
+                self.calls = []
+
+            async def request(self, method, params=None):
+                self.calls.append((method, params))
+                if method == "thread/inject_items":
+                    return {}
+                return {
+                    "thread": {
+                        "id": "created",
+                        "cwd": "/project",
+                        "model": "model",
+                        "modelProvider": "provider",
+                        "status": {"type": "idle"},
+                    },
+                    "instructionSources": ["/project/AGENTS.md"],
+                }
+
+        app = CreateApp()
+        result = await appserver.create_thread(
+            app,
+            "/project",
+            model="model",
+            model_provider="provider",
+        )
+
+        self.assertEqual(
+            app.calls,
+            [
+                (
+                    "thread/start",
+                    {
+                        "cwd": "/project",
+                        "model": "model",
+                        "modelProvider": "provider",
+                    },
+                ),
+                (
+                    "thread/inject_items",
+                    {
+                        "threadId": "created",
+                        "items": [
+                            {
+                                "type": "agent_message",
+                                "id": mock.ANY,
+                                "author": "threadctl",
+                                "recipient": "created",
+                                "content": [
+                                    {
+                                        "type": "input_text",
+                                        "text": appserver.CREATE_NOTICE,
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                ),
+            ],
+        )
+        self.assertEqual(result["threadId"], "created")
+        self.assertEqual(result["instructionSources"], ["/project/AGENTS.md"])
+        self.assertTrue(result["initializationItemId"].startswith("amsg_"))
+
+    async def test_create_thread_rejects_malformed_success_as_uncertain(self):
+        class InvalidApp:
+            async def request(self, method, params=None):
+                return {"thread": {}}
+
+        with self.assertRaisesRegex(
+            ThreadctlError,
+            "creation outcome is uncertain",
+        ):
+            await appserver.create_thread(InvalidApp(), "/project")
+
+    async def test_create_thread_reports_identity_if_materialization_fails(self):
+        class MaterializationFailureApp:
+            async def request(self, method, params=None):
+                if method == "thread/start":
+                    return {"thread": {"id": "thread-123"}}
+                raise AppServerResponseError({"message": "injection rejected"})
+
+        with self.assertRaisesRegex(
+            ThreadctlError,
+            "thread thread-123 was created.*injection rejected",
+        ):
+            await appserver.create_thread(MaterializationFailureApp(), "/project")
+
     async def test_v2_direct_input_rejections_name_parent_ownership(self):
         class ParentOwnedApp(FakeApp):
             async def request(self, method, params=None):
-                if method in {"turn/start", "turn/steer"}:
+                if method in {"turn/start", "turn/steer", "thread/inject_items"}:
                     raise AppServerResponseError(
                         {
                             "message": (
@@ -121,6 +210,14 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
                 "thread",
                 "submission",
                 "change",
+            )
+
+        with self.assertRaisesRegex(DirectInputUnsupported, "native parent"):
+            await appserver.notify_thread(
+                ParentOwnedApp(),
+                "thread",
+                "author",
+                "notice",
             )
 
     async def test_default_endpoint_uses_codex_home(self):

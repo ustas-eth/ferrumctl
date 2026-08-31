@@ -63,10 +63,13 @@ command should remain bound to one state surface.
 
 - `codex-goalctl` manages persisted goal state. Goal writes do not wake a
   thread, and `replace` is intentionally a fresh clear-then-set assignment.
-- `codex-threadctl` combines live app-server operations with selected persisted
-  history. Preserve composite message locators and distinguish request
-  acceptance, confirmed delivery, and materialized history. Canonical task
-  names are tree-scoped routing aliases; they do not transfer lifecycle
+  Parent-owned v2 children keep external goal writes under their native owner.
+- `codex-threadctl` creates independently controlled roots and combines live
+  app-server operations with selected persisted history. An independent root is
+  the canonical worker when direct external control is required; a native v2
+  child remains parent-owned. Preserve composite message locators and
+  distinguish request acceptance, confirmed delivery, and materialized history.
+  Canonical task names are tree-scoped routing aliases; they do not transfer
   ownership from the native parent.
 - `codex-wakectl` coordinates durable jobs, condition cursors, leases, and
   later event or input actions. Default event wakes restore attention without
@@ -89,8 +92,9 @@ command should remain bound to one state surface.
   memory-only transfer distinct from a full checkpoint and preserve item order.
   The recipient-owned mode supplies current-turn binding and source boundaries;
   external transfer must also expose source/current binding and framed/unframed
-  low-level operation without altering the opaque item. Treat semantic use,
-  source awareness, assimilation, and workflow isolation as separate outcomes.
+  low-level operation without altering the opaque item. Injection still depends
+  on the target accepting direct app-server input. Treat semantic use, source
+  awareness, assimilation, and workflow isolation as separate outcomes.
   Report app-server acceptance without implying model interpretation or
   temporary scope.
 

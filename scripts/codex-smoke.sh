@@ -670,6 +670,28 @@ grep -Fqx "$agent_thread" "$SMOKE_ROOT/resolved-agent.out" ||
   fail "threadctl did not resolve the v2 agent path"
 printf 'threadctl reconstructed, resolved, and inspected a persisted v2 agent tree\n'
 
+created_thread=$(threadctl --timeout 5 create --cwd "$SMOKE_ROOT")
+threadctl --timeout 5 --json status "$created_thread" \
+  >"$SMOKE_ROOT/created-thread-status.json"
+"$PYTHON" - "$SMOKE_ROOT/created-thread-status.json" "$created_thread" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    status = json.load(handle)
+assert status["threadId"] == sys.argv[2]
+assert status["loaded"] is True
+assert status["inputOwner"] == "direct"
+PY
+goalctl replace "$created_thread" "Smoke-test independent root." \
+  >"$SMOKE_ROOT/created-thread-goal.out"
+goalctl get "$created_thread" >"$SMOKE_ROOT/created-thread-goal-get.out"
+grep -Fqx $'active\tSmoke-test independent root.' \
+  "$SMOKE_ROOT/created-thread-goal-get.out" ||
+  fail "goalctl did not manage the independent root"
+goalctl clear "$created_thread" >"$SMOKE_ROOT/created-thread-goal-clear.out"
+printf 'threadctl created a directly controlled root with external goal access\n'
+
 agent_watch=$(wakectl --timeout 5 add goal /root/reviewer --status complete \
   --to /root --tree "$agent_thread")
 wakectl --json list >"$SMOKE_ROOT/agent-watch.json"
@@ -940,16 +962,15 @@ log "memoryctl compaction discovery and injection"
 memoryctl --json list "$memory_thread" >"$SMOKE_ROOT/memory-list.json"
 memoryctl --json export "$memory_thread@window:1" \
   --output "$SMOKE_ROOT/memory-export.json" >"$SMOKE_ROOT/memory-export-result.json"
-threadctl --timeout 5 resume "$agent_thread" --continue-goal \
-  >"$SMOKE_ROOT/memory-target-resume.out"
-memoryctl --timeout 5 --json inject --to "$agent_thread" \
+memoryctl --timeout 5 --json inject --to "$created_thread" \
   --state "$memory_thread@window:1" --purpose "isolated app-server smoke" \
+  --expect-no-turns \
   >"$SMOKE_ROOT/memory-inject.json"
-memoryctl --json list "$agent_thread" --origin standalone \
+memoryctl --json list "$created_thread" --origin standalone \
   >"$SMOKE_ROOT/memory-target.json"
 "$PYTHON" - "$SMOKE_ROOT/memory-list.json" \
   "$SMOKE_ROOT/memory-export.json" "$SMOKE_ROOT/memory-inject.json" \
-  "$SMOKE_ROOT/memory-target.json" "$memory_thread" "$agent_thread" <<'PY'
+  "$SMOKE_ROOT/memory-target.json" "$memory_thread" "$created_thread" <<'PY'
 import json
 import os
 import sys

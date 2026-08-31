@@ -70,7 +70,8 @@ execution:
 ```sh
 export CODEX_HOME=/path/to/codex-home
 ENDPOINT=unix:///path/to/codex.sock
-WORKER=worker-thread-id
+WORKER=$(codex-threadctl --endpoint "$ENDPOINT" create \
+  --cwd /path/to/project)
 
 codex-threadctl --endpoint "$ENDPOINT" loaded
 codex-threadctl --endpoint "$ENDPOINT" inspect "$WORKER"
@@ -79,9 +80,10 @@ codex-threadctl --endpoint "$ENDPOINT" start "$WORKER" \
   "From coordinator: A goal was assigned. Call get_goal and proceed."
 ```
 
-The manager owns socket discovery, runner lifecycle, saved identifiers, and
-cleanup. Goalctl reaches persisted state through its own short-lived server;
-live control still belongs to the selected shared endpoint.
+The new worker is an independent root rather than a child in a native agent
+tree. The manager owns socket discovery, runner lifecycle, saved identifiers,
+result retrieval, and cleanup. Goalctl reaches persisted state through its own
+short-lived server; live control still belongs to the selected shared endpoint.
 
 ## Scripted Read Audit
 

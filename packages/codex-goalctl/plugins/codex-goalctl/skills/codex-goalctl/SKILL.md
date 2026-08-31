@@ -1,6 +1,6 @@
 ---
 name: codex-goalctl
-description: "Use when another Codex thread's persisted goal must be read or changed: assign a fresh objective, update status or token budget, preserve or reset counters, verify state, or clear the goal. Use built-in goal tools for this session. Goalctl requires a thread id; resolve a canonical task name such as /root/reviewer through the threadctl skill first. It does not message or wake the target."
+description: "Use when another Codex thread's persisted goal must be read, or when a directly controlled thread's goal must be assigned, updated, or cleared. Use built-in goal tools for this session. Goalctl requires a thread id; resolve a canonical task name through the threadctl skill when available. It does not message or wake the target, and current Codex reserves goal changes on parent-owned v2 children for their native workflow."
 ---
 
 # Codex Goalctl
@@ -37,18 +37,26 @@ codex-goalctl update THREAD_ID --clear-token-budget
 codex-goalctl clear THREAD_ID
 ```
 
-For v1 Codex subagents, the spawn result's `agent_id` is the thread id.
-Some native subagent tools instead return a canonical task name such as
+For v1 Codex subagents, the spawn result's `agent_id` is the thread id. Some
+native subagent tools instead return a canonical task name such as
 `/root/reviewer`; it is not a goal identifier. If the threadctl skill is
-available, resolve it first and pass the returned thread id to goalctl:
+available, resolve it first for goal reads:
 
 ```sh
 WORKER=$(codex-threadctl resolve /root/reviewer)
-codex-goalctl replace "$WORKER" "objective text"
+codex-goalctl get "$WORKER"
 ```
 
 `CODEX_THREAD_ID` supplies the tree scope. Otherwise pass `--tree THREAD_ID` to
-`resolve`.
+`resolve`. Current Codex rejects external `replace`, `update`, and `clear` for a
+parent-owned v2 child. Give that child its assignment through the native parent
+workflow. When external goal control is required and the threadctl skill is
+available, create an independent root from the outset:
+
+```sh
+WORKER=$(codex-threadctl create --cwd "$PWD")
+codex-goalctl replace "$WORKER" "objective text"
+```
 
 ## Start The Work
 
@@ -59,8 +67,8 @@ goal:
 From coordinator: A goal was assigned. Call get_goal and proceed.
 ```
 
-Prefer native subagent input when its live handle is available. When only a
-thread id remains, use immediate thread control only if its corresponding skill
+Prefer native subagent input when its live handle is available. For an
+independent root, use immediate thread control only if its corresponding skill
 is available and the target is reachable through that surface.
 
 Keep the objective in goal state and use the follow-up only to direct attention

@@ -5,6 +5,25 @@
 This reference describes how `codex-threadctl` maps persisted spawn
 relationships, canonical task names, and app-server input ownership.
 
+## Independent Roots
+
+`create` calls app-server `thread/start` and returns a new persisted root thread:
+
+```sh
+WORKER=$(codex-threadctl create --cwd /path/to/project)
+```
+
+This is the canonical worker shape when a host process or another thread must
+apply direct app-server control. The root is not a child in the caller's native
+agent tree. It therefore has no parent handle, canonical task name, or automatic
+result routing; its thread id is the control handle.
+
+Creating a root does not start a turn or assign a goal. It adds a short
+`threadctl` advisory item to persist the new transcript. The root initially
+belongs to the selected app-server, but can later become `notLoaded` like any
+thread after its subscribers leave. Its persisted identity remains available
+for inspection or explicit resume.
+
 ## Identity
 
 Every spawned agent has a thread id. Some native subagent tools also expose a
@@ -67,14 +86,16 @@ other records bound to a stable identity rather than a reusable routing name.
 - `parent` means the native parent owns lifecycle input.
 - `unknown` means the capability was not available from the selected server.
 
-For `parent` agents, Codex rejects direct `start`, `steer`, and idle `wake`.
-Use the native parent handle to start or continue their work. Thread inspection,
-retained history, goal access by thread id, and exact interruption remain
-separate surfaces. `notify` uses advisory item injection: it can affect active
-reasoning, but does not start or steer a turn or provide lifecycle control.
+For `parent` agents, current Codex rejects direct `start`, `steer`, idle `wake`,
+and advisory `notify`. It also reserves external goal changes and raw context
+injection for the native owner. Use the native parent handle to continue or stop
+the child. Read-only inspection, retained history, goal reads, condition
+observation, and exact interruption remain separate surfaces.
 
 Resuming or loading a child does not transfer input ownership. The app-server's
-reported capability and native rejection remain authoritative.
+reported capability and native rejection remain authoritative. If direct
+external control is required, create an independent root from the outset rather
+than trying to convert an existing child.
 
 ## Scheduled Conditions
 

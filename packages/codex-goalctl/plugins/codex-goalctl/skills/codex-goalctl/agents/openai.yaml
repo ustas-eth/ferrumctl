@@ -1,6 +1,6 @@
 interface:
   display_name: "Codex Goalctl"
   short_description: "Manage persisted Codex thread goals"
-  default_prompt: "Use $codex-goalctl to assign a fresh goal to a Codex thread."
+  default_prompt: "Use $codex-goalctl to inspect a persisted goal or manage one on a directly controlled Codex thread."
 policy:
   allow_implicit_invocation: true

@@ -42,11 +42,21 @@ codex-goalctl clear THREAD_ID
 ```
 
 Canonical task names returned by native subagent tools are not goal identifiers.
-When threadctl is available, resolve the task name first:
+When threadctl is available, resolve one for a goal read:
 
 ```sh
 WORKER=$(codex-threadctl resolve /root/reviewer)
-codex-goalctl replace "$WORKER" "Review this package and mark the goal complete."
+codex-goalctl get "$WORKER"
+```
+
+Current Codex rejects external goal changes to parent-owned v2 children. Give
+them assignments through their native parent workflow. For direct external goal
+control, create an independent root first:
+
+```sh
+WORKER=$(codex-threadctl create --cwd "$PWD")
+codex-goalctl replace "$WORKER" \
+  "Review this package and mark the goal complete."
 ```
 
 Goal writes do not reliably wake a CLI-owned thread. Send a short follow-up
@@ -76,13 +86,3 @@ codex plugin add codex-goalctl@ferrumctl
 ```
 
 The skill lives at `plugins/codex-goalctl/skills/codex-goalctl/SKILL.md`.
-
-## Screenshot
-
-This screenshot shows a main Codex thread using the skill, spawning a
-subagent, assigning a persisted goal, waking the subagent, and receiving the
-completed status back.
-
-<p align="center">
-  <img src="docs/assets/codex-goalctl-smoke.png" alt="Codex goalctl smoke test" width="900">
-</p>

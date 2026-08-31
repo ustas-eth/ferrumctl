@@ -8,8 +8,8 @@ agent session, use only commands whose skills are available unless the user
 explicitly requests another installed command.
 
 When the coordinator owns a native subagent handle, prefer native input, wait,
-and result retrieval. The thread-id commands below are useful for standalone
-sessions, host control, or persisted state beyond the native result.
+and result retrieval. Use an independent root when direct thread-id control must
+remain available to another thread or host process.
 
 ## Self-Managed Thread
 
@@ -46,7 +46,7 @@ attention, and then starts the worker:
 
 ```sh
 MAIN=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
-WORKER=worker-thread-id
+WORKER=$(codex-threadctl create --cwd "$PWD")
 
 codex-readcov snapshot "$WORKER" > worker.before.json
 
@@ -61,9 +61,11 @@ codex-threadctl start "$WORKER" \
   "From coordinator: A goal was assigned. Call get_goal and proceed."
 ```
 
-Omit layers that are not needed. A native subagent message can replace
-`threadctl start`; native waiting can replace the wake only when the
-coordinator should remain active; coverage is optional.
+Omit layers that are not needed. `create` makes a persisted root with no native
+parent or automatic result return. A native subagent remains simpler when the
+current session should own the worker and direct external control is
+unnecessary. Native waiting can replace the wake only when the coordinator
+should remain active; coverage is optional.
 
 After the event, inspect each relevant state separately:
 
@@ -80,13 +82,12 @@ observe the worker's turn boundary when that response matters.
 
 Some native subagent tools identify each member by a canonical task name such as
 `/root/reviewer`. Use threadctl to inspect the mapping, then keep the resolved
-thread id for packages that require one:
+thread id for read-only operations and condition subjects that require one:
 
 ```sh
 codex-threadctl agents
 WORKER=$(codex-threadctl resolve /root/reviewer)
-codex-goalctl replace "$WORKER" \
-  "Review this package and mark the goal complete."
+codex-goalctl get "$WORKER"
 ```
 
 A scheduled condition can use canonical task names directly and return
@@ -98,10 +99,12 @@ codex-wakectl add goal /root/reviewer \
   --to /root
 ```
 
-Start or continue the child through the native parent handle. Canonical task
-names are valid observation handles, but direct threadctl start, steer, and idle
-wake do not replace native lifecycle control. Outside the tree, add
-`--tree THREAD_ID` when resolving a task name.
+Start, continue, and assign the child through its native parent workflow.
+Current Codex rejects direct external input, context injection, and goal changes
+to parent-owned v2 children. Canonical task names remain valid observation
+handles, but do not transfer ownership. Use an independent root instead when
+direct ferrumctl control is required. Outside the tree, add `--tree THREAD_ID`
+when resolving a task name.
 
 ## Ongoing Supervision
 
@@ -175,10 +178,11 @@ through the native handle or retained thread history.
 
 ## Standalone Sessions
 
-For normal Codex sessions rather than native subagents, load the participants
-on one shared app-server and use their thread ids:
+Create externally controlled participants as independent roots on one shared
+app-server and retain their thread ids:
 
 ```sh
+WORKER=$(codex-threadctl create --cwd /path/to/project)
 codex-threadctl loaded
 codex-threadctl status "$WORKER"
 ```

@@ -1,12 +1,12 @@
 # codex-threadctl
 
-`codex-threadctl` discovers, inspects, and controls Codex threads through a
-shared `codex app-server`.
+`codex-threadctl` creates, discovers, inspects, and controls Codex threads
+through a shared `codex app-server`.
 
-Use it to find or search stored sessions and spawned threads, inspect recent
-work and retained messages, or apply immediate control through a thread id or
-canonical task name such as `/root/reviewer`. It does not edit goals, schedule
-future input, or measure file-read coverage.
+Use it to create an independently controlled worker, find stored sessions and
+spawned threads, inspect recent work and retained messages, or apply immediate
+control through a thread id or canonical task name such as `/root/reviewer`.
+It does not edit goals, schedule future input, or measure file-read coverage.
 
 ## Install
 
@@ -33,6 +33,22 @@ codex-threadctl loaded
 ```
 
 ## Examples
+
+Create a persisted root worker for direct control by another thread or host
+process:
+
+```sh
+WORKER=$(codex-threadctl create --cwd "$PWD")
+codex-threadctl start "$WORKER" \
+  "From coordinator: Begin the assigned work."
+```
+
+The command prints only the new thread id and does not start a turn. It writes a
+short `threadctl` advisory item so the thread is persisted before its first
+turn. The worker is independent: it has no native parent handle or automatic
+result return. Use the thread id to assign optional goal state, schedule
+attention, inspect work, or retrieve its response. Configured model and
+permission defaults apply unless the supported create overrides are supplied.
 
 Find a thread and inspect its current state:
 
@@ -85,8 +101,9 @@ codex-threadctl wake THREAD_ID
 ```
 
 When a native subagent tool returns canonical task names, the parent retains
-lifecycle input for its children. Threadctl can inspect them by task name, but
-direct `start`, `steer`, and idle `wake` are rejected.
+ownership of its v2 children. Threadctl can inspect them by task name, but
+current Codex rejects direct `start`, `steer`, `wake`, and `notify`. Create an
+independent root instead when external direct control is required.
 
 Other immediate operations include resuming persisted state, interrupting one
 turn, and inspecting or terminating a tracked terminal process:

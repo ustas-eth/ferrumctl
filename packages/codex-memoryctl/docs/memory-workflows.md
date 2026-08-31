@@ -10,6 +10,10 @@ perspective without accepting lasting influence. Give the consultant the
 question, let it call `inject --self` with the donor memory, collect its answer,
 and discard the thread.
 
+The consultant must accept direct app-server injection. Current Codex
+parent-owned v2 children do not; create an independent root consultant when
+using this workflow.
+
 The consultant can also assimilate the requester's memory when the requester's
 retained perspective is needed, but a clear current prompt is often enough.
 This topology makes the consultation temporary at the workflow level; memoryctl
@@ -23,13 +27,14 @@ framing](perspective-framing.md).
 
 ## Older-Self Recall And In-Place Assimilation
 
-An established agent can use `inject --self` to revisit an older checkpoint or
-accept a donated perspective into its continuing work. It must call the command
-during an active turn and state the purpose explicitly. Memoryctl replaces the
-donor turn association with current-turn binding, brackets each memory with its
-source reference, and records that exact purpose in the closing boundary. The
-purpose should say how the retained perspective relates to the current
-question; it does not need to restate the current role.
+An established agent that accepts direct app-server injection can use
+`inject --self` to revisit an older checkpoint or accept a donated perspective
+into its continuing work. It must call the command during an active turn and
+state the purpose explicitly. Memoryctl replaces the donor turn association
+with current-turn binding, brackets each memory with its source reference, and
+records that exact purpose in the closing boundary. The purpose should say how
+the retained perspective relates to the current question; it does not need to
+restate the current role.
 
 The retained current instructions and evidence remain the authority. Extract
 useful details from the recalled state and check them against the present
@@ -56,10 +61,11 @@ An ordered batch is not a set of isolated channels. The boundaries improve
 attribution but cannot guarantee it. When donors must remain independently
 isolated, consult them in separate threads.
 
-An external controller can use `inject --to TARGET`. The memory-only defaults
-preserve each donor's source turn association and add source boundaries. Use
-`--expect-no-turns` when an automation depends on the target having no
-materialized turns; the command otherwise permits established targets.
+An external controller can use `inject --to TARGET` when the target accepts
+direct app-server injection. The memory-only defaults preserve each donor's
+source turn association and add source boundaries. Use `--expect-no-turns` when
+an automation depends on the target having no materialized turns; the command
+otherwise permits established targets.
 
 External injection into an established thread is durable transplantation. It
 can be useful for controlled consolidation, recovery, and low-level studies,

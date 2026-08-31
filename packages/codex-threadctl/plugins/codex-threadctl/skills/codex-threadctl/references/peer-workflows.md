@@ -10,8 +10,8 @@ explicitly requested it.
 ## Direct Exchange
 
 For a short exchange, use a native subagent handle when one participant owns
-it. When only thread ids are available, immediate thread control can start the
-recipient:
+it. When the recipient is an independently controlled root and only thread ids
+are available, immediate thread control can start it:
 
 ```sh
 codex-threadctl start "$B" \
@@ -35,19 +35,20 @@ POSITION=$(streamctl append "$STREAM" \
 
 Place the stream id in each participant's existing context or durable
 assignment. Once the stream is the authoritative exchange, keep substantive
-peer content there. When an active peer would benefit from prompt attention and
-immediate thread control is available, announce only the highest committed
-position. The target can be a thread id or an unambiguous canonical task name
-such as `/root/reviewer`:
+peer content there. When an active peer accepts direct app-server injection,
+would benefit from prompt attention, and immediate thread control is available,
+announce only the highest committed position. The target can be a thread id or
+an unambiguous canonical task name such as `/root/reviewer`:
 
 ```sh
 codex-threadctl notify "$B" \
   "Stream $STREAM has a checkpoint through $POSITION."
 ```
 
-Notification is advisory and does not define stream order. If B is idle and
-must act, start it through its native owner or use an empty wake when B accepts
-direct input:
+Notification is advisory and does not define stream order. Current Codex
+rejects it for parent-owned v2 children; use their native parent message path.
+If B is idle and must act, start it through its native owner or use an empty
+wake when B accepts direct input:
 
 ```sh
 codex-threadctl wake "$B"

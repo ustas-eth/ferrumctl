@@ -17,9 +17,11 @@ accepted the request. It does not mean that a turn started, that the model read
 the item, or that the target acted on it. `targetStatusBefore` reports the live
 status observed before submission, not a post-injection confirmation.
 
-Injection does not add ordinary user input, wake an idle thread, or bypass the
-native parent's lifecycle ownership of a v2 agent. Lifecycle control remains a
-separate operation.
+Injection does not add ordinary user input or wake an idle thread. Current
+Codex rejects `thread/inject_items` for parent-owned v2 children, including when
+the child invokes memoryctl with `--self`. Task-name resolution and resume do
+not transfer that ownership. Use an independent root or disposable consultant
+when the workflow requires memory injection.
 
 `--self` is the recipient-owned preset. It selects the active
 `CODEX_THREAD_ID`, requires `--purpose`, clears each copied memory's donor turn
@@ -27,9 +29,10 @@ association, and submits the batch to the current turn. Memoryctl surrounds
 the memory with attributed source boundaries and places the exact purpose in
 the closing boundary.
 
-`--to TARGET` exposes external transfer to any loaded target. Memory-only
-transfer preserves the source turn association and uses the same boundaries by
-default. These defaults can be selected explicitly or changed independently:
+`--to TARGET` exposes external transfer to a loaded target that accepts direct
+app-server injection. Memory-only transfer preserves the source turn
+association and uses the same boundaries by default. These defaults can be
+selected explicitly or changed independently:
 
 ```sh
 codex-memoryctl inject --to TARGET --state SOURCE@latest \

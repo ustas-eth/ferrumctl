@@ -33,9 +33,10 @@ DIRECT_INPUT_TO_V2_SUBAGENT = (
     "direct app-server input is not allowed for multi-agent v2 sub-agents"
 )
 PARENT_OWNED_INPUT_ERROR = (
-    "thread is controlled by its native parent; direct start, steer, and wake "
-    "are unavailable"
+    "thread is controlled by its native parent; direct start, steer, wake, and "
+    "advisory injection are unavailable"
 )
+CREATE_NOTICE = "[threadctl] Independent thread initialized for direct control."
 
 
 class AppServer:
@@ -351,6 +352,80 @@ async def read_thread(app: AppServer, thread_id: str) -> dict[str, Any]:
         "thread/read result",
     )
     return require_object(result.get("thread"), "thread/read thread")
+
+
+async def create_thread(
+    app: AppServer,
+    cwd: str,
+    *,
+    model: str | None = None,
+    model_provider: str | None = None,
+) -> dict[str, Any]:
+    params: dict[str, Any] = {"cwd": cwd}
+    if model is not None:
+        params["model"] = model
+    if model_provider is not None:
+        params["modelProvider"] = model_provider
+
+    try:
+        result = require_object(
+            await app.request("thread/start", params),
+            "thread/start result",
+        )
+        thread = require_object(result.get("thread"), "thread/start thread")
+        thread_id = thread.get("id")
+        if not isinstance(thread_id, str) or not thread_id:
+            raise ThreadctlError("app-server returned thread/start without a thread id")
+        instruction_sources = result.get("instructionSources", [])
+        if not isinstance(instruction_sources, list) or not all(
+            isinstance(path, str) for path in instruction_sources
+        ):
+            raise ThreadctlError(
+                "app-server returned invalid thread/start instruction sources"
+            )
+    except AppServerResponseError:
+        raise
+    except (OSError, ThreadctlError, websockets.WebSocketException) as exc:
+        raise ThreadctlError(
+            "thread creation outcome is uncertain; inspect recent threads before retrying"
+        ) from exc
+
+    initialization_item_id = f"amsg_{uuid.uuid4().hex}"
+    try:
+        await app.request(
+            "thread/inject_items",
+            {
+                "threadId": thread_id,
+                "items": [
+                    {
+                        "type": "agent_message",
+                        "id": initialization_item_id,
+                        "author": "threadctl",
+                        "recipient": thread_id,
+                        "content": [
+                            {"type": "input_text", "text": CREATE_NOTICE}
+                        ],
+                    }
+                ],
+            },
+        )
+    except AppServerResponseError as exc:
+        raise ThreadctlError(
+            f"thread {thread_id} was created but could not be initialized for "
+            f"external control: {exc}"
+        ) from exc
+    except (OSError, ThreadctlError, websockets.WebSocketException) as exc:
+        raise ThreadctlError(
+            f"thread {thread_id} was created but its initialization outcome is "
+            "uncertain; inspect that thread before retrying"
+        ) from exc
+
+    return {
+        "threadId": thread_id,
+        "thread": thread,
+        "instructionSources": instruction_sources,
+        "initializationItemId": initialization_item_id,
+    }
 
 
 async def list_turn_page(
@@ -792,7 +867,9 @@ async def notify_thread(
             ),
             "thread/inject_items result",
         )
-    except AppServerResponseError:
+    except AppServerResponseError as exc:
+        if is_parent_owned_input_error(exc):
+            raise DirectInputUnsupported(PARENT_OWNED_INPUT_ERROR) from exc
         raise
     except (OSError, ThreadctlError, websockets.WebSocketException) as exc:
         raise NotificationUncertain(item_id) from exc

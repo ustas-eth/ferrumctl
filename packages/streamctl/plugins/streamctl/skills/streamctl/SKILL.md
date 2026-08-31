@@ -62,9 +62,10 @@ interval is required.
 ## Add Attention Separately
 
 An append is the durable publication boundary. If an immediate thread-control
-skill is also available and an active peer would benefit from prompt attention,
-announce only the latest committed position. `$PEER` may be a thread id or an
-unambiguous canonical task name such as `/root/reviewer`:
+skill is also available, the active peer accepts direct app-server injection,
+and prompt attention would help, announce only the latest committed position.
+`$PEER` may be a thread id or an unambiguous canonical task name such as
+`/root/reviewer`:
 
 ```sh
 codex-threadctl notify "$PEER" \
@@ -75,9 +76,9 @@ Notification and wake remain separate from the stream. Missing, delayed,
 reordered, or duplicate notices are reconciled by listing after the reader's
 acknowledgement.
 
-Use native messaging when the message itself is the exchange or controls the
-recipient's lifecycle. If an idle recipient must act, start it through its
-lifecycle owner; notification alone cannot do that.
+Use native messaging when the message itself is the exchange, the recipient is
+a parent-owned v2 child, or lifecycle must change. If an idle recipient must
+act, start it through its lifecycle owner; notification alone cannot do that.
 
 ## Invariants
 

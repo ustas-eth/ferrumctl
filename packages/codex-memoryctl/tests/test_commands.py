@@ -6,6 +6,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
+from codex_threadctl.errors import AppServerResponseError
 from codex_memoryctl import commands, parser
 from codex_memoryctl.errors import InjectionUncertain, MemoryctlError
 from codex_memoryctl.rollouts import MemoryState, memory_id, memory_ref
@@ -38,6 +39,20 @@ class FailingApp(FakeApp):
             from codex_threadctl.errors import ThreadctlError
 
             raise ThreadctlError("connection closed")
+        return await super().request(method, params)
+
+
+class ParentOwnedApp(FakeApp):
+    async def request(self, method, params=None):
+        if method == "thread/inject_items":
+            raise AppServerResponseError(
+                {
+                    "message": (
+                        "direct app-server input is not allowed for "
+                        "multi-agent v2 sub-agents"
+                    )
+                }
+            )
         return await super().request(method, params)
 
 
@@ -81,9 +96,9 @@ class InjectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, reference)
         resolved.assert_not_awaited()
 
-    async def run_inject(self, argv, states):
+    async def run_inject(self, argv, states, *, app=None):
         args = parser.build_parser().parse_args(argv)
-        app = FakeApp()
+        app = app or FakeApp()
         with tempfile.TemporaryDirectory() as directory:
             target_path = Path(directory) / "target.jsonl"
             target_path.write_text("")
@@ -171,6 +186,17 @@ class InjectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("framing=boundaries", output)
         self.assertIn("purpose-delivery=attributed-boundary", output)
         self.assertIn('purpose="compare\\ncarefully"', output)
+
+    async def test_parent_owned_v2_injection_has_actionable_error(self) -> None:
+        with self.assertRaisesRegex(
+            MemoryctlError,
+            "native parent",
+        ):
+            await self.run_inject(
+                ["inject", "--to", "target", "--state", "source@latest"],
+                [make_state("source")],
+                app=ParentOwnedApp(),
+            )
 
     async def test_self_injection_binds_memory_to_active_turn(self) -> None:
         value = make_state("donor")
