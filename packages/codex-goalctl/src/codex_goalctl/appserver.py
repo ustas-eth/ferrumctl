@@ -11,7 +11,11 @@ from typing import Any, IO
 from .errors import GoalctlError
 
 
-CLIENT_VERSION = "0.1.10"
+CLIENT_VERSION = "0.1.11"
+DIRECT_INPUT_TO_V2_SUBAGENT = (
+    "direct app-server input is not allowed for multi-agent v2 sub-agents"
+)
+GOAL_WRITE_METHODS = {"thread/goal/set", "thread/goal/clear"}
 
 
 class AppServer:
@@ -68,7 +72,15 @@ class AppServer:
         if params is not None:
             msg["params"] = params
         self.send(msg)
-        return self.wait_for(request_id)
+        try:
+            return self.wait_for(request_id)
+        except GoalctlError as exc:
+            if method in GOAL_WRITE_METHODS and DIRECT_INPUT_TO_V2_SUBAGENT in str(exc):
+                raise GoalctlError(
+                    "thread is controlled by its native parent; external goal "
+                    "changes are unavailable"
+                ) from exc
+            raise
 
     def notify(self, method: str) -> None:
         self.send({"method": method})

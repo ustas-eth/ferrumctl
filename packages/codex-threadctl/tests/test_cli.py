@@ -24,13 +24,22 @@ class ParserTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 parser.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-threadctl 0.6.2\n")
+        self.assertEqual(output.getvalue(), "codex-threadctl 0.7.0\n")
 
     def test_default_timeout_allows_for_history_reconstruction(self):
         self.assertEqual(parser.build_parser().parse_args(["loaded"]).timeout, 30.0)
 
     def test_parses_all_commands(self):
         cases = [
+            [
+                "create",
+                "--cwd",
+                "/project",
+                "--model",
+                "model",
+                "--model-provider",
+                "provider",
+            ],
             ["loaded"],
             ["agents", "thread"],
             ["resolve", "/root/worker", "--tree", "thread"],
@@ -86,6 +95,10 @@ class ParserTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             parser.build_parser().parse_args(["search", "  "])
 
+    def test_create_requires_an_explicit_workspace(self):
+        with self.assertRaises(SystemExit):
+            parser.build_parser().parse_args(["create"])
+
     def test_destructive_controls_require_explicit_identity_and_intent(self):
         with self.assertRaises(SystemExit):
             parser.build_parser().parse_args(
@@ -109,6 +122,87 @@ class ParserTests(unittest.TestCase):
 
 
 class CommandTests(unittest.IsolatedAsyncioTestCase):
+    async def test_create_prints_composable_thread_id(self):
+        args = parser.build_parser().parse_args(
+            [
+                "create",
+                "--cwd",
+                "/project",
+                "--model",
+                "model",
+                "--model-provider",
+                "provider",
+            ]
+        )
+        with (
+            mock.patch.object(commands, "AppServer", return_value=FakeContext()),
+            mock.patch.object(
+                commands,
+                "create_thread",
+                mock.AsyncMock(
+                    return_value={
+                        "threadId": "created",
+                        "thread": {"id": "created"},
+                        "instructionSources": [],
+                        "initializationItemId": "amsg_created",
+                    }
+                ),
+            ) as create_thread,
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            result = await commands.cmd_create(args)
+
+        self.assertEqual(result, 0)
+        create_thread.assert_awaited_once_with(
+            mock.ANY,
+            "/project",
+            model="model",
+            model_provider="provider",
+        )
+        self.assertEqual(output.getvalue(), "created\n")
+
+    async def test_create_json_reports_loaded_configuration(self):
+        args = parser.build_parser().parse_args(
+            ["create", "--cwd", "/requested", "--json"]
+        )
+        with (
+            mock.patch.object(commands, "AppServer", return_value=FakeContext()),
+            mock.patch.object(
+                commands,
+                "create_thread",
+                mock.AsyncMock(
+                    return_value={
+                        "threadId": "created",
+                        "thread": {
+                            "id": "created",
+                            "cwd": "/actual",
+                            "model": "model",
+                            "modelProvider": "provider",
+                            "status": {"type": "idle"},
+                        },
+                        "instructionSources": ["/actual/AGENTS.md"],
+                        "initializationItemId": "amsg_created",
+                    }
+                ),
+            ),
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            result = await commands.cmd_create(args)
+
+        self.assertEqual(result, 0)
+        self.assertEqual(
+            json.loads(output.getvalue()),
+            {
+                "threadId": "created",
+                "cwd": "/actual",
+                "model": "model",
+                "modelProvider": "provider",
+                "status": {"type": "idle"},
+                "instructionSources": ["/actual/AGENTS.md"],
+                "initializationItemId": "amsg_created",
+            },
+        )
+
     async def test_loaded_prints_nothing_for_empty_result(self):
         args = parser.build_parser().parse_args(["loaded"])
         with (

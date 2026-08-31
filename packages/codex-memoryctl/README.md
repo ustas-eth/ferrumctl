@@ -105,18 +105,20 @@ codex-memoryctl inject --self \
 ```
 
 `--self` is the recipient-owned preset: it requires an active
-`CODEX_THREAD_ID`, binds the memory to the current turn, adds source boundaries,
-and requires a purpose. When another established agent should use a memory,
-give it the reference and question so it can run this command itself. Use a
-disposable consultant when the original conversation should remain unchanged.
+`CODEX_THREAD_ID`, direct app-server injection, and a purpose. It binds the
+memory to the current turn and adds source boundaries. When another established
+agent should use a memory, give it the reference and question so it can run this
+command itself. Use a disposable consultant when the original conversation
+should remain unchanged.
 
 Several `--state` arguments form one ordered batch. Memoryctl closes one
 attributed perspective before opening the next, but the model may still combine
 or confuse their contents.
 
-`--to TARGET` transfers memory externally to any loaded target. It preserves
-source turn association and adds the same boundaries by default. A caller that
-expects no materialized target turns yet can request that precondition:
+`--to TARGET` transfers memory externally to a loaded target that accepts direct
+app-server injection. It preserves source turn association and adds the same
+boundaries by default. A caller that expects no materialized target turns yet
+can request that precondition:
 
 ```sh
 codex-memoryctl inject --to FRESH_THREAD_ID \
@@ -124,6 +126,10 @@ codex-memoryctl inject --to FRESH_THREAD_ID \
   --purpose "Use this perspective for the handoff question." \
   --expect-no-turns
 ```
+
+Current Codex rejects injection into parent-owned v2 children, including a
+child invoking `--self`. Use an independently controlled root or disposable
+consultant when memory injection is required.
 
 With `--to`, low-level callers can choose `--binding source|current` and
 `--framing boundaries|none`. Current binding requires an active target turn.

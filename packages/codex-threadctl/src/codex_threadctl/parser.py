@@ -5,6 +5,7 @@ import math
 
 from .commands import (
     cmd_agents,
+    cmd_create,
     cmd_inspect,
     cmd_interrupt,
     cmd_items,
@@ -110,6 +111,29 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add_global_options(parser, defaults=True)
     sub = parser.add_subparsers(dest="command", required=True)
+
+    create = sub.add_parser(
+        "create",
+        help="create an independently controlled root thread",
+    )
+    create.add_argument(
+        "--cwd",
+        required=True,
+        type=nonempty_text,
+        help="working directory for the new thread",
+    )
+    create.add_argument(
+        "--model",
+        type=nonempty_text,
+        help="model override; otherwise use configured defaults",
+    )
+    create.add_argument(
+        "--model-provider",
+        type=nonempty_text,
+        help="model provider override; otherwise use configured defaults",
+    )
+    add_global_options(create, defaults=False)
+    create.set_defaults(func=cmd_create)
 
     loaded = sub.add_parser("loaded", help="list loaded thread ids")
     add_global_options(loaded, defaults=False)

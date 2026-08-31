@@ -17,7 +17,7 @@ Codex skills help agents choose and use them correctly.
 | --- | --- |
 | [`codex-goalctl`](packages/codex-goalctl) | Set, inspect, or update another Codex thread's durable goal and token budget. |
 | [`codex-wakectl`](packages/codex-wakectl) | Return attention after a time, goal, turn, or host condition. |
-| [`codex-threadctl`](packages/codex-threadctl) | Find a thread, see its recent work and retained messages, or control its current turn. |
+| [`codex-threadctl`](packages/codex-threadctl) | Create an independent worker, find a thread, see its recent work and retained messages, or control its current turn. |
 | [`codex-readcov`](packages/codex-readcov) | Check which file reads were recorded in a thread transcript and compare work intervals. |
 | [`codex-limitctl`](packages/codex-limitctl) | Check subscription capacity and recent usage before planning more work. |
 | [`codex-memoryctl`](packages/codex-memoryctl) | Inspect, export, or deliberately transfer opaque Codex compaction memory. |
@@ -25,10 +25,11 @@ Codex skills help agents choose and use them correctly.
 
 ## A Typical Use
 
-You ask a main Codex thread to review a project with two workers. With the
-matching ferrumctl skills available, the coordinator can:
+You ask a main Codex thread to review a project with two independently
+controlled workers. With the matching ferrumctl skills available, the
+coordinator can:
 
-1. Give each worker a durable goal and budget.
+1. Create each worker in the right project and give it a durable goal and budget.
 2. Start their work and arrange to wake when either worker stops.
 3. Inspect current activity or retained answers while their work continues.
 4. Check goal status and recorded file reads before choosing the next step.
@@ -36,6 +37,11 @@ matching ferrumctl skills available, the coordinator can:
 The coordinator performs these operations itself, removing manual goal copying,
 repeated worker polling, and raw transcript searches. Native controls remain
 simpler for quick exchanges with a live subagent.
+
+Native subagents remain simpler when their parent should own the work and
+receive the result. Current Codex keeps v2 children under that parent, so direct
+external input, injected context, and goal changes require independent root
+workers instead.
 
 The same tools also support self-scheduling agents, paired reviews, and host
 automation.

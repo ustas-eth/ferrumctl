@@ -14,6 +14,7 @@ from codex_threadctl.agents import is_agent_path, resolve_thread_reference
 from codex_threadctl.appserver import (
     AppServer,
     current_active_turn,
+    is_parent_owned_input_error,
     list_loaded,
     list_thread_turns,
     read_thread,
@@ -503,7 +504,12 @@ async def cmd_inject(args: argparse.Namespace) -> int:
                 ),
                 "thread/inject_items result",
             )
-        except AppServerResponseError:
+        except AppServerResponseError as exc:
+            if is_parent_owned_input_error(exc):
+                raise MemoryctlError(
+                    "thread is controlled by its native parent; external memory "
+                    "injection is unavailable"
+                ) from exc
             raise
         except (OSError, ThreadctlError, websockets.WebSocketException) as exc:
             raise InjectionUncertain(

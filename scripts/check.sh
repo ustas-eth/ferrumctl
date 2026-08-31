@@ -97,15 +97,15 @@ run git diff --check
   run "$bin_dir/codex-wakectl" --version
   run "$UV" pip check --python "$tool_dir/codex-memoryctl/bin/python"
   run "$UV" pip check --python "$tool_dir/codex-wakectl/bin/python"
-  test "$("$bin_dir/codex-goalctl" --version)" = "codex-goalctl 0.1.10"
-  test "$("$bin_dir/codex-limitctl" --version)" = "codex-limitctl 0.2.8"
-  test "$("$bin_dir/codex-memoryctl" --version)" = "codex-memoryctl 0.5.2"
-  test "$("$bin_dir/streamctl" --version)" = "streamctl 0.2.2"
-  test "$("$bin_dir/codex-threadctl" --version)" = "codex-threadctl 0.6.2"
-  test "$("$bin_dir/codex-wakectl" --version)" = "codex-wakectl 0.5.1"
+  test "$("$bin_dir/codex-goalctl" --version)" = "codex-goalctl 0.1.11"
+  test "$("$bin_dir/codex-limitctl" --version)" = "codex-limitctl 0.2.9"
+  test "$("$bin_dir/codex-memoryctl" --version)" = "codex-memoryctl 0.5.3"
+  test "$("$bin_dir/streamctl" --version)" = "streamctl 0.2.3"
+  test "$("$bin_dir/codex-threadctl" --version)" = "codex-threadctl 0.7.0"
+  test "$("$bin_dir/codex-wakectl" --version)" = "codex-wakectl 0.5.2"
 )
 
 run packages/codex-readcov/target/debug/codex-readcov --version
-test "$(packages/codex-readcov/target/debug/codex-readcov --version)" = "codex-readcov 0.1.10"
+test "$(packages/codex-readcov/target/debug/codex-readcov --version)" = "codex-readcov 0.1.11"
 
 printf '\nchecks passed\n'

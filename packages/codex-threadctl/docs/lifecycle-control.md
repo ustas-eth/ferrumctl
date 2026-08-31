@@ -1,7 +1,30 @@
 # Immediate Thread Control
 
 This reference describes the native operations behind notification, wake,
-thread start, steering, resume, interruption, and terminal-process control.
+root creation, thread start, steering, resume, interruption, and terminal-process
+control.
+
+## Creating An Independent Root
+
+`create` submits app-server `thread/start` with an explicit working directory,
+then appends one short `threadctl` advisory item. That item materializes the
+transcript so other app-server clients can address the root before its first
+turn. The command prints the returned thread id without starting a turn:
+
+```sh
+WORKER=$(codex-threadctl create --cwd /path/to/project)
+```
+
+The thread inherits configured Codex settings unless `--model` or
+`--model-provider` is supplied. It is an independent root rather than a native
+subagent: no parent receives its result or owns its lifecycle.
+
+The successful response confirms creation, not model execution. A connection or
+malformed response after submission leaves the outcome uncertain; list recent
+threads before retrying to avoid creating a duplicate. Closing the command's
+connection can eventually leave the new root `notLoaded`, while the persisted
+thread remains. Later resume requires explicit acknowledgement that an active
+goal may continue.
 
 ## Endpoint Ownership
 
@@ -22,10 +45,10 @@ flag acknowledges possible continuation; it does not activate or change the
 goal. Resume also does not detect or coordinate another app-server that may
 have loaded the same thread.
 
-Codex rejects direct app-server input to parent-owned subagents. Control them
-through their native parent handle; threadctl wake, start, and steer apply to
-threads that accept direct input. Notification uses the separate raw-item
-injection method and does not provide lifecycle control.
+Current Codex rejects direct app-server input and raw-item injection to
+parent-owned v2 subagents. Control them through their native parent handle;
+threadctl wake, start, steer, and notify apply to threads that accept direct
+input.
 
 ## Advisory Notification
 

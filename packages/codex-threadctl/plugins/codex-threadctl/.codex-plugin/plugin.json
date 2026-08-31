@@ -1,7 +1,7 @@
 {
   "name": "codex-threadctl",
-  "version": "0.6.2",
-  "description": "Codex skill for finding agent trees, inspecting threads, and applying app-server-backed control.",
+  "version": "0.7.0",
+  "description": "Codex skill for creating independent workers, finding agent trees, inspecting threads, and applying app-server-backed control.",
   "author": {
     "name": "ustas-eth"
   },
@@ -17,11 +17,12 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Codex Threadctl",
-    "shortDescription": "Find, inspect, and control Codex threads",
-    "longDescription": "Codex Threadctl provides guidance for discovering persisted threads and spawned-agent trees, resolving v2 paths, inspecting activity, context, messages, and terminal processes, and applying immediate app-server control within native ownership boundaries.",
+    "shortDescription": "Create, find, inspect, and control Codex threads",
+    "longDescription": "Codex Threadctl provides guidance for creating independently controlled root workers, discovering persisted threads and spawned-agent trees, resolving v2 paths, inspecting activity, context, messages, and terminal processes, and applying immediate app-server control within native ownership boundaries.",
     "developerName": "ustas-eth",
     "category": "Productivity",
     "capabilities": [
+      "Independent root-thread creation",
       "Persisted thread discovery",
       "Spawned-agent tree discovery",
       "V2 agent-path resolution",
@@ -39,6 +40,6 @@
       "Persisted thread resume",
       "Exact terminal termination"
     ],
-    "defaultPrompt": "Use $codex-threadctl to find, inspect, or immediately control a Codex thread."
+    "defaultPrompt": "Use $codex-threadctl to create, find, inspect, or immediately control a Codex thread."
   }
 }

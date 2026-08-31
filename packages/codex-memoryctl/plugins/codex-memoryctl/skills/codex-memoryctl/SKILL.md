@@ -62,21 +62,23 @@ codex-memoryctl inject --self \
   --purpose "Compare this perspective with the current handoff diagnosis."
 ```
 
-`--self` requires an active `CODEX_THREAD_ID` and a purpose. It binds memory to
-the current turn and adds attributed source boundaries. Use it when the memory
-may become part of the continuing thread, including older-self recall. Make the
-purpose name the recipient's actual subject and intended use; a generic
-statement about authority adds little useful context.
+`--self` requires an active `CODEX_THREAD_ID`, a purpose, and a thread that
+accepts direct app-server injection. It binds memory to the current turn and
+adds attributed source boundaries. Use it when the memory may become part of
+the continuing thread, including older-self recall. Make the purpose name the
+recipient's actual subject and intended use; a generic statement about
+authority adds little useful context.
 
 Use a fresh disposable consultant when the original agent should remain
 unchanged. The consultant receives the question and performs its own `--self`
 injection.
 
-`--to TARGET` exposes deliberate external transfer to any loaded thread. It
-defaults to source binding and the same boundaries. Use `--expect-no-turns`
-when a handoff or recovery workflow depends on there being no materialized
-target turn yet. External transfer into an established agent is a lasting
-change to its history, not neutral reference material.
+`--to TARGET` exposes deliberate external transfer to a loaded thread that
+accepts direct app-server injection. It defaults to source binding and the same
+boundaries. Use `--expect-no-turns` when a handoff or recovery workflow depends
+on there being no materialized target turn yet. External transfer into an
+established agent is a lasting change to its history, not neutral reference
+material.
 
 With `--to`, low-level work can select `--binding source|current` and
 `--framing boundaries|none`. Current binding requires an active target turn.
@@ -112,6 +114,9 @@ memory is a foreign perspective.
   it.
 - The target must be loaded on the selected app-server. Injection neither
   wakes it nor starts a turn.
+- Current Codex rejects injection into parent-owned v2 children, including a
+  child invoking `--self`. Use an independently controlled root or disposable
+  consultant when memory injection is required.
 - `accepted` confirms only the app-server request. It does not prove model
   receipt, interpretation, or action.
 - An uncertain request may already have succeeded. Compare the reported memory
@@ -120,9 +125,10 @@ memory is a foreign perspective.
   passes the transport check, but useful interpretation across models is not
   guaranteed; validate a cross-model workflow before relying on it.
 
-Both v1 and v2 agents use thread ids and local rollouts. Canonical task names
-such as `/root/reviewer` are accepted when they resolve unambiguously in the
-current tree. Preserve a thread id when the reference must remain durable.
+Both v1 and v2 agents use thread ids and local rollouts for memory discovery.
+Canonical task names such as `/root/reviewer` are accepted when they resolve
+unambiguously in the current tree. Resolution does not bypass v2 input
+ownership. Preserve a thread id when the reference must remain durable.
 
 ## References
 

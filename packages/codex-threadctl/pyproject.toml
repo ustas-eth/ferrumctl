@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "codex-threadctl"
-version = "0.6.2"
-description = "Inspect and control app-server-backed Codex threads"
+version = "0.7.0"
+description = "Create, inspect, and control app-server-backed Codex threads"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"

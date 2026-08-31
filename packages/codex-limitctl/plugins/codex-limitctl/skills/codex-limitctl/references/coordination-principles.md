@@ -31,6 +31,10 @@ The common handle is a Codex thread id. For v1 subagents, the spawn result's
 `agent_id` is that thread id. `CODEX_THREAD_ID` identifies the current thread
 when Codex provides it.
 
+`codex-threadctl create` produces a persisted root whose thread id can be
+controlled directly through the selected app-server. It is independent of the
+creator's native agent tree and has no automatic parent result channel.
+
 Some native subagent tools expose a canonical task name such as
 `/root/reviewer`. It is a tree-local routing handle, not the persisted identity,
 and can be reused after an agent closes. When the threadctl skill is available,
@@ -52,7 +56,13 @@ scope; they are not authentication.
 ## Choosing Control
 
 Use a native subagent handle for direct input, lifecycle control, waiting, and
-result retrieval when the current session owns that handle.
+result retrieval when the current session owns that handle. Current Codex keeps
+v2 children under this parent ownership and rejects direct external input,
+injected context, and goal changes to those children.
+
+When a host process or another thread must control a worker directly, create an
+independent root on the shared app-server from the outset. Task-name resolution
+and resume do not transfer ownership.
 
 Use thread control when a thread id is the useful handle, persisted history is
 needed, or an immediate app-server operation is intentional. Use a queued wake

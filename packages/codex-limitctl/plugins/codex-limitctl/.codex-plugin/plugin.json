@@ -1,6 +1,6 @@
 {
   "name": "codex-limitctl",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "description": "Codex skill for inspecting subscription limits and usage signals.",
   "author": {
     "name": "ustas-eth"

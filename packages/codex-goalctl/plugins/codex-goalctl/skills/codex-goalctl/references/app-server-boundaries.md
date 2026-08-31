@@ -47,6 +47,12 @@ The target must be reachable to the Codex instance started by the command. In
 practice, that means the same Codex home/configuration and a valid persisted
 thread id.
 
+Current Codex permits goal reads on parent-owned v2 children but rejects
+external goal changes. Their native parent workflow owns assignment and
+lifecycle. When a host process or another thread needs direct goal control,
+create an independent root through threadctl and retain its thread id. Resolving
+a canonical task name or resuming a child does not transfer ownership.
+
 ## Wake Boundary
 
 Changing a goal does not reliably wake a CLI-owned thread. A worker may not act
@@ -59,9 +65,9 @@ immediately:
 From coordinator: A goal was assigned. Call get_goal and proceed.
 ```
 
-Use native subagent input when a native subagent handle is available. Use
-`codex-threadctl start` when immediate thread-id control is available and the
-worker is loaded on the selected shared app-server. Conditional or delayed
-delivery remains a separate scheduler concern. The source label distinguishes
-the follow-up from direct human input; it does not prove identity or override
-existing instructions.
+Use native subagent input when a native subagent handle is available. For an
+independent root, use `codex-threadctl start` when immediate thread-id control
+is available and the worker is loaded on the selected shared app-server.
+Conditional or delayed delivery remains a separate scheduler concern. The
+source label distinguishes the follow-up from direct human input; it does not
+prove identity or override existing instructions.

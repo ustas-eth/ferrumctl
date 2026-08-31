@@ -13,6 +13,7 @@ from .agents import (
 )
 from .appserver import (
     AppServer,
+    create_thread,
     get_goal,
     interrupt_thread,
     list_background_terminals,
@@ -95,6 +96,37 @@ async def cmd_loaded(args: argparse.Namespace) -> int:
         print(json.dumps({"threadIds": thread_ids}, indent=2))
     elif thread_ids:
         print("\n".join(thread_ids))
+    return 0
+
+
+async def cmd_create(args: argparse.Namespace) -> int:
+    async with AppServer(args.endpoint, args.timeout) as app:
+        created = await create_thread(
+            app,
+            args.cwd,
+            model=args.model,
+            model_provider=args.model_provider,
+        )
+    if args.json:
+        thread = created["thread"]
+        print(
+            json.dumps(
+                {
+                    "threadId": created["threadId"],
+                    "cwd": thread.get("cwd", args.cwd),
+                    "model": thread.get("model", args.model),
+                    "modelProvider": thread.get(
+                        "modelProvider", args.model_provider
+                    ),
+                    "status": thread.get("status"),
+                    "instructionSources": created["instructionSources"],
+                    "initializationItemId": created["initializationItemId"],
+                },
+                indent=2,
+            )
+        )
+    else:
+        print(created["threadId"])
     return 0
 
 

@@ -1,16 +1,17 @@
 ---
 name: codex-threadctl
-description: "Use when a Codex thread id or canonical task name such as /root/reviewer is the useful handle for spawned-tree discovery, persisted history, current app-server state, retained messages, context or terminal visibility, or supported immediate control within native input-ownership boundaries, such as advisory notification, wake, start, steer, resume, interrupt, or exact terminal termination. Prefer native subagent tools for direct messages, lifecycle control, waiting, and result retrieval when this session owns the live handle. Do not use for future conditions, goal editing, read coverage, terminal keystrokes, or spawning."
+description: "Use when an independently controlled Codex root worker must be created, or when a thread id or canonical task name such as /root/reviewer is the useful handle for discovery, persisted history, live state, retained messages, context or terminal visibility, and supported immediate control. Prefer native subagent tools when this session owns the live child. Do not use for future conditions, goal editing, read coverage, terminal keystrokes, or native subagent spawning."
 ---
 
 # Codex Threadctl
 
 ## Purpose
 
-Use `codex-threadctl` to observe persisted Codex thread state or apply a
-supported immediate operation through a thread id or canonical task name such
-as `/root/reviewer`. It combines persisted relationships and materialized
-history with live state from a selected app-server.
+Use `codex-threadctl` to create an independently controlled root thread, observe
+persisted Codex state, or apply a supported immediate operation through a
+thread id or canonical task name such as `/root/reviewer`. It combines
+persisted relationships and materialized history with live state from a
+selected app-server.
 
 Use native subagent tools for ordinary direct messages, lifecycle control,
 waiting, and result retrieval when this session owns the live handle. Use
@@ -20,7 +21,27 @@ threadctl operations when only a thread id remains, host-level control is
 intentional, or retained state beyond the native result is needed.
 
 Threadctl does not schedule future input, edit goals, measure read coverage, or
-spawn agents.
+spawn native child agents.
+
+## Choose Ownership
+
+Use a native subagent when this session should own its lifecycle and receive its
+result. Parent-owned v2 children are controlled through that native parent
+handle.
+
+When another thread or host process must control the worker directly, create an
+independent root on the shared app-server from the outset:
+
+```sh
+WORKER=$(codex-threadctl create --cwd "$PWD")
+```
+
+`create` starts no turn and prints only the new thread id. It adds one short
+`threadctl` advisory item so the root is persisted before its first turn. It
+uses configured Codex defaults unless `--model` or `--model-provider` is
+supplied. The new root has no native parent handle, canonical task name, or
+automatic result return; use its thread id for later state and control
+operations.
 
 ## Observe A Thread
 
@@ -111,6 +132,8 @@ server.
 
 ## Control Boundaries
 
+- `create` confirms that app-server returned a new root identity, not that any
+  work ran. If its outcome is uncertain, inspect recent threads before retrying.
 - Except for `resume`, the target must be loaded on the selected app-server for
   live control.
 - `start` has a non-atomic idle check. Read its confirmed delivery mode because
@@ -125,10 +148,11 @@ server.
   required.
 - Use process and item ids from the same current `terminals` result for
   `terminate-terminal`.
-- Codex rejects direct `start`, `steer`, and idle `wake` for parent-owned agents.
-  Use their native parent handle for lifecycle control. Task-name inspection
-  does not transfer that ownership. Advisory `notify` can affect active
-  reasoning, but does not start or steer the child.
+- Current Codex rejects direct `start`, `steer`, `wake`, and `notify` for
+  parent-owned v2 children. Use their native parent handle. Task-name
+  inspection and resume do not transfer ownership. Create an independent root
+  when external direct control is a requirement rather than trying to convert a
+  spawned child later.
 - When input could be mistaken for direct human instruction, label its logical
   source naturally. A label is context, not authentication or added authority.
 

@@ -6,7 +6,7 @@ import io
 import unittest
 from unittest import mock
 
-from codex_goalctl import cli
+from codex_goalctl import appserver, cli
 
 
 class ParseTests(unittest.TestCase):
@@ -51,7 +51,7 @@ class ParseTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 cli.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-goalctl 0.1.10\n")
+        self.assertEqual(output.getvalue(), "codex-goalctl 0.1.11\n")
 
 
 class FakeApp:
@@ -78,6 +78,25 @@ class FakeApp:
 
 
 class GoalCommandTests(unittest.TestCase):
+    def test_parent_owned_goal_write_has_actionable_error(self) -> None:
+        app = object.__new__(appserver.AppServer)
+        app.next_id = 1
+        app.send = mock.Mock()
+        app.wait_for = mock.Mock(
+            side_effect=cli.GoalctlError(
+                "direct app-server input is not allowed for multi-agent v2 sub-agents"
+            )
+        )
+
+        with self.assertRaisesRegex(
+            cli.GoalctlError,
+            "native parent",
+        ):
+            app.request("thread/goal/set", {"threadId": "child"})
+
+        with self.assertRaisesRegex(cli.GoalctlError, "direct app-server input"):
+            app.request("thread/goal/get", {"threadId": "child"})
+
     def test_replace_clears_before_setting_fresh_active_goal(self) -> None:
         app = FakeApp()
         args = argparse.Namespace(
