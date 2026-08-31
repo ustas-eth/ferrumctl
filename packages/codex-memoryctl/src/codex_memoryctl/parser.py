@@ -203,7 +203,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--limit",
         type=nonnegative_int,
         default=20,
-        help="newest observations to print; 0 prints all",
+        help="newest observations to print; 0 prints all (default: 20)",
     )
     add_global_options(list_parser, defaults=False)
     list_parser.set_defaults(func=cmd_list)
@@ -244,12 +244,12 @@ def build_parser() -> argparse.ArgumentParser:
     index.add_argument(
         "--from-index",
         type=positive_int,
-        help="first checkpoint index to include",
+        help="first global compaction index to include (indices start at 1)",
     )
     index.add_argument(
         "--to-index",
         type=positive_int,
-        help="last checkpoint index to include",
+        help="last global compaction index to include (indices may have gaps)",
     )
     index.add_argument(
         "--since",
@@ -266,6 +266,14 @@ def build_parser() -> argparse.ArgumentParser:
         type=nonnegative_int,
         default=10,
         help="newest matching checkpoints to render; 0 renders all (default: 10)",
+    )
+    index.add_argument(
+        "--no-records",
+        action="store_true",
+        help=(
+            "generate and cache selected descriptions but print only counts "
+            "and bounds"
+        ),
     )
     add_generation_options(index, include_focus=False, include_jobs=True)
     add_global_options(index, defaults=False)
@@ -404,6 +412,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--allow-non-openai",
         action="store_true",
         help="attempt injection when the target provider is not OpenAI",
+    )
+    inject.add_argument(
+        "--preview",
+        action="store_true",
+        help="validate and describe the transfer without appending any items",
     )
     add_global_options(inject, defaults=False)
     inject.set_defaults(func=cmd_inject)

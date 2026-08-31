@@ -70,6 +70,13 @@ UTC date or RFC3339 timestamp; a date includes that complete UTC day. Bounds
 are applied first, then a nonzero limit keeps the newest matches. Only selected
 cards make model requests.
 
+`--no-records` generates and caches the selected cards while omitting their
+text from the result. Plain output becomes one compact receipt; JSON retains
+the selection, generation, cache, freshness, and tail fields and sets
+`recordsIncluded` to false. Multi-card runs report bounded progress on stderr.
+This mode prepares a complete cache without sending every card through the
+calling agent's context.
+
 Each card keeps its global meaning across slices: if a view starts at
 checkpoint 41, that card still compares checkpoint 40 with 41. Checkpoint 1 is
 the only summary; later cards are adjacent diffs. This makes cached cards
@@ -84,6 +91,7 @@ be skimmed or piped to ordinary tools:
 
 ```sh
 codex-memoryctl index THREAD --limit 0 | rg -i "suspected subject"
+codex-memoryctl index THREAD --limit 0 --no-records
 ```
 
 `--jobs N` limits concurrent requests. If one request fails, successful entries

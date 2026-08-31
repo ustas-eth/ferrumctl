@@ -112,7 +112,21 @@ def select_checkpoints(
         matching.append(position)
 
     if not matching:
-        raise MemoryctlError("no portable checkpoints match the selected range")
+        first_index = ordered[0].checkpoint_index
+        last_index = ordered[-1].checkpoint_index
+        if from_index is not None and to_index is not None:
+            requested = f"checkpoint indices {from_index}-{to_index}"
+        elif from_index is not None:
+            requested = f"checkpoint indices {from_index} and later"
+        elif to_index is not None:
+            requested = f"checkpoint indices through {to_index}"
+        else:
+            requested = "the selected time range"
+        raise MemoryctlError(
+            f"no portable checkpoints match {requested}; available checkpoint "
+            f"indices span {first_index}-{last_index} ({len(ordered)} portable "
+            "checkpoints; gaps may exist)"
+        )
     selected = matching if limit == 0 else matching[-limit:]
     return IndexSelection(ordered, tuple(matching), tuple(selected))
 

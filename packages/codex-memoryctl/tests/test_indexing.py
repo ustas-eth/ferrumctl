@@ -130,7 +130,10 @@ class IndexSelectionTests(unittest.TestCase):
                 [make_state(1, observed_at=None)],
                 since=parse_time_boundary("2026-01-01"),
             )
-        with self.assertRaisesRegex(MemoryctlError, "no portable checkpoints"):
+        with self.assertRaisesRegex(
+            MemoryctlError,
+            "no portable checkpoints.*available checkpoint indices span 1-3",
+        ):
             self.select(states, from_index=20)
 
     def test_time_parser_rejects_naive_or_invalid_values(self) -> None:

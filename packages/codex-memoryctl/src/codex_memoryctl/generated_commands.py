@@ -209,8 +209,23 @@ async def cmd_index(args: argparse.Namespace) -> int:
     )
 
     semaphore = asyncio.Semaphore(args.jobs)
+    progress_enabled = args.no_records and len(selection.selected_positions) > 1
+    progress_total = len(selection.selected_positions)
+    progress_completed = 0
+    progress_generated = 0
+    progress_cached = 0
+    progress_stride = max(1, (progress_total + 9) // 10)
+    if progress_enabled:
+        print(
+            "codex-memoryctl: preparing "
+            f"{progress_total} checkpoint descriptions with {args.jobs} jobs; "
+            "record text is omitted",
+            file=sys.stderr,
+            flush=True,
+        )
 
     async def build(position: int) -> tuple[int, GenerationResult]:
+        nonlocal progress_completed, progress_generated, progress_cached
         async with semaphore:
             if position == 0:
                 result = await generated_text(
@@ -228,6 +243,22 @@ async def cmd_index(args: argparse.Namespace) -> int:
                         selection.states[position],
                     ],
                     prompt=diff_prompt(),
+                )
+            progress_completed += 1
+            if result.cache_hit:
+                progress_cached += 1
+            else:
+                progress_generated += 1
+            if progress_enabled and (
+                progress_completed == progress_total
+                or progress_completed % progress_stride == 0
+            ):
+                print(
+                    "codex-memoryctl: prepared "
+                    f"{progress_completed}/{progress_total} "
+                    f"(generated={progress_generated} cached={progress_cached})",
+                    file=sys.stderr,
+                    flush=True,
                 )
             return position, result
 
@@ -327,27 +358,54 @@ async def cmd_index(args: argparse.Namespace) -> int:
             "hasEarlier": selection.selected_positions[0] > 0,
             "hasLater": selection.selected_positions[-1] < len(selection.states) - 1,
         },
-        "records": records,
+        "recordsIncluded": not args.no_records,
     }
+    if not args.no_records:
+        output["records"] = records
     if args.json:
         print(json.dumps(output, indent=2))
     else:
-        for record in records:
+        if args.no_records:
             print(
-                f"[index:{record['position']} "
-                f"{record['reference'].rsplit('@', 1)[-1]} "
-                f"{record['observedAt'] or '-'}]"
+                "\t".join(
+                    (
+                        "indexed",
+                        rollout.thread_id,
+                        f"selected={len(selection.selected_positions)}",
+                        f"matching={len(selection.matching_positions)}",
+                        f"reusable={len(selection.states)}",
+                        f"compactions={refreshed_compaction_count}",
+                        f"indices={first_index}-{last_index}",
+                        f"generated={output['generatedCount']}",
+                        f"cached={output['cachedCount']}",
+                    )
+                )
             )
-            print(record["text"])
-            print()
-        if len(selection.selected_positions) < len(selection.matching_positions):
-            print(
-                "codex-memoryctl: showing checkpoint indices "
+        else:
+            for record in records:
+                print(
+                    f"[index:{record['position']} "
+                    f"{record['reference'].rsplit('@', 1)[-1]} "
+                    f"{record['observedAt'] or '-'}]"
+                )
+                print(record["text"])
+                print()
+            summary = (
+                "codex-memoryctl: rendered checkpoint indices "
                 f"{first_index}-{last_index} "
                 f"({len(selection.selected_positions)} of "
                 f"{len(selection.matching_positions)} matching; "
-                f"{len(selection.states)} total); use --to-index "
-                f"{first_index - 1} with the same bounds for older checkpoints",
+                f"{len(selection.states)} reusable across "
+                f"{refreshed_compaction_count} compactions; "
+                f"generated={output['generatedCount']} cached={output['cachedCount']})"
+            )
+            if len(selection.selected_positions) < len(selection.matching_positions):
+                summary += (
+                    f"; use --to-index {first_index - 1} with the same bounds "
+                    "for older checkpoints"
+                )
+            print(
+                summary,
                 file=sys.stderr,
             )
         if tail_messages:

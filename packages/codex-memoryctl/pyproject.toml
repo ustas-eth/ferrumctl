@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "codex-memoryctl"
-version = "0.5.3"
+version = "0.5.4"
 description = "Locate, describe, compare, export, and inject Codex compaction memory"
 readme = "README.md"
 requires-python = ">=3.11"

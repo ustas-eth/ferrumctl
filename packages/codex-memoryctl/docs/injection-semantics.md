@@ -53,6 +53,20 @@ A full checkpoint requires `--to`, source binding, and no perspective framing.
 It appends the source's exact replacement history and does not accept a purpose;
 the target's ordinary instruction supplies its current task.
 
+## Preview
+
+`--preview` runs the same source resolution, target compatibility, freshness,
+binding, framing, and duplicate checks without calling `thread/inject_items`.
+Its receipt reports the memory count, aggregate opaque payload bytes, source
+item count, framing item count, final batch size, and retained-item count for a
+full checkpoint. JSON retains the exact memory and source references; compact
+plain output abbreviates large batches.
+
+Payload bytes are encrypted-item size, not model tokens. The eventual context
+usage depends on provider processing and the target's retained history. Preview
+also does not reserve the target: the target can change before the command is
+repeated without `--preview`.
+
 ## Persistence And Order
 
 Once recorded, injected items are part of model-visible history and have no
