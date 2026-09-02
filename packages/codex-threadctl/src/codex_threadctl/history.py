@@ -10,6 +10,11 @@ from .errors import AppServerResponseError, ThreadctlError
 
 Locator = tuple[str, str]
 
+RECENT_TURN_PAGE_LIMIT = 10
+# Codex caps thread/turns/list pages at 100 and reconstructs legacy history for
+# every page, so exhaustive and anchor-seeking scans should use the full page.
+SCAN_TURN_PAGE_LIMIT = 100
+
 
 @dataclass(frozen=True)
 class MaterializedItem:
@@ -382,7 +387,7 @@ async def all_turn_entries(
         app,
         thread_id,
         items_view="full",
-        page_limit=10,
+        page_limit=SCAN_TURN_PAGE_LIMIT,
     ):
         newest_first.extend(turn_entries(turn) for turn in turns)
     return chronological(newest_first)
@@ -408,7 +413,7 @@ async def bounded_turn_entries(
         app,
         thread_id,
         items_view="full",
-        page_limit=10,
+        page_limit=SCAN_TURN_PAGE_LIMIT,
     ):
         newest_first.extend(turn_entries(turn) for turn in turns)
         entries = chronological(newest_first)
@@ -441,7 +446,7 @@ async def recent_turn_entries(
         app,
         thread_id,
         items_view="full",
-        page_limit=10,
+        page_limit=RECENT_TURN_PAGE_LIMIT,
     ):
         for turn in turns:
             entries = turn_entries(turn)

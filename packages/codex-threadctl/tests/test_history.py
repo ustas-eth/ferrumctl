@@ -64,6 +64,12 @@ class HistorySelectionTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(result.backend, "thread/turns/list")
         self.assertEqual(listed.await_count, 2)
+        self.assertTrue(
+            all(
+                call.kwargs["limit"] == history.RECENT_TURN_PAGE_LIMIT
+                for call in listed.await_args_list
+            )
+        )
 
     async def test_thread_wide_native_items_keep_turn_attribution(self):
         item_pages = [
@@ -355,6 +361,12 @@ class HistorySelectionTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual([entry.locator for entry in result.entries], [("new", "n1")])
         self.assertEqual(listed.await_count, 2)
+        self.assertTrue(
+            all(
+                call.kwargs["limit"] == history.SCAN_TURN_PAGE_LIMIT
+                for call in listed.await_args_list
+            )
+        )
 
     async def test_before_without_after_returns_latest_matches(self):
         page = {
@@ -402,6 +414,26 @@ class HistorySelectionTests(unittest.IsolatedAsyncioTestCase):
             [("old", "o1"), ("old", "o2"), ("new", "n1")],
         )
         self.assertEqual(listed.await_count, 2)
+
+    async def test_unlimited_history_uses_full_scan_pages(self):
+        listed = mock.AsyncMock(
+            return_value={
+                "data": [turn("turn", item("item"))],
+                "nextCursor": None,
+            }
+        )
+        with mock.patch.object(history, "list_turn_page", listed):
+            result = await history.select_materialized_items(
+                object(),
+                "thread",
+                limit=0,
+            )
+
+        self.assertEqual(result.entries[0].locator, ("turn", "item"))
+        self.assertEqual(
+            listed.await_args.kwargs["limit"],
+            history.SCAN_TURN_PAGE_LIMIT,
+        )
 
     async def test_missing_reversed_and_ambiguous_bounds_fail(self):
         base = history.turn_entries(turn("turn", item("a"), item("b")))
