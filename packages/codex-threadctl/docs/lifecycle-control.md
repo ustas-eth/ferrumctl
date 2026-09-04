@@ -15,9 +15,61 @@ turn. The command prints the returned thread id without starting a turn:
 WORKER=$(codex-threadctl create --cwd /path/to/project)
 ```
 
-The thread inherits configured Codex settings unless `--model` or
-`--model-provider` is supplied. It is an independent root rather than a native
-subagent: no parent receives its result or owns its lifecycle.
+The command connects to an existing selected app-server; it does not launch one.
+The server supplies its loaded model, provider, reasoning, context, and
+permission defaults. Settings on the invoking TUI thread, including its CLI
+flags, are not inherited. The new thread is an independent root rather than a
+native subagent: no parent receives its result or owns its lifecycle.
+
+`--model` and `--model-provider` override only those two server defaults:
+
+```sh
+WORKER=$(codex-threadctl create --cwd /path/to/project \
+  --model MODEL_ID)
+```
+
+Add `--model-provider PROVIDER_ID` only when it differs from the server default.
+The values are model and provider ids. A native subagent role name is not a
+model id, and `create` does not apply that role's configuration. Threadctl does
+not currently expose per-root context size or reasoning effort; those remain
+server defaults.
+
+Approval behavior and execution boundaries are separate choices. The approval
+policy determines whether execution can pause for a client decision. A sandbox
+or named permission profile defines what local access is available.
+
+Omitting the permission options uses the app-server defaults. When workspace
+writes are authorized but no approval-capable client will supervise the worker,
+this combination makes disallowed operations fail instead of waiting:
+
+```sh
+WORKER=$(codex-threadctl create --cwd /path/to/project \
+  --approval-policy never --sandbox workspace-write)
+```
+
+`--permission-profile NAME` instead selects a named Codex filesystem and network
+policy already configured on the selected app-server. It is unrelated to the
+Codex CLI's general `--profile` option and to native subagent roles. Threadctl
+does not discover permission-profile names, and the app-server rejects an
+unknown name.
+
+`--approval-policy` can accompany either `--sandbox` or
+`--permission-profile`. The sandbox, named-profile, and unrestricted shortcut
+forms are mutually exclusive. The shortcut also cannot be combined with a
+separate approval policy; it already requests `never` approval and the
+`danger-full-access` sandbox together:
+
+```sh
+WORKER=$(codex-threadctl create --cwd /path/to/project \
+  --dangerously-bypass-approvals-and-sandbox)
+```
+
+Use that shortcut only when the new worker is authorized for unrestricted host
+access. A known named profile can provide a narrower reusable policy for a
+recurring worker.
+
+JSON output repeats the submitted values under `permissionRequest`. These are
+creation inputs, not an observation of the resulting runtime policy.
 
 The successful response confirms creation, not model execution. A connection or
 malformed response after submission leaves the outcome uncertain; list recent

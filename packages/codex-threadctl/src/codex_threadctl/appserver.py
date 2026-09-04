@@ -360,12 +360,21 @@ async def create_thread(
     *,
     model: str | None = None,
     model_provider: str | None = None,
+    approval_policy: str | None = None,
+    sandbox: str | None = None,
+    permission_profile: str | None = None,
 ) -> dict[str, Any]:
     params: dict[str, Any] = {"cwd": cwd}
     if model is not None:
         params["model"] = model
     if model_provider is not None:
         params["modelProvider"] = model_provider
+    if approval_policy is not None:
+        params["approvalPolicy"] = approval_policy
+    if sandbox is not None:
+        params["sandbox"] = sandbox
+    if permission_profile is not None:
+        params["permissions"] = permission_profile
 
     try:
         result = require_object(
@@ -423,6 +432,11 @@ async def create_thread(
     return {
         "threadId": thread_id,
         "thread": thread,
+        "permissionRequest": {
+            "approvalPolicy": approval_policy,
+            "sandbox": sandbox,
+            "permissionProfile": permission_profile,
+        },
         "instructionSources": instruction_sources,
         "initializationItemId": initialization_item_id,
     }

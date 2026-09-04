@@ -358,7 +358,7 @@ fi
 
 log "app-server schema compatibility"
 schema_dir="$SMOKE_ROOT/app-server-schema"
-"$CODEX_BIN" app-server generate-json-schema --out "$schema_dir" >/dev/null
+"$CODEX_BIN" app-server generate-json-schema --experimental --out "$schema_dir" >/dev/null
 "$PYTHON" - "$schema_dir/ClientRequest.json" \
   "$schema_dir/codex_app_server_protocol.v2.schemas.json" <<'PY'
 import json
@@ -465,6 +465,9 @@ assert inject["properties"]["items"]["type"] == "array"
 turn_start = definitions["TurnStartParams"]
 assert set(turn_start["required"]) == {"threadId", "input"}
 assert turn_start["properties"]["input"]["type"] == "array"
+
+thread_start = definitions["ThreadStartParams"]["properties"]
+assert {"approvalPolicy", "sandbox", "permissions"} <= set(thread_start)
 
 response_items = definitions["ResponseItem"]["oneOf"]
 agent_message = next(
@@ -670,7 +673,23 @@ grep -Fqx "$agent_thread" "$SMOKE_ROOT/resolved-agent.out" ||
   fail "threadctl did not resolve the v2 agent path"
 printf 'threadctl reconstructed, resolved, and inspected a persisted v2 agent tree\n'
 
-created_thread=$(threadctl --timeout 5 create --cwd "$SMOKE_ROOT")
+threadctl --timeout 5 --json create --cwd "$SMOKE_ROOT" \
+  --dangerously-bypass-approvals-and-sandbox \
+  >"$SMOKE_ROOT/created-thread.json"
+created_thread=$("$PYTHON" - "$SMOKE_ROOT/created-thread.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    created = json.load(handle)
+assert created["permissionRequest"] == {
+    "approvalPolicy": "never",
+    "sandbox": "danger-full-access",
+    "permissionProfile": None,
+}
+print(created["threadId"])
+PY
+)
 threadctl --timeout 5 --json status "$created_thread" \
   >"$SMOKE_ROOT/created-thread-status.json"
 "$PYTHON" - "$SMOKE_ROOT/created-thread-status.json" "$created_thread" <<'PY'
@@ -690,7 +709,7 @@ grep -Fqx $'active\tSmoke-test independent root.' \
   "$SMOKE_ROOT/created-thread-goal-get.out" ||
   fail "goalctl did not manage the independent root"
 goalctl clear "$created_thread" >"$SMOKE_ROOT/created-thread-goal-clear.out"
-printf 'threadctl created a directly controlled root with external goal access\n'
+printf 'threadctl created a directly controlled root with explicit permissions and external goal access\n'
 
 agent_watch=$(wakectl --timeout 5 add goal /root/reviewer --status complete \
   --to /root --tree "$agent_thread")

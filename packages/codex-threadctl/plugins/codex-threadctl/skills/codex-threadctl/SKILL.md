@@ -36,12 +36,31 @@ independent root on the shared app-server from the outset:
 WORKER=$(codex-threadctl create --cwd "$PWD")
 ```
 
-`create` starts no turn and prints only the new thread id. It adds one short
-`threadctl` advisory item so the root is persisted before its first turn. It
-uses configured Codex defaults unless `--model` or `--model-provider` is
-supplied. The new root has no native parent handle, canonical task name, or
-automatic result return; use its thread id for later state and control
-operations.
+`create` connects to the selected existing app-server (`unix://` by default); it
+does not launch a server or a turn. It prints only the new thread id and adds one
+short `threadctl` advisory item so the root is persisted before its first turn.
+The new root has no native parent handle, canonical task name, or automatic
+result return; use its thread id for later state and control operations.
+
+The root uses the app-server's model, provider, reasoning, context, and
+permission defaults, not settings inherited from this thread. Choose creation
+overrides from the assignment and supervision model:
+
+- Pass `--model MODEL_ID` when a model is required, adding `--model-provider`
+  only for a non-default provider. A native subagent role name is not a model
+  id; its role configuration does not apply. Context size and reasoning effort
+  remain server defaults.
+- Keep permission defaults only when they suit the work and an approval-capable
+  client will remain available. For authorized workspace-scoped unattended
+  work, `--approval-policy never --sandbox workspace-write` makes disallowed
+  operations fail instead of waiting.
+- Use `--permission-profile NAME` only when the assignment or established host
+  configuration already names that Codex filesystem and network policy. It is
+  not a general configuration profile or native agent role. Do not search for
+  or invent one as a prerequisite.
+- Use `--dangerously-bypass-approvals-and-sandbox` only when the new root itself
+  is deliberately authorized for unrestricted host access. This thread's access
+  does not provide that authorization.
 
 ## Observe A Thread
 
@@ -134,6 +153,8 @@ server.
 
 - `create` confirms that app-server returned a new root identity, not that any
   work ran. If its outcome is uncertain, inspect recent threads before retrying.
+- JSON `permissionRequest` repeats the values submitted during `create`; never
+  describe it as an observed or effective runtime policy.
 - Except for `resume`, the target must be loaded on the selected app-server for
   live control.
 - `start` has a non-atomic idle check. Read its confirmed delivery mode because
@@ -168,8 +189,8 @@ reference.
   timestamps, context observations, or a multi-source snapshot.
 - Read `references/materialized-history.md` when exact ranges, pagination,
   mutable item ids, or complete retained text matter.
-- Read `references/lifecycle-control.md` when automating immediate control or
-  reconciling an ambiguous control outcome.
+- Read `references/lifecycle-control.md` when choosing creation overrides,
+  automating immediate control, or reconciling an ambiguous control outcome.
 - Read `references/agent-trees.md` when task name resolution, name reuse, or
   native input ownership affects a decision.
 - Read `references/coordination-principles.md` when designing a workflow across

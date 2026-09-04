@@ -24,7 +24,7 @@ class ParserTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 parser.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-threadctl 0.7.1\n")
+        self.assertEqual(output.getvalue(), "codex-threadctl 0.7.2\n")
 
     def test_default_timeout_allows_for_history_reconstruction(self):
         self.assertEqual(parser.build_parser().parse_args(["loaded"]).timeout, 30.0)
@@ -39,6 +39,10 @@ class ParserTests(unittest.TestCase):
                 "model",
                 "--model-provider",
                 "provider",
+                "--approval-policy",
+                "on-request",
+                "--sandbox",
+                "workspace-write",
             ],
             ["loaded"],
             ["agents", "thread"],
@@ -99,6 +103,20 @@ class ParserTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             parser.build_parser().parse_args(["create"])
 
+    def test_create_permission_modes_are_mutually_exclusive(self):
+        with self.assertRaises(SystemExit):
+            parser.build_parser().parse_args(
+                [
+                    "create",
+                    "--cwd",
+                    "/project",
+                    "--sandbox",
+                    "workspace-write",
+                    "--permission-profile",
+                    "worker",
+                ]
+            )
+
     def test_destructive_controls_require_explicit_identity_and_intent(self):
         with self.assertRaises(SystemExit):
             parser.build_parser().parse_args(
@@ -158,8 +176,72 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
             "/project",
             model="model",
             model_provider="provider",
+            approval_policy=None,
+            sandbox=None,
+            permission_profile=None,
         )
         self.assertEqual(output.getvalue(), "created\n")
+
+    async def test_create_bypass_maps_to_explicit_permissions(self):
+        args = parser.build_parser().parse_args(
+            [
+                "create",
+                "--cwd",
+                "/project",
+                "--dangerously-bypass-approvals-and-sandbox",
+            ]
+        )
+        with (
+            mock.patch.object(commands, "AppServer", return_value=FakeContext()),
+            mock.patch.object(
+                commands,
+                "create_thread",
+                mock.AsyncMock(
+                    return_value={
+                        "threadId": "created",
+                        "thread": {"id": "created"},
+                        "permissionRequest": {
+                            "approvalPolicy": "never",
+                            "sandbox": "danger-full-access",
+                            "permissionProfile": None,
+                        },
+                        "instructionSources": [],
+                        "initializationItemId": "amsg_created",
+                    }
+                ),
+            ) as create_thread,
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            result = await commands.cmd_create(args)
+
+        self.assertEqual(result, 0)
+        create_thread.assert_awaited_once_with(
+            mock.ANY,
+            "/project",
+            model=None,
+            model_provider=None,
+            approval_policy="never",
+            sandbox="danger-full-access",
+            permission_profile=None,
+        )
+        self.assertEqual(output.getvalue(), "created\n")
+
+    async def test_create_bypass_rejects_explicit_approval_policy(self):
+        args = parser.build_parser().parse_args(
+            [
+                "create",
+                "--cwd",
+                "/project",
+                "--dangerously-bypass-approvals-and-sandbox",
+                "--approval-policy",
+                "never",
+            ]
+        )
+        with self.assertRaisesRegex(
+            commands.ThreadctlError,
+            "cannot be combined with --approval-policy",
+        ):
+            await commands.cmd_create(args)
 
     async def test_create_json_reports_loaded_configuration(self):
         args = parser.build_parser().parse_args(
@@ -180,6 +262,11 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
                             "modelProvider": "provider",
                             "status": {"type": "idle"},
                         },
+                        "permissionRequest": {
+                            "approvalPolicy": None,
+                            "sandbox": None,
+                            "permissionProfile": None,
+                        },
                         "instructionSources": ["/actual/AGENTS.md"],
                         "initializationItemId": "amsg_created",
                     }
@@ -198,6 +285,11 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
                 "model": "model",
                 "modelProvider": "provider",
                 "status": {"type": "idle"},
+                "permissionRequest": {
+                    "approvalPolicy": None,
+                    "sandbox": None,
+                    "permissionProfile": None,
+                },
                 "instructionSources": ["/actual/AGENTS.md"],
                 "initializationItemId": "amsg_created",
             },
