@@ -1,6 +1,6 @@
 ---
 name: codex-threadctl
-description: "Use when an independently controlled Codex root worker must be created, or when a thread id or canonical task name such as /root/reviewer is the useful handle for discovery, persisted history, live state, retained messages, context or terminal visibility, and supported immediate control. Prefer native subagent tools when this session owns the live child. Do not use for future conditions, goal editing, read coverage, terminal keystrokes, or native subagent spawning."
+description: "Use to discover Codex threads, inspect their state or retained history beyond native results, create independently controlled roots, or apply immediate control through a thread id or canonical task name such as /root/reviewer. Prefer native tools for ordinary messaging, lifecycle control, and waiting when this session owns the live child. Do not use for future conditions, goal editing, terminal keystrokes, or native subagent spawning."
 ---
 
 # Codex Threadctl
@@ -20,14 +20,12 @@ only needs advisory context without starting or steering a turn. Use other
 threadctl operations when only a thread id remains, host-level control is
 intentional, or retained state beyond the native result is needed.
 
-Threadctl does not schedule future input, edit goals, measure read coverage, or
-spawn native child agents.
-
 ## Choose Ownership
 
 Use a native subagent when this session should own its lifecycle and receive its
-result. Parent-owned v2 children are controlled through that native parent
-handle.
+result. Current Codex rejects direct `start`, `steer`, `wake`, and `notify` for
+parent-owned v2 children; control them through their native parent handle.
+Task-name resolution and resume do not transfer that ownership.
 
 When another thread or host process must control the worker directly, create an
 independent root on the shared app-server from the outset:
@@ -36,12 +34,30 @@ independent root on the shared app-server from the outset:
 WORKER=$(codex-threadctl create --cwd "$PWD")
 ```
 
-`create` starts no turn and prints only the new thread id. It adds one short
-`threadctl` advisory item so the root is persisted before its first turn. It
-uses configured Codex defaults unless `--model` or `--model-provider` is
-supplied. The new root has no native parent handle, canonical task name, or
-automatic result return; use its thread id for later state and control
-operations.
+`create` connects to the selected existing app-server (`unix://` by default); it
+does not launch a server or a turn. It prints only the new thread id and adds one
+short `threadctl` advisory item so the root is persisted before its first turn.
+The new root has no native parent handle, canonical task name, or automatic
+result return; use its thread id for later state and control operations.
+
+The root uses the app-server's model, provider, reasoning, context, and
+permission defaults, not settings inherited from this thread. Choose creation
+overrides from the assignment and supervision model:
+
+- Pass `--model MODEL_ID` when a model is required, adding `--model-provider`
+  only for a non-default provider. A native subagent role name is not a model
+  id; its role configuration does not apply. Context size and reasoning effort
+  remain server defaults.
+- Check that permission and approval defaults suit the work. Without an
+  approval-capable client, `--approval-policy never` makes disallowed operations
+  fail instead of waiting; it does not grant access.
+- Use `--permission-profile NAME` only when the assignment or established host
+  configuration already names that Codex filesystem and network policy. It is
+  not a general configuration profile or native agent role. Do not search for
+  or invent one as a prerequisite.
+- Use `--dangerously-bypass-approvals-and-sandbox` only when the new root itself
+  is deliberately authorized for unrestricted host access. This thread's access
+  does not provide that authorization.
 
 ## Observe A Thread
 
@@ -87,8 +103,10 @@ remain attached to that conversation.
 - `start` sends input to a target that appears idle.
 - `steer` sends input to one exact active regular turn.
 - `notify` injects advisory agent context without starting a turn.
-- `wake` starts an empty turn on a loaded idle target.
-- `resume` loads persisted state without adding a user message.
+- `wake` starts an empty turn on a loaded idle target; an active target receives
+  nothing.
+- `resume` loads persisted state without adding a user message. It can continue
+  an active goal, so `--continue-goal` is required.
 - `interrupt` requests interruption of one exact turn.
 - `terminate-terminal` targets one exact process from a current terminal
   listing.
@@ -134,25 +152,18 @@ server.
 
 - `create` confirms that app-server returned a new root identity, not that any
   work ran. If its outcome is uncertain, inspect recent threads before retrying.
+- JSON `permissionRequest` repeats the values submitted during `create`; never
+  describe it as an observed or effective runtime policy.
 - Except for `resume`, the target must be loaded on the selected app-server for
   live control.
 - `start` has a non-atomic idle check. Read its confirmed delivery mode because
   input can be steered into a turn that won the race.
 - `notify` reports app-server acceptance and a raw agent-message id. It does not
   prove timing, model receipt, or action, and it does not wake the target.
-- `wake` carries no instructions. It starts an empty turn only when the target
-  is loaded and idle; an active target receives nothing.
 - Pass a currently observed turn id to `steer` and `interrupt`. Interruption
   without `--wait` confirms only the request, not terminal completion.
-- `resume` can continue an active goal, which is why `--continue-goal` is
-  required.
 - Use process and item ids from the same current `terminals` result for
   `terminate-terminal`.
-- Current Codex rejects direct `start`, `steer`, `wake`, and `notify` for
-  parent-owned v2 children. Use their native parent handle. Task-name
-  inspection and resume do not transfer ownership. Create an independent root
-  when external direct control is a requirement rather than trying to convert a
-  spawned child later.
 - When input could be mistaken for direct human instruction, label its logical
   source naturally. A label is context, not authentication or added authority.
 
@@ -168,8 +179,11 @@ reference.
   timestamps, context observations, or a multi-source snapshot.
 - Read `references/materialized-history.md` when exact ranges, pagination,
   mutable item ids, or complete retained text matter.
-- Read `references/lifecycle-control.md` when automating immediate control or
-  reconciling an ambiguous control outcome.
+- Read `references/lifecycle-control.md` when choosing creation overrides,
+  automating immediate control, or reconciling an ambiguous control outcome.
+- Read `references/permission-profiles.md` when choosing or interpreting a
+  named profile, checking configuration precedence, or diagnosing unexpected
+  access or missing worker instructions.
 - Read `references/agent-trees.md` when task name resolution, name reuse, or
   native input ownership affects a decision.
 - Read `references/coordination-principles.md` when designing a workflow across

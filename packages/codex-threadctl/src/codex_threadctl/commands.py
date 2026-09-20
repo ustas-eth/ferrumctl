@@ -100,12 +100,27 @@ async def cmd_loaded(args: argparse.Namespace) -> int:
 
 
 async def cmd_create(args: argparse.Namespace) -> int:
+    if args.dangerously_bypass_approvals_and_sandbox:
+        if args.approval_policy is not None:
+            raise ThreadctlError(
+                "--dangerously-bypass-approvals-and-sandbox cannot be combined "
+                "with --approval-policy"
+            )
+        approval_policy = "never"
+        sandbox = "danger-full-access"
+    else:
+        approval_policy = args.approval_policy
+        sandbox = args.sandbox
+
     async with AppServer(args.endpoint, args.timeout) as app:
         created = await create_thread(
             app,
             args.cwd,
             model=args.model,
             model_provider=args.model_provider,
+            approval_policy=approval_policy,
+            sandbox=sandbox,
+            permission_profile=args.permission_profile,
         )
     if args.json:
         thread = created["thread"]
@@ -119,6 +134,7 @@ async def cmd_create(args: argparse.Namespace) -> int:
                         "modelProvider", args.model_provider
                     ),
                     "status": thread.get("status"),
+                    "permissionRequest": created["permissionRequest"],
                     "instructionSources": created["instructionSources"],
                     "initializationItemId": created["initializationItemId"],
                 },

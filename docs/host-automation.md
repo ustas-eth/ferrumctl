@@ -83,21 +83,5 @@ tree. The manager owns socket discovery, runner lifecycle, saved identifiers,
 result retrieval, and cleanup. Goalctl reaches persisted state through its own
 short-lived server; live control still belongs to the selected shared endpoint.
 
-## Scripted Read Audit
-
-Snapshots make a thread's read interval available to later host processing:
-
-```sh
-codex-readcov snapshot "$WORKER" > before.json
-# work happens here
-codex-readcov snapshot "$WORKER" > after.json
-codex-readcov delta before.json --to after.json \
-  --paths-only --limit 0 | sort > read.txt
-```
-
-Use ordinary set tools for comparison or negative coverage. Build every input
-in the snapshot cwd namespace; readcov supplies recorded read paths, not the
-expected file universe.
-
 Use structured output and preserve exact thread, turn, item, stream, and job
 identifiers whenever another program will make the next decision.

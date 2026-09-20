@@ -30,9 +30,6 @@ already solve cleanly.
   one waiting for target availability. Record the creating thread when
   `CODEX_THREAD_ID` is available and filter by creator, target, condition
   thread, and status. Treat provenance as context, not authorization.
-- **Resolved read coverage:** investigate a stable Codex record of executed
-  commands so dynamic JavaScript orchestration does not make an otherwise
-  useful interval unobservable. Preserve fail-closed coverage semantics.
 
 ## Later Ideas
 

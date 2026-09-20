@@ -132,6 +132,27 @@ def build_parser() -> argparse.ArgumentParser:
         type=nonempty_text,
         help="model provider override; otherwise use configured defaults",
     )
+    create.add_argument(
+        "--approval-policy",
+        choices=("untrusted", "on-request", "never"),
+        help="approval policy for the new thread; otherwise use app-server defaults",
+    )
+    permission_mode = create.add_mutually_exclusive_group()
+    permission_mode.add_argument(
+        "--sandbox",
+        choices=("read-only", "workspace-write", "danger-full-access"),
+        help="sandbox mode for the new thread; otherwise use app-server defaults",
+    )
+    permission_mode.add_argument(
+        "--permission-profile",
+        type=nonempty_text,
+        help="configured permission profile for the new thread",
+    )
+    permission_mode.add_argument(
+        "--dangerously-bypass-approvals-and-sandbox",
+        action="store_true",
+        help="create with approval policy never and danger-full-access sandbox",
+    )
     add_global_options(create, defaults=False)
     create.set_defaults(func=cmd_create)
 

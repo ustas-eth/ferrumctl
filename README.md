@@ -6,7 +6,7 @@ Codex can start and message subagents. Once work spans many turns, a coordinator
 has limited ways to update another thread's goal, wake it after a future
 condition, or see enough of its state to decide what happens next.
 
-Ferrumctl fills those gaps with seven independent commands. They run locally on
+Ferrumctl fills those gaps with six independent commands. They run locally on
 Codex state available to the same computer and user account, and your coding
 agent composes them into its own workflow. The commands stand alone; optional
 Codex skills help agents choose and use them correctly.
@@ -18,7 +18,6 @@ Codex skills help agents choose and use them correctly.
 | [`codex-goalctl`](packages/codex-goalctl) | Set, inspect, or update another Codex thread's durable goal and token budget. |
 | [`codex-wakectl`](packages/codex-wakectl) | Return attention after a time, goal, turn, or host condition. |
 | [`codex-threadctl`](packages/codex-threadctl) | Create an independent worker, find a thread, see its recent work and retained messages, or control its current turn. |
-| [`codex-readcov`](packages/codex-readcov) | Check which file reads were recorded in a thread transcript and compare work intervals. |
 | [`codex-limitctl`](packages/codex-limitctl) | Check subscription capacity and recent usage before planning more work. |
 | [`codex-memoryctl`](packages/codex-memoryctl) | Inspect, export, or deliberately transfer opaque Codex compaction memory. |
 | [`streamctl`](packages/streamctl) | Keep a durable, ordered exchange between agents or host scripts. |
@@ -32,7 +31,7 @@ coordinator can:
 1. Create each worker in the right project and give it a durable goal and budget.
 2. Start their work and arrange to wake when either worker stops.
 3. Inspect current activity or retained answers while their work continues.
-4. Check goal status and recorded file reads before choosing the next step.
+4. Review the results and goal status before choosing the next step.
 
 The coordinator performs these operations itself, removing manual goal copying,
 repeated worker polling, and raw transcript searches. Native controls remain

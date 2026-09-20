@@ -8,8 +8,7 @@
         "packages/codex-memoryctl/plugins/codex-memoryctl/skills/codex-memoryctl/references/coordination-principles.md",
         "packages/streamctl/plugins/streamctl/skills/streamctl/references/coordination-principles.md",
         "packages/codex-wakectl/plugins/codex-wakectl/skills/codex-wakectl/references/coordination-principles.md",
-        "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/coordination-principles.md",
-        "packages/codex-readcov/plugins/codex-readcov/skills/codex-readcov/references/coordination-principles.md"
+        "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/coordination-principles.md"
       ]
     },
     {
@@ -17,8 +16,7 @@
       "targets": [
         "packages/codex-goalctl/plugins/codex-goalctl/skills/codex-goalctl/references/worker-workflows.md",
         "packages/codex-wakectl/plugins/codex-wakectl/skills/codex-wakectl/references/worker-workflows.md",
-        "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/worker-workflows.md",
-        "packages/codex-readcov/plugins/codex-readcov/skills/codex-readcov/references/worker-workflows.md"
+        "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/worker-workflows.md"
       ]
     },
     {
@@ -34,8 +32,7 @@
       "targets": [
         "packages/codex-limitctl/plugins/codex-limitctl/skills/codex-limitctl/references/host-automation.md",
         "packages/codex-wakectl/plugins/codex-wakectl/skills/codex-wakectl/references/host-automation.md",
-        "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/host-automation.md",
-        "packages/codex-readcov/plugins/codex-readcov/skills/codex-readcov/references/host-automation.md"
+        "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/host-automation.md"
       ]
     },
     {
@@ -135,27 +132,15 @@
       ]
     },
     {
+      "source": "packages/codex-threadctl/docs/permission-profiles.md",
+      "targets": [
+        "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/permission-profiles.md"
+      ]
+    },
+    {
       "source": "packages/codex-threadctl/docs/agent-trees.md",
       "targets": [
         "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/agent-trees.md"
-      ]
-    },
-    {
-      "source": "packages/codex-readcov/docs/coverage-semantics.md",
-      "targets": [
-        "packages/codex-readcov/plugins/codex-readcov/skills/codex-readcov/references/coverage-semantics.md"
-      ]
-    },
-    {
-      "source": "packages/codex-readcov/docs/snapshot-windows.md",
-      "targets": [
-        "packages/codex-readcov/plugins/codex-readcov/skills/codex-readcov/references/snapshot-windows.md"
-      ]
-    },
-    {
-      "source": "packages/codex-readcov/docs/path-composition.md",
-      "targets": [
-        "packages/codex-readcov/plugins/codex-readcov/skills/codex-readcov/references/path-composition.md"
       ]
     }
   ]

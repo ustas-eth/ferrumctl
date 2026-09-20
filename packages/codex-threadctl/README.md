@@ -6,7 +6,7 @@ through a shared `codex app-server`.
 Use it to create an independently controlled worker, find stored sessions and
 spawned threads, inspect recent work and retained messages, or apply immediate
 control through a thread id or canonical task name such as `/root/reviewer`.
-It does not edit goals, schedule future input, or measure file-read coverage.
+Goal editing and scheduled wakes belong to separate commands.
 
 ## Install
 
@@ -47,8 +47,44 @@ The command prints only the new thread id and does not start a turn. It writes a
 short `threadctl` advisory item so the thread is persisted before its first
 turn. The worker is independent: it has no native parent handle or automatic
 result return. Use the thread id to assign optional goal state, schedule
-attention, inspect work, or retrieve its response. Configured model and
-permission defaults apply unless the supported create overrides are supplied.
+attention, inspect work, or retrieve its response.
+
+The selected app-server supplies the model, reasoning, context, and permission
+defaults. Settings on the Codex session that runs the command do not carry over.
+When the assignment requires another model, pass its model id:
+
+```sh
+WORKER=$(codex-threadctl create --cwd "$PWD" \
+  --model MODEL_ID)
+```
+
+Add `--model-provider` only when it differs from the server default. A native
+subagent role name is not a model id, and `create` does not apply that role's
+configuration. Context size and reasoning effort remain app-server defaults.
+
+For an unattended worker whose authorized work is confined to the workspace,
+the following combination rejects operations outside the sandbox instead of
+waiting for an approval client:
+
+```sh
+WORKER=$(codex-threadctl create --cwd "$PWD" \
+  --approval-policy never --sandbox workspace-write)
+```
+
+`--permission-profile NAME` selects a named Codex filesystem and network policy
+defined in a user or project configuration layer applicable to `--cwd`. A
+running app-server loads it for the creation request; it is not a Codex
+configuration profile or native agent role, and an unknown name is rejected.
+
+For a worker separately authorized for unrestricted host access:
+
+```sh
+WORKER=$(codex-threadctl create --cwd "$PWD" \
+  --dangerously-bypass-approvals-and-sandbox)
+```
+
+See `docs/lifecycle-control.md` for the option combinations and unattended-worker
+tradeoffs.
 
 Find a thread and inspect its current state:
 
@@ -122,6 +158,7 @@ More detail:
 - [docs/observation-semantics.md](docs/observation-semantics.md)
 - [docs/materialized-history.md](docs/materialized-history.md)
 - [docs/lifecycle-control.md](docs/lifecycle-control.md)
+- [docs/permission-profiles.md](docs/permission-profiles.md)
 - [docs/agent-trees.md](docs/agent-trees.md)
 
 ## Codex Skill

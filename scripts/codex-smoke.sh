@@ -3,7 +3,6 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 PYTHON=${PYTHON:-python3}
-CARGO=${CARGO:-cargo}
 CODEX_BIN=${CODEX_BIN:-codex}
 TMP_BASE=${TMPDIR:-/tmp}
 
@@ -100,12 +99,7 @@ memoryctl() {
     "$PYTHON" -c 'import sys; from codex_memoryctl.cli import main; raise SystemExit(main(sys.argv[1:]))' "$@"
 }
 
-readcov() {
-  "$CARGO" run --quiet --manifest-path "$ROOT/packages/codex-readcov/Cargo.toml" -- "$@"
-}
-
 require_cmd "$PYTHON"
-require_cmd "$CARGO"
 require_cmd "$CODEX_BIN"
 
 SMOKE_ROOT=$(mktemp -d "${TMP_BASE%/}/ferrumctl-codex-smoke.XXXXXX")
@@ -349,16 +343,10 @@ PY
 log "Codex version"
 codex_version=$("$CODEX_BIN" --version)
 printf '%s\n' "$codex_version"
-codex_semver=$(printf '%s\n' "$codex_version" | sed -n 's/^codex-cli \([0-9][0-9.]*\)$/\1/p')
-
-parser_tag=$(sed -n 's/.*tag = "\(rust-v[^"]*\)".*/\1/p' "$ROOT/packages/codex-readcov/Cargo.toml")
-if [[ -n "$parser_tag" ]]; then
-  printf 'codex-readcov parser dependency: codex-shell-command %s\n' "$parser_tag"
-fi
 
 log "app-server schema compatibility"
 schema_dir="$SMOKE_ROOT/app-server-schema"
-"$CODEX_BIN" app-server generate-json-schema --out "$schema_dir" >/dev/null
+"$CODEX_BIN" app-server generate-json-schema --experimental --out "$schema_dir" >/dev/null
 "$PYTHON" - "$schema_dir/ClientRequest.json" \
   "$schema_dir/codex_app_server_protocol.v2.schemas.json" <<'PY'
 import json
@@ -465,6 +453,9 @@ assert inject["properties"]["items"]["type"] == "array"
 turn_start = definitions["TurnStartParams"]
 assert set(turn_start["required"]) == {"threadId", "input"}
 assert turn_start["properties"]["input"]["type"] == "array"
+
+thread_start = definitions["ThreadStartParams"]["properties"]
+assert {"approvalPolicy", "sandbox", "permissions"} <= set(thread_start)
 
 response_items = definitions["ResponseItem"]["oneOf"]
 agent_message = next(
@@ -670,7 +661,23 @@ grep -Fqx "$agent_thread" "$SMOKE_ROOT/resolved-agent.out" ||
   fail "threadctl did not resolve the v2 agent path"
 printf 'threadctl reconstructed, resolved, and inspected a persisted v2 agent tree\n'
 
-created_thread=$(threadctl --timeout 5 create --cwd "$SMOKE_ROOT")
+threadctl --timeout 5 --json create --cwd "$SMOKE_ROOT" \
+  --dangerously-bypass-approvals-and-sandbox \
+  >"$SMOKE_ROOT/created-thread.json"
+created_thread=$("$PYTHON" - "$SMOKE_ROOT/created-thread.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    created = json.load(handle)
+assert created["permissionRequest"] == {
+    "approvalPolicy": "never",
+    "sandbox": "danger-full-access",
+    "permissionProfile": None,
+}
+print(created["threadId"])
+PY
+)
 threadctl --timeout 5 --json status "$created_thread" \
   >"$SMOKE_ROOT/created-thread-status.json"
 "$PYTHON" - "$SMOKE_ROOT/created-thread-status.json" "$created_thread" <<'PY'
@@ -690,7 +697,7 @@ grep -Fqx $'active\tSmoke-test independent root.' \
   "$SMOKE_ROOT/created-thread-goal-get.out" ||
   fail "goalctl did not manage the independent root"
 goalctl clear "$created_thread" >"$SMOKE_ROOT/created-thread-goal-clear.out"
-printf 'threadctl created a directly controlled root with external goal access\n'
+printf 'threadctl created a directly controlled root with explicit permissions and external goal access\n'
 
 agent_watch=$(wakectl --timeout 5 add goal /root/reviewer --status complete \
   --to /root --tree "$agent_thread")
@@ -1021,51 +1028,5 @@ assert [event["event"] for event in frame_events] == [
 assert frame_events[1]["callerPurpose"]["text"] == "isolated app-server smoke"
 PY
 printf 'memoryctl discovered, exported, injected, and re-observed opaque memory\n'
-
-log "readcov rollout parser compatibility"
-project="$SMOKE_ROOT/project"
-rollout="$SMOKE_ROOT/rollout-smoke.jsonl"
-mkdir -p "$project/src"
-"$PYTHON" - "$rollout" "$project" <<'PY'
-import json
-import sys
-
-rollout, project = sys.argv[1], sys.argv[2]
-events = [
-    {
-        "type": "session_meta",
-        "payload": {
-            "id": "00000000-0000-4000-8000-000000000002",
-            "cwd": project,
-        },
-    },
-    {
-        "type": "response_item",
-        "payload": {
-            "type": "custom_tool_call",
-            "name": "exec",
-            "input": (
-                "const result = await tools.exec_command({"
-                "cmd: \"cat src/a.rs && sed -n '1,5p' src/b.rs\","
-                f"workdir: {json.dumps(project)}"
-                "}); text(result.output);"
-            ),
-        },
-    },
-]
-
-with open(rollout, "w", encoding="utf-8") as handle:
-    for event in events:
-        handle.write(json.dumps(event, separators=(",", ":")) + "\n")
-PY
-
-readcov top "$rollout" "$project/src" --paths-only --limit 0 >"$SMOKE_ROOT/readcov.out"
-grep -qx 'src/a.rs' "$SMOKE_ROOT/readcov.out" || fail "readcov did not report src/a.rs"
-grep -qx 'src/b.rs' "$SMOKE_ROOT/readcov.out" || fail "readcov did not report src/b.rs"
-printf 'readcov parsed the current exec tool envelope\n'
-
-if [[ -n "$codex_semver" && -n "$parser_tag" && "$parser_tag" != "rust-v$codex_semver" ]]; then
-  fail "codex-readcov parser tag $parser_tag does not match codex-cli $codex_semver"
-fi
 
 printf '\ncodex smoke passed\n'

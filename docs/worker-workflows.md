@@ -29,14 +29,6 @@ codex-wakectl add goal "$SELF" --tokens-left-lte 300000 \
   --notify-active --to "$SELF"
 ```
 
-Read coverage can provide a separate view of one work interval:
-
-```sh
-codex-readcov snapshot "$SELF" > self.before.json
-# work happens here
-codex-readcov delta self.before.json packages --limit 20
-```
-
 ## Coordinator And Worker
 
 The full sequence assigns durable work, arranges the coordinator's later
@@ -45,8 +37,6 @@ attention, and then starts the worker:
 ```sh
 MAIN=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
 WORKER=$(codex-threadctl create --cwd "$PWD")
-
-codex-readcov snapshot "$WORKER" > worker.before.json
 
 codex-goalctl replace "$WORKER" \
   "Review this package and mark the goal complete."
@@ -63,14 +53,13 @@ Omit layers that are not needed. `create` makes a persisted root with no native
 parent or automatic result return. A native subagent remains simpler when the
 current session should own the worker and direct external control is
 unnecessary. Native waiting can replace the wake only when the coordinator
-should remain active; coverage is optional.
+should remain active.
 
 After the event, inspect each relevant state separately:
 
 ```sh
 codex-goalctl get "$WORKER"
 codex-threadctl inspect "$WORKER"
-codex-readcov delta worker.before.json packages --limit 20
 ```
 
 A terminal goal can precede the final response. Retrieve the native result or
@@ -151,15 +140,14 @@ Skip interruption when current inspection already shows the worker idle.
 ## Worker And Reviewer
 
 To insert a reviewer into the earlier sequence, omit its direct
-worker-to-coordinator wake. Keep the worker assignment and read snapshot, then
+worker-to-coordinator wake. Keep the worker assignment, then
 arm the worker-to-reviewer and reviewer-to-coordinator wakes instead:
 
 ```sh
 REVIEWER=reviewer-thread-id
-SNAPSHOT=$PWD/worker.before.json
 
 codex-goalctl replace "$REVIEWER" \
-  "Review thread $WORKER and coverage since $SNAPSHOT, report findings, and mark this goal complete."
+  "Review thread $WORKER and its changes, report findings, and mark this goal complete."
 
 codex-wakectl add goal "$WORKER" \
   --status complete,blocked,budgetLimited,usageLimited \
@@ -170,7 +158,7 @@ codex-wakectl add goal "$REVIEWER" \
   --to "$MAIN"
 ```
 
-The reviewer can inspect the worker through its thread id and read snapshot,
+The reviewer can inspect the worker through its thread id and examine its work,
 then leave its result in its own final response. Main retrieves that response
 through the native handle or retained thread history.
 

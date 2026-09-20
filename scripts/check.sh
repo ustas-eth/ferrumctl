@@ -3,7 +3,6 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 PYTHON=${PYTHON:-python3}
-CARGO=${CARGO:-cargo}
 UV=${UV:-uv}
 
 cd "$ROOT"
@@ -32,8 +31,6 @@ run cmp LICENSE packages/codex-memoryctl/LICENSE
 run cmp LICENSE packages/streamctl/LICENSE
 run cmp LICENSE packages/codex-wakectl/LICENSE
 run cmp LICENSE packages/codex-threadctl/LICENSE
-run cmp LICENSE packages/codex-readcov/LICENSE
-run "$CARGO" fmt --manifest-path packages/codex-readcov/Cargo.toml -- --check
 run git diff --check
 
 (
@@ -67,12 +64,6 @@ run git diff --check
 )
 
 (
-  cd packages/codex-readcov
-  run "$CARGO" test --locked
-  run "$CARGO" build --locked
-)
-
-(
   package_root=$(mktemp -d "${TMPDIR:-/tmp}/ferrumctl-package-check.XXXXXX")
   trap 'rm -rf -- "$package_root"' EXIT
   tool_dir="$package_root/tools"
@@ -97,15 +88,12 @@ run git diff --check
   run "$bin_dir/codex-wakectl" --version
   run "$UV" pip check --python "$tool_dir/codex-memoryctl/bin/python"
   run "$UV" pip check --python "$tool_dir/codex-wakectl/bin/python"
-  test "$("$bin_dir/codex-goalctl" --version)" = "codex-goalctl 0.1.11"
-  test "$("$bin_dir/codex-limitctl" --version)" = "codex-limitctl 0.2.9"
-  test "$("$bin_dir/codex-memoryctl" --version)" = "codex-memoryctl 0.5.4"
-  test "$("$bin_dir/streamctl" --version)" = "streamctl 0.2.3"
-  test "$("$bin_dir/codex-threadctl" --version)" = "codex-threadctl 0.7.1"
-  test "$("$bin_dir/codex-wakectl" --version)" = "codex-wakectl 0.5.2"
+  test "$("$bin_dir/codex-goalctl" --version)" = "codex-goalctl 0.1.12"
+  test "$("$bin_dir/codex-limitctl" --version)" = "codex-limitctl 0.2.10"
+  test "$("$bin_dir/codex-memoryctl" --version)" = "codex-memoryctl 0.5.5"
+  test "$("$bin_dir/streamctl" --version)" = "streamctl 0.2.4"
+  test "$("$bin_dir/codex-threadctl" --version)" = "codex-threadctl 0.7.2"
+  test "$("$bin_dir/codex-wakectl" --version)" = "codex-wakectl 0.5.3"
 )
-
-run packages/codex-readcov/target/debug/codex-readcov --version
-test "$(packages/codex-readcov/target/debug/codex-readcov --version)" = "codex-readcov 0.1.11"
 
 printf '\nchecks passed\n'

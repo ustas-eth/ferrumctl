@@ -132,8 +132,8 @@ use immediate thread control for those decisions. Pending jobs created by
 earlier wakectl releases preserve their original input and `--allow-active`
 semantics.
 
-Queued delivery is at-least-once. An event or input can arrive late, duplicate
-if a runner stops after delivery, or become redundant after manual handling.
+An event or input can arrive late, be duplicated if a runner stops after
+delivery, or become redundant after manual handling.
 An uncertain job is not retried automatically because its action may already
 have taken effect.
 
@@ -168,8 +168,8 @@ stored messages as event wakes.
 The default database is shared by all workflows using the same host user and
 state path. `run` claims pending jobs and renews each claim before condition
 evaluation and delivery. Expired claims can be retried after a crashed process;
-at-least-once duplicates remain possible if a process stops after delivery but
-before committing the result. `cancel` changes only pending jobs without a live
+duplicates remain possible if a process stops after delivery but before
+committing the result. `cancel` changes only pending jobs without a live
 claim, while `list --all` retains terminal rows as history.
 
 The systemd timer is the canonical recurring runner on hosts with user systemd.

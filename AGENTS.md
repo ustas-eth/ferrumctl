@@ -79,9 +79,6 @@ command should remain bound to one state surface.
 - `streamctl` owns append-only entries and cumulative processed-through
   acknowledgements. Publication, notification, wake, and acknowledgement are
   separate operations; an acknowledgement is not a delivery receipt.
-- `codex-readcov` reports transcript-recorded read actions, not verified file
-  access or an operating-system audit log. Reject evidence that cannot be
-  resolved reliably rather than silently under-counting it.
 - `codex-limitctl` exposes read-only capacity and usage signals. Keep current
   account reads distinct from account-unscoped rollout history, and do not
   expose credit data or consumable resets.

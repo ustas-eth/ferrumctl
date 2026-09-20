@@ -1,6 +1,0 @@
-interface:
-  display_name: "Codex Readcov"
-  short_description: "Inspect Codex transcript read actions"
-  default_prompt: "Use $codex-readcov to inspect transcript-recorded file-read actions for a Codex thread."
-policy:
-  allow_implicit_invocation: true

@@ -120,6 +120,8 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
             "/project",
             model="model",
             model_provider="provider",
+            approval_policy="never",
+            sandbox="danger-full-access",
         )
 
         self.assertEqual(
@@ -131,6 +133,8 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
                         "cwd": "/project",
                         "model": "model",
                         "modelProvider": "provider",
+                        "approvalPolicy": "never",
+                        "sandbox": "danger-full-access",
                     },
                 ),
                 (
@@ -156,8 +160,77 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
         self.assertEqual(result["threadId"], "created")
+        self.assertEqual(
+            result["permissionRequest"],
+            {
+                "approvalPolicy": "never",
+                "sandbox": "danger-full-access",
+                "permissionProfile": None,
+            },
+        )
         self.assertEqual(result["instructionSources"], ["/project/AGENTS.md"])
         self.assertTrue(result["initializationItemId"].startswith("amsg_"))
+
+    async def test_create_thread_passes_named_permission_profile(self):
+        class CreateApp:
+            def __init__(self):
+                self.calls = []
+
+            async def request(self, method, params=None):
+                self.calls.append((method, params))
+                if method == "thread/start":
+                    return {"thread": {"id": "created"}}
+                return {}
+
+        app = CreateApp()
+        result = await appserver.create_thread(
+            app,
+            "/project",
+            permission_profile="autonomous-worker",
+        )
+
+        self.assertEqual(
+            app.calls[0],
+            (
+                "thread/start",
+                {
+                    "cwd": "/project",
+                    "permissions": "autonomous-worker",
+                },
+            ),
+        )
+        self.assertEqual(
+            result["permissionRequest"],
+            {
+                "approvalPolicy": None,
+                "sandbox": None,
+                "permissionProfile": "autonomous-worker",
+            },
+        )
+
+    async def test_create_thread_omits_unspecified_permission_fields(self):
+        class CreateApp:
+            def __init__(self):
+                self.calls = []
+
+            async def request(self, method, params=None):
+                self.calls.append((method, params))
+                if method == "thread/start":
+                    return {"thread": {"id": "created"}}
+                return {}
+
+        app = CreateApp()
+        result = await appserver.create_thread(app, "/project")
+
+        self.assertEqual(app.calls[0], ("thread/start", {"cwd": "/project"}))
+        self.assertEqual(
+            result["permissionRequest"],
+            {
+                "approvalPolicy": None,
+                "sandbox": None,
+                "permissionProfile": None,
+            },
+        )
 
     async def test_create_thread_rejects_malformed_success_as_uncertain(self):
         class InvalidApp:

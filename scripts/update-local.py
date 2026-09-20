@@ -24,7 +24,7 @@ PYTHON_PACKAGES = (
     "codex-threadctl",
     "codex-wakectl",
 )
-PLUGIN_NAMES = (*PYTHON_PACKAGES, "codex-readcov")
+PLUGIN_NAMES = PYTHON_PACKAGES
 LEGACY_STREAM_PACKAGE = "codex-streamctl"
 LEGACY_STREAM_PLUGIN = "codex-streamctl@ferrumctl"
 
@@ -37,16 +37,6 @@ def run(command: list[str]) -> None:
 def install_commands() -> None:
     for package in PYTHON_PACKAGES:
         run(["uv", "tool", "install", "--reinstall", f"./packages/{package}"])
-    run(
-        [
-            "cargo",
-            "install",
-            "--locked",
-            "--force",
-            "--path",
-            "./packages/codex-readcov",
-        ]
-    )
 
 
 def remove_legacy_streamctl() -> None:

@@ -1,6 +1,6 @@
 ---
 name: streamctl
-description: "Use when coding agents or host processes need an ordered durable exchange with stable positions and independent processed-through acknowledgements, including peer checkpoints that must remain available independently of native message history. Do not use when an ordinary direct message is sufficient, or for waking or starting an agent, retrieving conversation history, assigning work, scheduling input, or storing normal project artifacts."
+description: "Use when coding agents or host processes need an ordered durable exchange with stable positions and independent processed-through acknowledgements, including peer checkpoints that must remain available independently of native message history. Do not use when an ordinary direct message is sufficient, or for thread control, retrieving thread history, goal management, scheduling input, or storing normal project artifacts."
 ---
 
 # Streamctl
