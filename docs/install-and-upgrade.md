@@ -23,12 +23,6 @@ uv tool install ./packages/codex-threadctl
 uv tool install ./packages/codex-wakectl
 ```
 
-Install `codex-readcov` with Cargo:
-
-```sh
-cargo install --locked --path ./packages/codex-readcov
-```
-
 Each package can be installed independently.
 
 ## Install Codex Skills
@@ -44,7 +38,6 @@ codex plugin add codex-memoryctl@ferrumctl
 codex plugin add streamctl@ferrumctl
 codex plugin add codex-threadctl@ferrumctl
 codex plugin add codex-wakectl@ferrumctl
-codex plugin add codex-readcov@ferrumctl
 ```
 
 If a shared app-server was already running, restart it after the first plugin
@@ -66,7 +59,7 @@ codex-threadctl loaded
 
 Keep the app-server process running while those sessions need live control.
 `codex-goalctl` and `codex-limitctl` use short-lived app-server processes.
-`codex-readcov` and `streamctl` use local files. Memory discovery and export
+`streamctl` uses local files. Memory discovery and export
 also use local files; only memory injection needs the shared server.
 
 The `codex-wakectl` systemd timer checks the default queue at a fixed interval:
@@ -88,7 +81,6 @@ git pull
 for package in codex-goalctl codex-limitctl codex-memoryctl streamctl codex-threadctl codex-wakectl; do
   uv tool install --reinstall "./packages/$package"
 done
-cargo install --locked --force --path ./packages/codex-readcov
 ```
 
 Refresh the marketplace and reinstall each plugin you use:
@@ -124,7 +116,16 @@ scripts/codex-smoke.sh
 The check uses temporary Codex and state directories, starts its own
 app-server, and removes its temporary data when finished.
 
-## Migrate From codex-streamctl
+## Older Installations
+
+`codex-readcov` has been retired; its source remains in Git history. The update
+helper installs the current suite but leaves earlier installations in place.
+Remove its command and plugin when they are no longer needed:
+
+```sh
+cargo uninstall codex-readcov
+codex plugin remove codex-readcov@ferrumctl
+```
 
 `streamctl` replaced the earlier `codex-streamctl` package name. After
 installing `streamctl`, remove the old command and plugin:

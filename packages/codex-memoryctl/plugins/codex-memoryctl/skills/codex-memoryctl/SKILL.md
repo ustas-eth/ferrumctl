@@ -9,7 +9,7 @@ Use `codex-memoryctl` to find, interpret, or reuse opaque memory already created
 by Codex compaction. Structural operations read local rollouts. Generated
 descriptions use a model and keep a private plaintext cache.
 
-## Choose The Workflow
+## Find A Memory
 
 Inspect available memory without exposing its encrypted content:
 
@@ -62,8 +62,9 @@ persist locally. If the task needs the opaque state's retained fidelity, use an
 appropriate consultation or recall workflow instead of treating generated text
 as equivalent memory.
 
-Let an established recipient own in-place memory use. Give it the memory
-reference and concrete question, then have it run:
+## Use Memory In This Thread
+
+For older-self recall or consultation with another thread's perspective, run:
 
 ```sh
 codex-memoryctl inject --self \
@@ -71,16 +72,20 @@ codex-memoryctl inject --self \
   --purpose "Compare this perspective with the current handoff diagnosis."
 ```
 
-`--self` requires an active `CODEX_THREAD_ID`, a purpose, and a thread that
-accepts direct app-server injection. It binds memory to the current turn and
-adds attributed source boundaries. Use it when the memory may become part of
-the continuing thread, including older-self recall. Make the purpose name the
-recipient's actual subject and intended use; a generic statement about
-authority adds little useful context.
+`--self` uses `CODEX_THREAD_ID` and requires an active turn, a purpose, and a
+thread that accepts direct app-server injection. It binds memory to the current
+turn and adds attributed source boundaries. Use it when the memory may become
+part of this thread's continuing context. State what you want to recall or
+compare and why; a generic statement about authority adds little useful context.
 
-Use a fresh disposable consultant when the original agent should remain
-unchanged. The consultant receives the question and performs its own `--self`
-injection.
+When another established agent needs the memory, give it the reference and
+concrete question so it can perform its own `--self` injection.
+
+Use a fresh disposable consultant when this thread should remain unchanged.
+Give it the question and memory reference, then use its answer without injecting
+the memory here.
+
+## Transfer Memory
 
 `--to TARGET` exposes deliberate external transfer to a loaded thread that
 accepts direct app-server injection. It defaults to source binding and the same

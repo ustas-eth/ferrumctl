@@ -20,16 +20,20 @@ or spawn agents.
 
 ## Choose A Primitive
 
-Choose according to what should happen to the caller:
+Choose according to how attention should return:
 
 - Use native wait or poll when this turn owns a live subagent or terminal handle
   and should remain active.
 - Use `wait goal` or `wait stop` when a script or thread-id-only controller
   needs a synchronous exit status.
-- Use `add` when this turn should end and a runner should restore attention
-  after a later condition.
+- Use `add` when a runner should restore this or another thread's attention
+  after a later condition, independently of the caller's execution.
 - Use native subagent input for an immediate message. When only a thread id is
   available, use an immediate control tool only if its skill is available.
+
+An idle self-wake can be delivered only after this turn ends; do not block this
+turn waiting for it. Scheduling for another thread does not require this turn
+to end.
 
 The target normally must be loaded on the job's app-server endpoint. A default
 shared setup is:
@@ -123,11 +127,9 @@ that original process directly.
   message. It remains in history and can be compacted with other context.
 - Event injection and empty turn start are separate requests. Treat the
   recorded delivery mode as authoritative when activity wins that race.
-- Delivery is at-least-once. An event or input may be late or duplicated; an
-  ambiguous outcome becomes `uncertain` instead of being retried automatically.
+- An event or input may be late or duplicated. An ambiguous outcome becomes
+  `uncertain` and requires inspection; it is not retried automatically.
 - A not-loaded target remains pending unless the event uses `--resume`.
-- A parent-owned child can be watched, but its native parent controls lifecycle;
-  direct the wake to `/root` or another thread that accepts direct control.
 - A wake does not return the target's result. Retrieve results through a native
   handle, thread history, or a shared artifact.
 

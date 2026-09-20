@@ -3,7 +3,6 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 PYTHON=${PYTHON:-python3}
-CARGO=${CARGO:-cargo}
 CODEX_BIN=${CODEX_BIN:-codex}
 TMP_BASE=${TMPDIR:-/tmp}
 
@@ -100,12 +99,7 @@ memoryctl() {
     "$PYTHON" -c 'import sys; from codex_memoryctl.cli import main; raise SystemExit(main(sys.argv[1:]))' "$@"
 }
 
-readcov() {
-  "$CARGO" run --quiet --manifest-path "$ROOT/packages/codex-readcov/Cargo.toml" -- "$@"
-}
-
 require_cmd "$PYTHON"
-require_cmd "$CARGO"
 require_cmd "$CODEX_BIN"
 
 SMOKE_ROOT=$(mktemp -d "${TMP_BASE%/}/ferrumctl-codex-smoke.XXXXXX")
@@ -349,12 +343,6 @@ PY
 log "Codex version"
 codex_version=$("$CODEX_BIN" --version)
 printf '%s\n' "$codex_version"
-codex_semver=$(printf '%s\n' "$codex_version" | sed -n 's/^codex-cli \([0-9][0-9.]*\)$/\1/p')
-
-parser_tag=$(sed -n 's/.*tag = "\(rust-v[^"]*\)".*/\1/p' "$ROOT/packages/codex-readcov/Cargo.toml")
-if [[ -n "$parser_tag" ]]; then
-  printf 'codex-readcov parser dependency: codex-shell-command %s\n' "$parser_tag"
-fi
 
 log "app-server schema compatibility"
 schema_dir="$SMOKE_ROOT/app-server-schema"
@@ -1040,51 +1028,5 @@ assert [event["event"] for event in frame_events] == [
 assert frame_events[1]["callerPurpose"]["text"] == "isolated app-server smoke"
 PY
 printf 'memoryctl discovered, exported, injected, and re-observed opaque memory\n'
-
-log "readcov rollout parser compatibility"
-project="$SMOKE_ROOT/project"
-rollout="$SMOKE_ROOT/rollout-smoke.jsonl"
-mkdir -p "$project/src"
-"$PYTHON" - "$rollout" "$project" <<'PY'
-import json
-import sys
-
-rollout, project = sys.argv[1], sys.argv[2]
-events = [
-    {
-        "type": "session_meta",
-        "payload": {
-            "id": "00000000-0000-4000-8000-000000000002",
-            "cwd": project,
-        },
-    },
-    {
-        "type": "response_item",
-        "payload": {
-            "type": "custom_tool_call",
-            "name": "exec",
-            "input": (
-                "const result = await tools.exec_command({"
-                "cmd: \"cat src/a.rs && sed -n '1,5p' src/b.rs\","
-                f"workdir: {json.dumps(project)}"
-                "}); text(result.output);"
-            ),
-        },
-    },
-]
-
-with open(rollout, "w", encoding="utf-8") as handle:
-    for event in events:
-        handle.write(json.dumps(event, separators=(",", ":")) + "\n")
-PY
-
-readcov top "$rollout" "$project/src" --paths-only --limit 0 >"$SMOKE_ROOT/readcov.out"
-grep -qx 'src/a.rs' "$SMOKE_ROOT/readcov.out" || fail "readcov did not report src/a.rs"
-grep -qx 'src/b.rs' "$SMOKE_ROOT/readcov.out" || fail "readcov did not report src/b.rs"
-printf 'readcov parsed the current exec tool envelope\n'
-
-if [[ -n "$codex_semver" && -n "$parser_tag" && "$parser_tag" != "rust-v$codex_semver" ]]; then
-  fail "codex-readcov parser tag $parser_tag does not match codex-cli $codex_semver"
-fi
 
 printf '\ncodex smoke passed\n'

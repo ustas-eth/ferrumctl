@@ -47,11 +47,9 @@ WORKER=$(codex-threadctl create --cwd /path/to/project \
   --approval-policy never --sandbox workspace-write)
 ```
 
-`--permission-profile NAME` instead selects a named Codex filesystem and network
-policy already configured on the selected app-server. It is unrelated to the
-Codex CLI's general `--profile` option and to native subagent roles. Threadctl
-does not discover permission-profile names, and the app-server rejects an
-unknown name.
+`--permission-profile NAME` instead selects an existing named Codex policy.
+See [Permission Profiles](permission-profiles.md) for configuration selection,
+effective-access checks, and observed Codex limitations.
 
 `--approval-policy` can accompany either `--sandbox` or
 `--permission-profile`. The sandbox, named-profile, and unrestricted shortcut

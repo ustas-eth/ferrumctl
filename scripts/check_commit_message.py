@@ -23,7 +23,6 @@ SCOPES = {
     "goalctl",
     "limitctl",
     "memoryctl",
-    "readcov",
     "release",
     "repo",
     "streamctl",

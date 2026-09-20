@@ -18,7 +18,6 @@ workflow layers; they do not change the semantics of the remaining tools.
 | Wake queue | Conditions and later event or input delivery | The target's result |
 | Stream state | Ordered entries and reader acknowledgements | Notification, membership, or authorization |
 | Limit state | Current account observations and local usage history | Reserved capacity or exact thread attribution |
-| Read coverage | Transcript-recorded file-read actions | Verified file access or complete model context |
 | Compaction memory | Opaque memory items and their rollout sightings | Donor identity, temporary scope, or model interpretation |
 
 The surfaces can differ in freshness. Output and documentation should preserve
@@ -41,7 +40,7 @@ and can be reused after an agent closes. When the threadctl skill is available,
 an unambiguous canonical task name can be used directly for an immediate
 operation or resolved to its thread id. Resolve it when another package requires
 a thread id or when the reference must remain attached to that conversation.
-Persisted goals, snapshots, and jobs remain bound to thread ids. A canonical
+Persisted goals and wake jobs remain bound to thread ids. A canonical
 task name does not transfer lifecycle ownership from the native parent.
 
 A thread id identifies persisted state under a Codex home. It does not identify
@@ -76,9 +75,7 @@ to draw attention to its committed position rather than copying its content into
 several conversations. Notification does not start an idle recipient; lifecycle
 control remains with the native owner or a target that accepts direct input.
 
-Use account limits to gate work only when a policy supplies the threshold. Use
-read coverage as evidence about a defined transcript interval, not as a proxy
-for task correctness.
+Use account limits to gate work only when a policy supplies the threshold.
 
 Use memory transfer only when opaque compaction state is itself the needed
 input. An in-place injection is durable; use a disposable thread when the

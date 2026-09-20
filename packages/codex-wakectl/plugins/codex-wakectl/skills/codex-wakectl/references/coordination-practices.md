@@ -33,11 +33,12 @@ when ready and nonzero on timeout, sends no input, and persists no job. If a
 shell tool moves that process to the background, its caller must still observe
 the process finishing; completion does not start a Codex turn.
 
-Use a queued wake when the current process or Codex turn should end while a
-runner watches the condition and restores attention later. The default action
-adds a short scheduled event to agent context and starts an empty turn when the
-target is idle. Use `--input MESSAGE` only when delayed ordinary input is the
-intended operation.
+A queued wake lets a runner watch the condition and restore a target's attention
+later, independently of the scheduling caller. The default action adds a short
+scheduled event to agent context and starts an empty turn when the target is
+idle. An idle self-wake therefore requires the scheduling turn to end; a caller
+scheduling for another thread can continue working. Use `--input MESSAGE` only
+when delayed ordinary input is the intended operation.
 
 Inspect unclear thread state before choosing whether to wait or schedule a
 wake. A wake changes the target's attention; it does not return the target's

@@ -6,7 +6,7 @@ through a shared `codex app-server`.
 Use it to create an independently controlled worker, find stored sessions and
 spawned threads, inspect recent work and retained messages, or apply immediate
 control through a thread id or canonical task name such as `/root/reviewer`.
-It does not edit goals, schedule future input, or measure file-read coverage.
+Goal editing and scheduled wakes belong to separate commands.
 
 ## Install
 
@@ -72,8 +72,9 @@ WORKER=$(codex-threadctl create --cwd "$PWD" \
 ```
 
 `--permission-profile NAME` selects a named Codex filesystem and network policy
-that is already configured on the app-server. It is not a Codex configuration
-profile or native agent role, and an unknown name is rejected.
+defined in a user or project configuration layer applicable to `--cwd`. A
+running app-server loads it for the creation request; it is not a Codex
+configuration profile or native agent role, and an unknown name is rejected.
 
 For a worker separately authorized for unrestricted host access:
 
@@ -157,6 +158,7 @@ More detail:
 - [docs/observation-semantics.md](docs/observation-semantics.md)
 - [docs/materialized-history.md](docs/materialized-history.md)
 - [docs/lifecycle-control.md](docs/lifecycle-control.md)
+- [docs/permission-profiles.md](docs/permission-profiles.md)
 - [docs/agent-trees.md](docs/agent-trees.md)
 
 ## Codex Skill
