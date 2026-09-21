@@ -5,6 +5,7 @@ from typing import Any
 import websockets
 
 from codex_threadctl.appserver import (
+    can_start_turn,
     current_active_turn,
     deliver_input,
     get_thread_status,
@@ -90,7 +91,7 @@ async def deliver_event(
             }
         )
         return result
-    if status != "idle":
+    if not can_start_turn(status):
         if status == "notLoaded":
             raise ThreadNotLoaded(
                 f"thread is not loaded on this app-server: {thread_id}"

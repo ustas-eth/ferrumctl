@@ -27,8 +27,10 @@ codex-threadctl status THREAD_ID
 
 If the target is active, an event wake defers unless the job was created with
 `--notify-active`. That option injects the scheduled event into current work;
-it does not steer user input or start another turn. Explicit `--input` always
-waits for idle.
+it does not steer user input or start another turn. Explicit `--input` waits
+until no turn is running. A loaded `systemError` target is stopped and eligible
+for a new event or input turn; the new turn may fail again if the underlying
+service problem remains.
 
 An unloaded target remains pending unless an event job has `--resume`. Resume
 can immediately continue an active goal. Confirm that another app-server does

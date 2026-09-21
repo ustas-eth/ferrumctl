@@ -108,7 +108,8 @@ existing turn is deliberately the target.
 
 ## Steering And Checkpoints
 
-By default, an event waits for an idle target. `--notify-active` instead injects
+By default, an event waits for a target with no running turn. An `idle` or
+`systemError` target can start the event turn. `--notify-active` instead injects
 the event into current work and finishes the job without starting another turn.
 It is appropriate only when prompt awareness is useful and the event does not
 need a separate response. Use immediate `codex-threadctl steer` with an exact
@@ -130,14 +131,15 @@ SQLite database. An explicit input action also persists its message. Avoid
 secrets, large private context, and fragile one-time instructions in that state.
 
 The default action generates a short `Scheduled event JOB/FIRE` agent message
-from the matched condition, then starts an empty turn if the target is idle.
+from the matched condition, then starts an empty turn if the target is `idle`
+or `systemError`.
 The event remains in history but is not ordinary user input and carries no new
 instructional authority.
 
-`--input MESSAGE` retains the ordinary confirmed input path and waits for an
-idle target. The text does not identify its logical sender, so label it
-naturally when it could be mistaken for direct human input. It must remain safe
-if delayed or duplicated.
+`--input MESSAGE` retains the ordinary confirmed input path and waits for a
+target with no running turn. The text does not identify its logical sender, so
+label it naturally when it could be mistaken for direct human input. It must
+remain safe if delayed or duplicated.
 
 `--resume` applies only to event wakes. It loads an otherwise unloaded target;
 if that thread has an active goal, Codex can continue the goal immediately.

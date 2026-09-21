@@ -720,6 +720,11 @@ def is_parent_owned_input_error(error: AppServerResponseError) -> bool:
     return DIRECT_INPUT_TO_V2_SUBAGENT in str(error)
 
 
+def can_start_turn(status: str) -> bool:
+    """Return whether a loaded thread has no turn that prevents turn/start."""
+    return status in {"idle", "systemError"}
+
+
 async def confirm_input(
     app: AppServer,
     thread_id: str,
@@ -816,7 +821,7 @@ async def start_turn(
     await require_loaded(app, thread_id)
     status = await get_thread_status(app, thread_id)
     name = status_name(status)
-    if name != "idle":
+    if not can_start_turn(name):
         raise ThreadStateError(f"thread is {name}; refusing to start a new turn")
 
     client_message_id = uuid.uuid4().hex
@@ -1020,7 +1025,7 @@ async def wake_thread(
         )
     if name == "notLoaded":
         return wake_result(thread_id, "notLoaded", observed_status=name)
-    if name != "idle":
+    if not can_start_turn(name):
         return wake_result(
             thread_id,
             "rejected",
@@ -1108,7 +1113,7 @@ async def deliver_input(
     await require_loaded(app, thread_id)
     status = await get_thread_status(app, thread_id)
     name = status_name(status)
-    if name == "idle":
+    if can_start_turn(name):
         return await start_turn(app, thread_id, message)
     if name == "active" and allow_active:
         turn = await current_active_turn(app, thread_id)

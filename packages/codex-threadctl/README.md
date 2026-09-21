@@ -115,7 +115,9 @@ codex-threadctl messages THREAD_ID --limit 10
 codex-threadctl message THREAD_ID TURN_ID ITEM_ID
 ```
 
-Start input on an idle thread or steer one exact active turn:
+Start input on a loaded thread with no running turn, or steer one exact active
+turn. `start` can request a new turn after `systemError`; inspect the returned
+turn to see whether execution fails again:
 
 ```sh
 codex-threadctl start THREAD_ID \
@@ -128,7 +130,7 @@ The target sees the message as ordinary input. Name the logical sender when it
 could be mistaken for direct human input.
 
 `notify` adds advisory agent context without starting a turn. `wake` starts an
-empty turn on a loaded idle target:
+empty turn on a loaded `idle` or `systemError` target:
 
 ```sh
 codex-threadctl notify THREAD_ID --from AUTHOR \

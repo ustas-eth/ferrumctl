@@ -106,9 +106,10 @@ turn. Use `--max-fires N` when a repeating job should end by itself. An exact
 ## Delivery
 
 The default action is an event wake. The runner injects a short agent message
-derived from the matched condition. If the target is idle, it then submits an
-empty `turn/start`, which runs the model with existing context without adding a
-user message. Both the event and resulting response remain in thread history.
+derived from the matched condition. If the target is `idle` or `systemError`,
+it then submits an empty `turn/start`, which runs the model with existing
+context without adding a user message. Both the event and resulting response
+remain in thread history.
 
 The generated text begins with `Scheduled event JOB/FIRE`, and each event has a
 stable `lastEventItemId`. A repeating job uses the same job id and increments
@@ -125,10 +126,10 @@ job records `eventNotifiedActive`. If event acceptance or the following wake
 cannot be established safely, the job becomes `uncertain` and retains the
 event item id for reconciliation.
 
-`--input MESSAGE` selects the ordinary input action. It waits for an idle
-target, submits native `turn/start`, and confirms the client message in
-materialized history. Delayed input does not support active steering or resume;
-use immediate thread control for those decisions. Pending jobs created by
+`--input MESSAGE` selects the ordinary input action. It waits for a target with
+no running turn, submits native `turn/start`, and confirms the client message
+in materialized history. Delayed input does not support active steering or
+resume; use immediate thread control for those decisions. Pending jobs created by
 earlier wakectl releases preserve their original input and `--allow-active`
 semantics.
 
