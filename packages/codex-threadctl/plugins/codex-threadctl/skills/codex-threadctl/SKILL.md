@@ -100,11 +100,12 @@ remain attached to that conversation.
 
 ## Choose Immediate Control
 
-- `start` sends input to a target that appears idle.
+- `start` sends input to a loaded target with no running turn, including one
+  whose preceding turn ended in `systemError`.
 - `steer` sends input to one exact active regular turn.
 - `notify` injects advisory agent context without starting a turn.
-- `wake` starts an empty turn on a loaded idle target; an active target receives
-  nothing.
+- `wake` starts an empty turn on a loaded `idle` or `systemError` target; an
+  active target receives nothing.
 - `resume` loads persisted state without adding a user message. It can continue
   an active goal, so `--continue-goal` is required.
 - `interrupt` requests interruption of one exact turn.
@@ -138,6 +139,9 @@ server.
   a thread completed or is absent from another server.
 - `idle` means that no turn is running. It does not grant ownership of the
   thread or exclude an active persisted goal.
+- `systemError` means that the preceding turn stopped through a system failure.
+  The thread remains loaded and can accept a new `start` or `wake`; inspect the
+  returned turn to learn whether execution failed again.
 - Persisted spawn relationships can include closed agents whose native handles
   no longer exist.
 - Search snippets and compact message output are orientation aids. Use
@@ -156,8 +160,8 @@ server.
   describe it as an observed or effective runtime policy.
 - Except for `resume`, the target must be loaded on the selected app-server for
   live control.
-- `start` has a non-atomic idle check. Read its confirmed delivery mode because
-  input can be steered into a turn that won the race.
+- `start` has a non-atomic stopped-state check. Read its confirmed delivery mode
+  because input can be steered into a turn that won the race.
 - `notify` reports app-server acceptance and a raw agent-message id. It does not
   prove timing, model receipt, or action, and it does not wake the target.
 - Pass a currently observed turn id to `steer` and `interrupt`. Interruption

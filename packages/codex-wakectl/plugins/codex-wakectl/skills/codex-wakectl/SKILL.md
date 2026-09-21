@@ -9,8 +9,9 @@ description: "Use when this or another Codex thread must regain attention after 
 
 Use `codex-wakectl add` to persist a condition and wake action. A normal wake
 adds a short scheduled event to agent context and starts an empty turn when the
-target is idle. It restores attention without adding a user message or
-replacing the target's existing context, goal, or instructions.
+target has no running turn, including after `systemError`. It restores
+attention without adding a user message or replacing the target's existing
+context, goal, or instructions.
 
 `wait` is a separate synchronous interface. It blocks only its invoking
 process, creates no job, and does not notify or wake a thread.
@@ -82,14 +83,15 @@ when the final response matters.
 The default event is generated from the condition and contains a stable job and
 fire number. Existing context remains authoritative.
 
-- Omit action options for an event that waits for idle, adds agent context, and
-  starts an empty turn.
+- Omit action options for an event that waits until no turn is running, adds
+  agent context, and starts an empty turn. A stopped `systemError` is eligible.
 - Add `--notify-active` when the event should enter current work instead of
   waiting for a separate turn.
 - Add `--resume` when wakectl should load an unloaded target. Resume can
   immediately continue an active goal.
 - Add `--input MESSAGE` only when delayed ordinary input is deliberately the
-  instruction. It waits for idle and must remain valid if late or duplicated.
+  instruction. It waits until no turn is running and must remain valid if late
+  or duplicated.
 
 ```sh
 codex-wakectl add cmd --to WORKER \

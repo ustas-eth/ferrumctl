@@ -68,6 +68,35 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
         )
         wake.assert_awaited_once_with(mock.ANY, "target")
 
+    async def test_system_error_event_injects_context_then_starts_recovery_turn(self) -> None:
+        notification = {"itemId": "amsg_wake_job123_1", "outcome": "accepted"}
+        with (
+            mock.patch.object(delivery, "list_loaded", mock.AsyncMock(return_value=["target"])),
+            mock.patch.object(
+                delivery,
+                "get_thread_status",
+                mock.AsyncMock(return_value={"type": "systemError"}),
+            ),
+            mock.patch.object(
+                delivery,
+                "notify_thread",
+                mock.AsyncMock(return_value=notification),
+            ) as notify,
+            mock.patch.object(
+                delivery,
+                "wake_thread",
+                mock.AsyncMock(
+                    return_value={"outcome": "confirmedStarted", "turnId": "turn-2"}
+                ),
+            ) as wake,
+        ):
+            result = await delivery.deliver_event(object(), event_job(), "matched")
+
+        self.assertEqual(result["delivery"], "eventStarted")
+        self.assertEqual(result["turnId"], "turn-2")
+        notify.assert_awaited_once()
+        wake.assert_awaited_once_with(mock.ANY, "target")
+
     async def test_active_event_waits_unless_notification_is_allowed(self) -> None:
         with (
             mock.patch.object(delivery, "list_loaded", mock.AsyncMock(return_value=["target"])),

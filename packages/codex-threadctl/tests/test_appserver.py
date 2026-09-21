@@ -775,6 +775,28 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["clientMessageId"], app.client_message_id)
         self.assertNotIn("itemId", result)
 
+    async def test_start_can_replace_a_stopped_system_error_with_a_new_turn(self):
+        app = FakeApp(status="systemError")
+
+        result = await appserver.start_turn(app, "thread", "continue")
+
+        self.assertEqual(result["delivery"], "started")
+        self.assertEqual(result["turnId"], "submission")
+        self.assertTrue(any(method == "turn/start" for method, _ in app.calls))
+
+    async def test_deliver_input_can_recover_a_stopped_system_error(self):
+        app = FakeApp(status="systemError")
+
+        result = await appserver.deliver_input(
+            app,
+            "thread",
+            "continue",
+            allow_active=False,
+        )
+
+        self.assertEqual(result["delivery"], "started")
+        self.assertEqual(result["turnId"], "submission")
+
     async def test_start_reports_race_into_active_turn(self):
         app = FakeApp(actual_turn_id="other-turn")
         result = await appserver.start_turn(app, "thread", "message")
@@ -924,6 +946,13 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ThreadStateError):
             await appserver.start_turn(FakeApp(status="active"), "thread", "message")
 
+    async def test_start_refuses_unknown_nonstartable_state(self):
+        app = FakeApp(status="unknownFutureState")
+
+        with self.assertRaisesRegex(ThreadStateError, "unknownFutureState"):
+            await appserver.start_turn(app, "thread", "message")
+        self.assertFalse(any(method == "turn/start" for method, _ in app.calls))
+
     async def test_start_marks_lost_response_uncertain(self):
         app = FakeApp()
 
@@ -1053,6 +1082,32 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
             ("turn/start", {"threadId": "thread", "input": []}),
             app.calls,
         )
+
+    async def test_wake_can_replace_a_stopped_system_error_with_an_empty_turn(self):
+        app = FakeApp(status="systemError")
+
+        result = await appserver.wake_thread(app, "thread")
+
+        self.assertEqual(result["outcome"], "confirmedStarted")
+        self.assertEqual(result["turnId"], "submission")
+        self.assertIn(("turn/start", {"threadId": "thread", "input": []}), app.calls)
+
+    async def test_wake_reports_a_rejected_system_error_recovery_once(self):
+        app = FakeApp(status="systemError")
+        original_request = app.request
+
+        async def reject(method, params=None):
+            if method == "turn/start":
+                app.calls.append((method, params))
+                raise AppServerResponseError({"message": "model still unavailable"})
+            return await original_request(method, params)
+
+        app.request = reject
+        result = await appserver.wake_thread(app, "thread")
+
+        self.assertEqual(result["outcome"], "rejected")
+        self.assertIn("model still unavailable", result["reason"])
+        self.assertEqual(sum(method == "turn/start" for method, _ in app.calls), 1)
 
     async def test_wake_is_a_successful_noop_for_an_active_thread(self):
         app = FakeApp(status="active", actual_turn_id="active-turn")

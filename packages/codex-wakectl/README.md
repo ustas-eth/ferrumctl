@@ -5,7 +5,8 @@ through a shared `codex app-server`.
 
 Use `add` to persist a condition and wake action for later runner delivery. A
 normal wake adds a short scheduled event to agent context and starts an empty
-turn when the target is idle. It does not add a user message.
+turn when the target is `idle` or stopped in `systemError`. It does not add a
+user message.
 
 The secondary `wait` interface polls synchronously for scripts: it blocks only
 its invoking process, sends no event or input, and persists no job. Immediate
@@ -72,7 +73,7 @@ Host-visible conditions can also schedule a wake:
 codex-wakectl add cmd --to THREAD_ID -- test -f done.txt
 ```
 
-By default, a ready event waits for the target to become idle. Use
+By default, a ready event waits until the target has no running turn. Use
 `--notify-active` when the event remains useful during current work. Use
 `--resume` only when wakectl should load an unloaded target; resuming a thread
 with an active goal can continue that goal immediately.
@@ -100,7 +101,8 @@ codex-wakectl systemd install --interval 30s
 
 Scheduled events are short agent-context items, not user instructions. They
 still remain in thread history and can be delayed or duplicated. Explicit
-`--input` waits for an idle target and uses the ordinary confirmed input path.
+`--input` waits until the target has no running turn and uses the ordinary
+confirmed input path.
 
 The queue is shared by the host user, so retain job ids and cancel only jobs
 your workflow owns.

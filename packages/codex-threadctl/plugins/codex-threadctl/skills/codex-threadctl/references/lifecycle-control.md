@@ -91,6 +91,11 @@ server currently owns live execution.
 message. Codex emits the thread's goal snapshot after the resume response and
 can immediately continue an active goal when the resumed thread is idle.
 
+Resume is a loading operation, not a failed-turn retry. If a thread is already
+loaded in `systemError`, resume can return that same state. Use `start` when a
+new ordinary input is needed or `wake` when its retained context and goal are
+enough to continue.
+
 App-server does not provide an atomic "resume only if no goal is active"
 operation. Threadctl therefore requires `--continue-goal` for every resume. The
 flag acknowledges possible continuation; it does not activate or change the
@@ -139,13 +144,15 @@ rather than inferring it from the recipient's behavior.
 ## Empty Wake
 
 `wake` first observes the target on the selected app-server. If it is active,
-the command submits nothing and reports `notSubmittedActive`. If it is idle,
-the command calls `turn/start` with an empty input list. The model receives its
-existing context without a new user message.
+the command submits nothing and reports `notSubmittedActive`. If it is `idle`
+or `systemError`, the command calls `turn/start` with an empty input list. The
+model receives its existing context without a new user message. Codex clears
+the error state when the new turn starts; threadctl does not assume that the
+underlying service problem has cleared.
 
-The idle check and turn start are not atomic. Threadctl confirms the exact turn
-returned by app-server through a start notification or materialized turn
-history. The machine outcomes are:
+The stopped-state check and turn start are not atomic. Threadctl confirms the
+exact turn returned by app-server through a start notification or materialized
+turn history. The machine outcomes are:
 
 - `confirmedStarted`: the returned turn was observed
 - `notSubmittedActive`: the target was already active
@@ -162,10 +169,10 @@ turn after the observed active turn ends.
 
 ## Starting Input
 
-`start` observes a loaded thread as idle, submits `turn/start` with a unique
-client message id, and waits until that message appears in materialized turn
-history. The result reports the actual turn id and whether Codex started a new
-turn or steered the message into a turn that won the race.
+`start` observes a loaded thread as `idle` or `systemError`, submits `turn/start`
+with a unique client message id, and waits until that message appears in
+materialized turn history. The result reports the actual turn id and whether
+Codex started a new turn or steered the message into a turn that won the race.
 
 JSON output includes the client message id used for confirmation. Materialized
 item ids can change while an app-server catches up with earlier history, so
@@ -175,10 +182,15 @@ client message id confirms delivery; it does not identify the logical sender.
 When provenance matters, include it in the text with a natural label such as
 `From coordinator:`. The label provides context, not proof of identity.
 
-The idle observation and `turn/start` request are not atomic. Confirmation
-makes the outcome visible but cannot undo input that raced into active work. If
-confirmation fails, the operation is uncertain: retrying can duplicate the
-message.
+The stopped-state observation and `turn/start` request are not atomic.
+Confirmation makes the outcome visible but cannot undo input that raced into
+active work. If confirmation fails, the operation is uncertain: retrying can
+duplicate the message.
+
+Starting from `systemError` confirms only the new turn and delivery mode. It
+does not prove the previous turn made no progress or that the model is now
+available. Inspect the failed turn before repeating non-idempotent work, then
+observe the returned turn and stop or choose another policy if it fails again.
 
 Early Codex 0.144 item pagination omits turn attribution. A matching bare item
 proves persistence but not which turn accepted the message, so threadctl waits
