@@ -310,8 +310,10 @@ def build_parser() -> argparse.ArgumentParser:
     add_global_options(message, defaults=False)
     message.set_defaults(func=cmd_message)
 
-    start = sub.add_parser("start", help="send input as a new turn on an idle thread")
-    start.add_argument("thread_id")
+    start = sub.add_parser(
+        "start", help="send input to a loaded idle or systemError thread"
+    )
+    start.add_argument("thread_id", help="loaded thread in idle or systemError state")
     start.add_argument("message")
     add_tree_option(start)
     add_global_options(start, defaults=False)
@@ -334,9 +336,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     wake = sub.add_parser(
         "wake",
-        help="start an empty turn if a loaded thread is idle",
+        help="start an empty turn on a loaded idle or systemError thread",
     )
-    wake.add_argument("thread_id", help="loaded thread to wake if idle")
+    wake.add_argument("thread_id", help="loaded thread in idle or systemError state")
     add_tree_option(wake)
     add_global_options(wake, defaults=False)
     wake.set_defaults(func=cmd_wake)
