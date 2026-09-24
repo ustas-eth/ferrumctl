@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import sys
 
 import websockets
 
-from .errors import ThreadctlError
+from .errors import ThreadctlError, error_record
 from .parser import build_parser
 
 
@@ -21,6 +22,8 @@ def main(argv: list[str] | None = None) -> int:
     except BrokenPipeError:
         return 1
     except (OSError, ThreadctlError, websockets.WebSocketException) as exc:
+        if args.json:
+            print(json.dumps({"error": error_record(exc)}, indent=2))
         print(f"codex-threadctl: {exc}", file=sys.stderr)
         return 1
 

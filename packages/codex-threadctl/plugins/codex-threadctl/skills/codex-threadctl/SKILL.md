@@ -1,6 +1,6 @@
 ---
 name: codex-threadctl
-description: "Use to discover Codex threads, inspect their state or retained history beyond native results, create independently controlled roots, or apply immediate control through a thread id or canonical task name such as /root/reviewer. Prefer native tools for ordinary messaging, lifecycle control, and waiting when this session owns the live child. Do not use for future conditions, goal editing, terminal keystrokes, or native subagent spawning."
+description: "Use to discover Codex threads, inspect their state or retained history beyond native results, create independently controlled roots, update thread settings, or apply immediate control through a thread id or canonical task name such as /root/reviewer. Prefer native tools for ordinary messaging, lifecycle control, and waiting when this session owns the live child. Do not use for future conditions, goal editing, terminal keystrokes, or native subagent spawning."
 ---
 
 # Codex Threadctl
@@ -46,8 +46,13 @@ overrides from the assignment and supervision model:
 
 - Pass `--model MODEL_ID` when a model is required, adding `--model-provider`
   only for a non-default provider. A native subagent role name is not a model
-  id; its role configuration does not apply. Context size and reasoning effort
-  remain server defaults.
+  id; its role configuration does not apply. Pass `--effort` when reasoning
+  effort matters.
+- Use `--config-file FILE` for native Codex settings beyond the dedicated flags,
+  such as worker-specific skills or context size. Explicit flags win. Retain the
+  caller-local TOML file and reapply it on unloaded-thread `resume`; it is not a
+  saved profile binding or a live `configure` option. Read the lifecycle reference
+  when choosing file settings or relying on their persistence.
 - Check that permission and approval defaults suit the work. Without an
   approval-capable client, `--approval-policy never` makes disallowed operations
   fail instead of waiting; it does not grant access.
@@ -107,7 +112,10 @@ remain attached to that conversation.
 - `wake` starts an empty turn on a loaded `idle` or `systemError` target; an
   active target receives nothing.
 - `resume` loads persisted state without adding a user message. It can continue
-  an active goal, so `--continue-goal` is required.
+  an active goal, so `--continue-goal` is required. If settings must change before
+  continuation, pass the overrides in this command while the thread is unloaded.
+- `configure` updates a loaded thread's model, effort, permission profile, or
+  approval policy for subsequent turns without starting or interrupting work.
 - `interrupt` requests interruption of one exact turn.
 - `terminate-terminal` targets one exact process from a current terminal
   listing.
@@ -126,6 +134,7 @@ codex-threadctl wake "$PEER"
 codex-threadctl interrupt THREAD_ID TURN_ID --wait
 codex-threadctl terminate-terminal THREAD_ID PROCESS_ID --item ITEM_ID
 codex-threadctl resume THREAD_ID --continue-goal
+codex-threadctl configure THREAD_ID --model MODEL_ID --effort high
 ```
 
 Use `CODEX_THREAD_ID` for this thread's identity when available. For `notify`,
@@ -151,13 +160,17 @@ server.
   an active turn as a durable checkpoint.
 - Context percentage and age are recorded observations rather than continuous
   measurements.
+- `inspect` separates server metadata from last-recorded turn settings. Check
+  their time and turn id before treating them as evidence of a configuration
+  change. A history error leaves other available observations intact.
 
 ## Control Boundaries
 
 - `create` confirms that app-server returned a new root identity, not that any
   work ran. If its outcome is uncertain, inspect recent threads before retrying.
 - JSON `permissionRequest` repeats the values submitted during `create`; never
-  describe it as an observed or effective runtime policy.
+  describe it as an observed runtime policy. Creation and resume return server
+  `settings`; `configure` confirms acceptance, not execution under those settings.
 - Except for `resume`, the target must be loaded on the selected app-server for
   live control.
 - `start` has a non-atomic stopped-state check. Read its confirmed delivery mode
@@ -183,8 +196,9 @@ reference.
   timestamps, context observations, or a multi-source snapshot.
 - Read `references/materialized-history.md` when exact ranges, pagination,
   mutable item ids, or complete retained text matter.
-- Read `references/lifecycle-control.md` when choosing creation overrides,
-  automating immediate control, or reconciling an ambiguous control outcome.
+- Read `references/lifecycle-control.md` when choosing worker configuration or
+  skill settings, changing resume settings, automating immediate control, or
+  reconciling an ambiguous control outcome.
 - Read `references/permission-profiles.md` when choosing or interpreting a
   named profile, checking configuration precedence, or diagnosing unexpected
   access or missing worker instructions.

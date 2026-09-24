@@ -120,6 +120,9 @@ def format_inspection(inspection: dict[str, Any]) -> str:
             "parentThreadId",
             "forkedFromId",
             "cwd",
+            "model",
+            "modelProvider",
+            "reasoningEffort",
             "source",
             "canAcceptDirectInput",
             "inputOwner",
@@ -133,6 +136,26 @@ def format_inspection(inspection: dict[str, Any]) -> str:
     flags = status.get("activeFlags") or []
     if flags:
         lines.append("flags\t" + ",".join(flags))
+
+    recorded = inspection.get("recordedSettings")
+    if recorded is not None:
+        profile = recorded.get("activePermissionProfile") or {}
+        policy = recorded.get("permissionProfile") or {}
+        sandbox = recorded.get("sandbox") or {}
+        network = policy.get("network")
+        if network is None:
+            network = sandbox.get("network_access", sandbox.get("networkAccess"))
+        lines.append("recorded-settings\t" + "\t".join([
+            f"turn={recorded.get('turnId') or '-'}",
+            f"observed={format_time(recorded.get('observedAt'))}",
+            f"model={recorded.get('model') or '-'}",
+            f"effort={recorded.get('reasoningEffort') or '-'}",
+            f"profile={profile.get('id') or '-'}",
+            f"approval={recorded.get('approvalPolicy') or '-'}",
+            f"network={quoted(network)}",
+        ]))
+    elif inspection.get("recordedSettingsError"):
+        lines.append("recorded-settings\tunavailable\t" + quoted(inspection["recordedSettingsError"]))
 
     context = inspection.get("context")
     if context is not None:

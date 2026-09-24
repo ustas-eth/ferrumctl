@@ -12,15 +12,18 @@ from urllib.parse import urlparse
 import websockets
 
 from .constants import CLIENT_VERSION, MAX_WEBSOCKET_MESSAGE_BYTES
+from .config_input import request_config
 from .errors import (
     AppServerResponseError,
     DeliveryUncertain,
     DirectInputUnsupported,
     NotificationUncertain,
+    OperationError,
     ThreadctlError,
     ThreadNotLoaded,
     ThreadStateError,
 )
+from .settings import reported_settings
 
 TRACKED_NOTIFICATIONS = {
     "turn/started",
@@ -363,6 +366,8 @@ async def create_thread(
     approval_policy: str | None = None,
     sandbox: str | None = None,
     permission_profile: str | None = None,
+    effort: str | None = None,
+    config_overrides: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     params: dict[str, Any] = {"cwd": cwd}
     if model is not None:
@@ -375,7 +380,15 @@ async def create_thread(
         params["sandbox"] = sandbox
     if permission_profile is not None:
         params["permissions"] = permission_profile
+    config = request_config(
+        config_overrides, model=model, model_provider=model_provider,
+        approval_policy=approval_policy, sandbox=sandbox,
+        permission_profile=permission_profile, effort=effort,
+    )
+    if config:
+        params["config"] = config
 
+    thread_id = None
     try:
         result = require_object(
             await app.request("thread/start", params),
@@ -395,8 +408,9 @@ async def create_thread(
     except AppServerResponseError:
         raise
     except (OSError, ThreadctlError, websockets.WebSocketException) as exc:
-        raise ThreadctlError(
-            "thread creation outcome is uncertain; inspect recent threads before retrying"
+        raise OperationError(
+            "thread creation outcome is uncertain; inspect recent threads before retrying",
+            code="creationUncertain", outcome="uncertain", threadId=thread_id,
         ) from exc
 
     initialization_item_id = f"amsg_{uuid.uuid4().hex}"
@@ -419,14 +433,17 @@ async def create_thread(
             },
         )
     except AppServerResponseError as exc:
-        raise ThreadctlError(
+        raise OperationError(
             f"thread {thread_id} was created but could not be initialized for "
-            f"external control: {exc}"
+            f"external control: {exc}", code="initializationRejected", outcome="partial",
+            threadId=thread_id, itemId=initialization_item_id,
         ) from exc
     except (OSError, ThreadctlError, websockets.WebSocketException) as exc:
-        raise ThreadctlError(
+        raise OperationError(
             f"thread {thread_id} was created but its initialization outcome is "
-            "uncertain; inspect that thread before retrying"
+            "uncertain; inspect that thread before retrying",
+            code="initializationUncertain", outcome="uncertain",
+            threadId=thread_id, itemId=initialization_item_id,
         ) from exc
 
     return {
@@ -439,6 +456,8 @@ async def create_thread(
         },
         "instructionSources": instruction_sources,
         "initializationItemId": initialization_item_id,
+        "settings": reported_settings(result, "thread/start"),
+        **({"configRequest": {"keys": sorted(config)}} if config_overrides is not None else {}),
     }
 
 
@@ -1192,17 +1211,7 @@ async def resume_thread(
     *,
     continue_goal: bool = False,
 ) -> dict[str, Any]:
-    if not continue_goal:
-        raise ThreadStateError(
-            "resume can continue an active goal without input; "
-            "pass --continue-goal to acknowledge this"
-        )
+    # Keep the client API used by wakectl and memoryctl stable.
+    from .configuration import resume_thread as resume
 
-    result = require_object(
-        await app.request(
-            "thread/resume",
-            {"threadId": thread_id, "excludeTurns": True},
-        ),
-        "thread/resume result",
-    )
-    return require_object(result.get("thread"), "thread/resume thread")
+    return await resume(app, thread_id, continue_goal=continue_goal)

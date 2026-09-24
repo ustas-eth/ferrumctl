@@ -6,6 +6,7 @@ import math
 from .commands import (
     cmd_agents,
     cmd_create,
+    cmd_configure,
     cmd_inspect,
     cmd_interrupt,
     cmd_items,
@@ -101,6 +102,21 @@ def add_tree_option(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_settings_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--model", type=nonempty_text, help="model for subsequent turns")
+    parser.add_argument(
+        "--effort", type=nonempty_text, help="reasoning effort supported by the model",
+    )
+    parser.add_argument(
+        "--permission-profile", type=nonempty_text,
+        help="existing named or built-in permission profile",
+    )
+    parser.add_argument(
+        "--approval-policy", choices=("untrusted", "on-request", "never"),
+        help="approval policy override",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="codex-threadctl",
@@ -115,6 +131,10 @@ def build_parser() -> argparse.ArgumentParser:
     create = sub.add_parser(
         "create",
         help="create an independently controlled root thread",
+    )
+    create.add_argument(
+        "--config-file", type=nonempty_text,
+        help="caller-local TOML settings sent as native configuration overrides; explicit flags win",
     )
     create.add_argument(
         "--cwd",
@@ -133,15 +153,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="model provider override; otherwise use configured defaults",
     )
     create.add_argument(
+        "--effort", type=nonempty_text,
+        help="reasoning effort; otherwise use configured defaults",
+    )
+    create.add_argument(
         "--approval-policy",
         choices=("untrusted", "on-request", "never"),
-        help="approval policy for the new thread; otherwise use app-server defaults",
+        help="approval policy for the new thread; otherwise use configuration defaults",
     )
     permission_mode = create.add_mutually_exclusive_group()
     permission_mode.add_argument(
         "--sandbox",
         choices=("read-only", "workspace-write", "danger-full-access"),
-        help="sandbox mode for the new thread; otherwise use app-server defaults",
+        help="sandbox mode for the new thread; otherwise use configuration defaults",
     )
     permission_mode.add_argument(
         "--permission-profile",
@@ -394,13 +418,25 @@ def build_parser() -> argparse.ArgumentParser:
     add_global_options(terminate_terminal, defaults=False)
     terminate_terminal.set_defaults(func=cmd_terminate_terminal)
 
-    resume = sub.add_parser("resume", help="load a persisted thread on app-server")
+    configure = sub.add_parser("configure", help="update a loaded thread's settings for subsequent turns")
+    configure.add_argument("thread_id")
+    add_settings_options(configure)
+    add_tree_option(configure)
+    add_global_options(configure, defaults=False)
+    configure.set_defaults(func=cmd_configure)
+
+    resume = sub.add_parser("resume", help="load a persisted thread, optionally with settings overrides")
     resume.add_argument("thread_id")
     resume.add_argument(
         "--continue-goal",
         action="store_true",
         required=True,
         help="acknowledge that resume can continue an active goal",
+    )
+    add_settings_options(resume)
+    resume.add_argument(
+        "--config-file", type=nonempty_text,
+        help="reapply caller-local TOML overrides while loading an unloaded thread",
     )
     add_tree_option(resume)
     add_global_options(resume, defaults=False)

@@ -26,6 +26,16 @@ fit naturally in the header, explain it in the commit body.
 
 Run `./scripts/check.sh` before committing.
 
+Thread configuration also has an opt-in integration test against a real Codex
+binary. It uses a temporary Codex home, synthetic skills, and a local mock model;
+it does not use account credentials or contact the running app server:
+
+```sh
+CODEX_THREADCTL_TEST_BINARY=/absolute/path/to/codex \
+  PYTHONPATH=packages/codex-threadctl/src \
+  python3 -m unittest discover -s packages/codex-threadctl/tests -p test_config_native.py -v
+```
+
 ## Publishing Changes
 
 Use a branch and pull request for changes to command behavior, persisted state,

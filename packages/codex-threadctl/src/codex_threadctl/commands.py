@@ -5,6 +5,8 @@ import json
 import os
 import sys
 
+import websockets
+
 from .agents import (
     enrich_thread,
     list_agent_tree,
@@ -22,7 +24,6 @@ from .appserver import (
     list_turn_page,
     notify_thread,
     read_thread,
-    resume_thread,
     search_threads,
     start_turn,
     steer_turn,
@@ -30,8 +31,11 @@ from .appserver import (
     unsupported_method,
     wake_thread,
 )
+from .configuration import configure_thread, resume_thread
+from .config_input import read_config_file
 from .context import read_context_state
-from .errors import AppServerResponseError, ThreadctlError
+from .errors import AppServerResponseError, ThreadctlError, ThreadStateError
+from .settings import read_recorded_settings
 from .formatting import (
     format_agents,
     format_inspection,
@@ -65,6 +69,8 @@ THREAD_LIST_FIELDS = (
     "forkedFromId",
     "cwd",
     "modelProvider",
+    "model",
+    "reasoningEffort",
     "cliVersion",
     "source",
     "preview",
@@ -100,6 +106,7 @@ async def cmd_loaded(args: argparse.Namespace) -> int:
 
 
 async def cmd_create(args: argparse.Namespace) -> int:
+    config = read_config_file(args.config_file)
     if args.dangerously_bypass_approvals_and_sandbox:
         if args.approval_policy is not None:
             raise ThreadctlError(
@@ -121,6 +128,8 @@ async def cmd_create(args: argparse.Namespace) -> int:
             approval_policy=approval_policy,
             sandbox=sandbox,
             permission_profile=args.permission_profile,
+            effort=args.effort,
+            **({"config_overrides": config} if config is not None else {}),
         )
     if args.json:
         thread = created["thread"]
@@ -129,14 +138,18 @@ async def cmd_create(args: argparse.Namespace) -> int:
                 {
                     "threadId": created["threadId"],
                     "cwd": thread.get("cwd", args.cwd),
-                    "model": thread.get("model", args.model),
-                    "modelProvider": thread.get(
-                        "modelProvider", args.model_provider
+                    "model": created.get("settings", {}).get(
+                        "model", thread.get("model", args.model)
+                    ),
+                    "modelProvider": created.get("settings", {}).get(
+                        "modelProvider", thread.get("modelProvider", args.model_provider)
                     ),
                     "status": thread.get("status"),
                     "permissionRequest": created["permissionRequest"],
                     "instructionSources": created["instructionSources"],
                     "initializationItemId": created["initializationItemId"],
+                    "settings": created.get("settings"),
+                    **({"configRequest": created["configRequest"]} if "configRequest" in created else {}),
                 },
                 indent=2,
             )
@@ -304,50 +317,57 @@ async def cmd_inspect(args: argparse.Namespace) -> int:
             tree_thread_id=args.tree,
         )
         local_rollout = app.endpoint.startswith("unix://")
-        turn_limit = 1 if args.no_previous else 2
-        history_backend = "thread/turns/list"
-        history_error = None
-        recent_items: list[dict[str, object]] = []
-        try:
-            turns = (
-                await list_turn_page(
-                    app,
-                    thread_id,
-                    limit=turn_limit,
-                    items_view="summary" if args.brief else "full",
-                )
-            ).get("data", [])
-        except AppServerResponseError as exc:
-            if not unsupported_method(exc):
-                raise
-            turns, recent_items = await native_inspection_history(
-                app,
-                thread_id,
-                turn_limit=turn_limit,
-                item_limit=args.items,
-                brief=args.brief,
-            )
-            history_backend = "thread/items/list"
-            if recent_items:
-                history_error = (
-                    "this Codex version does not expose turn ids for paginated "
-                    "history; showing recent items without turn metadata"
-                )
+        thread = enrich_thread(await read_thread(app, thread_id))
+        loaded = thread_id in await list_loaded(app)
         goal = None
         goal_error = None
         try:
             goal = await get_goal(app, thread_id)
-        except ThreadctlError as exc:
+        except (OSError, ThreadctlError, websockets.WebSocketException) as exc:
             goal_error = str(exc)
-        thread = enrich_thread(await read_thread(app, thread_id))
-        loaded = thread_id in await list_loaded(app)
+        turn_limit = 1 if args.no_previous else 2
+        history_backend = "thread/turns/list"
+        history_error = None
+        recent_items: list[dict[str, object]] = []
+        turns = []
+        try:
+            try:
+                turns = (
+                    await list_turn_page(
+                        app,
+                        thread_id,
+                        limit=turn_limit,
+                        items_view="summary" if args.brief else "full",
+                    )
+                ).get("data", [])
+            except AppServerResponseError as exc:
+                if not unsupported_method(exc):
+                    raise
+                history_backend = "thread/items/list"
+                turns, recent_items = await native_inspection_history(
+                    app,
+                    thread_id,
+                    turn_limit=turn_limit,
+                    item_limit=args.items,
+                    brief=args.brief,
+                )
+                if recent_items:
+                    history_error = (
+                        "this Codex version does not expose turn ids for paginated "
+                        "history; showing recent items without turn metadata"
+                    )
+        except (OSError, ThreadctlError, websockets.WebSocketException) as exc:
+            history_error = str(exc)
 
     if local_rollout:
         context, compaction = read_context_state(thread.get("path"))
         context_error = None
+        recorded_settings, settings_error = read_recorded_settings(thread.get("path"))
     else:
         context, compaction = None, None
         context_error = "rollout context is unavailable through a remote endpoint"
+        recorded_settings = None
+        settings_error = "rollout settings are unavailable through a remote endpoint"
     inspection = build_inspection(
         thread,
         loaded=loaded,
@@ -362,6 +382,8 @@ async def cmd_inspect(args: argparse.Namespace) -> int:
         history_error=history_error,
         recent_items=recent_items,
     )
+    inspection["recordedSettings"] = recorded_settings
+    inspection["recordedSettingsError"] = settings_error
     if args.json:
         print(json.dumps(inspection, indent=2))
     else:
@@ -635,6 +657,7 @@ async def cmd_terminate_terminal(args: argparse.Namespace) -> int:
 
 
 async def cmd_resume(args: argparse.Namespace) -> int:
+    config = read_config_file(args.config_file)
     async with AppServer(args.endpoint, args.timeout) as app:
         thread_id = await resolve_thread_reference(
             app,
@@ -645,11 +668,18 @@ async def cmd_resume(args: argparse.Namespace) -> int:
             app,
             thread_id,
             continue_goal=args.continue_goal,
+            model=args.model,
+            effort=args.effort,
+            permission_profile=args.permission_profile,
+            approval_policy=args.approval_policy,
+            **({"config_overrides": config} if config is not None else {}),
         )
     result = {
         "threadId": thread.get("id", thread_id),
         "status": thread.get("status", {"type": "unknown"}),
         "goalContinuationAllowed": args.continue_goal,
+        "settings": thread.get("settings"),
+        **({"configRequest": thread["configRequest"]} if "configRequest" in thread else {}),
     }
     if args.json:
         print(json.dumps(result, indent=2))
@@ -660,4 +690,26 @@ async def cmd_resume(args: argparse.Namespace) -> int:
         if args.continue_goal:
             fields.append("goal-continuation=allowed")
         print("\t".join(fields))
+        if result["settings"]:
+            print("settings\t" + json.dumps(result["settings"], ensure_ascii=False))
+    return 0
+
+
+async def cmd_configure(args: argparse.Namespace) -> int:
+    if all(getattr(args, field) is None for field in (
+        "model", "effort", "permission_profile", "approval_policy",
+    )):
+        raise ThreadStateError("configure requires at least one setting")
+    async with AppServer(args.endpoint, args.timeout) as app:
+        thread_id = await resolve_thread_reference(
+            app, args.thread_id, tree_thread_id=args.tree,
+        )
+        result = await configure_thread(
+            app, thread_id, model=args.model, effort=args.effort,
+            permission_profile=args.permission_profile, approval_policy=args.approval_policy,
+        )
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print(f"accepted\t{thread_id}\tsubsequent-turns\t" + json.dumps(result["requestedSettings"]))
     return 0
