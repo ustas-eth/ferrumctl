@@ -24,7 +24,7 @@ class ParserTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 parser.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-threadctl 0.7.4\n")
+        self.assertEqual(output.getvalue(), "codex-threadctl 0.7.6\n")
 
     def test_default_timeout_allows_for_history_reconstruction(self):
         self.assertEqual(parser.build_parser().parse_args(["loaded"]).timeout, 30.0)
@@ -179,6 +179,7 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
             approval_policy=None,
             sandbox=None,
             permission_profile=None,
+            effort=None,
         )
         self.assertEqual(output.getvalue(), "created\n")
 
@@ -223,6 +224,7 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
             approval_policy="never",
             sandbox="danger-full-access",
             permission_profile=None,
+            effort=None,
         )
         self.assertEqual(output.getvalue(), "created\n")
 
@@ -292,6 +294,7 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
                 },
                 "instructionSources": ["/actual/AGENTS.md"],
                 "initializationItemId": "amsg_created",
+                "settings": None,
             },
         )
 
@@ -882,6 +885,10 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
             mock.ANY,
             "thread",
             continue_goal=True,
+            model=None,
+            effort=None,
+            permission_profile=None,
+            approval_policy=None,
         )
         self.assertTrue(json.loads(output.getvalue())["goalContinuationAllowed"])
 

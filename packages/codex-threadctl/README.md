@@ -55,12 +55,30 @@ When the assignment requires another model, pass its model id:
 
 ```sh
 WORKER=$(codex-threadctl create --cwd "$PWD" \
-  --model MODEL_ID)
+  --model MODEL_ID --effort high)
 ```
 
 Add `--model-provider` only when it differs from the server default. A native
 subagent role name is not a model id, and `create` does not apply that role's
-configuration. Context size and reasoning effort remain app-server defaults.
+configuration. For other worker-specific settings, such as skill selection or
+context size, pass a native Codex TOML file:
+
+```sh
+WORKER=$(codex-threadctl create --cwd "$PWD" --config-file ./worker.toml)
+```
+
+Explicit flags override file values. Keep the file and reapply it with
+`resume --continue-goal --config-file ./worker.toml` when loading the worker;
+these overrides are not a saved profile binding. See
+[creation and resume configuration](docs/lifecycle-control.md#creation-and-resume-configuration)
+for a skill-selection example and the configuration boundaries.
+
+Change a loaded worker's model or effort for subsequent turns without sending
+instructions or starting work:
+
+```sh
+codex-threadctl configure "$WORKER" --model MODEL_ID --effort high
+```
 
 For an unattended worker whose authorized work is confined to the workspace,
 the following combination rejects operations outside the sandbox instead of

@@ -1,8 +1,8 @@
 # Immediate Thread Control
 
 This reference describes the native operations behind notification, wake,
-root creation, thread start, steering, resume, interruption, and terminal-process
-control.
+root creation, settings, thread start, steering, resume, interruption, and
+terminal-process control.
 
 ## Creating An Independent Root
 
@@ -21,18 +21,18 @@ permission defaults. Settings on the invoking TUI thread, including its CLI
 flags, are not inherited. The new thread is an independent root rather than a
 native subagent: no parent receives its result or owns its lifecycle.
 
-`--model` and `--model-provider` override only those two server defaults:
+Model and effort can be selected at creation:
 
 ```sh
 WORKER=$(codex-threadctl create --cwd /path/to/project \
-  --model MODEL_ID)
+  --model MODEL_ID --effort high)
 ```
 
 Add `--model-provider PROVIDER_ID` only when it differs from the server default.
 The values are model and provider ids. A native subagent role name is not a
-model id, and `create` does not apply that role's configuration. Threadctl does
-not currently expose per-root context size or reasoning effort; those remain
-server defaults.
+model id, and `create` does not apply that role's configuration. Other native
+settings, such as skill selection or context size, can be supplied in a
+configuration file.
 
 Approval behavior and execution boundaries are separate choices. The approval
 policy determines whether execution can pause for a client decision. A sandbox
@@ -67,7 +67,9 @@ access. A known named profile can provide a narrower reusable policy for a
 recurring worker.
 
 JSON output repeats the submitted values under `permissionRequest`. These are
-creation inputs, not an observation of the resulting runtime policy.
+creation inputs. `settings` contains the server-returned configuration, including
+the selected profile when supplied by Codex; neither proves that every intended
+access rule works.
 
 The successful response confirms creation, not model execution. A connection or
 malformed response after submission leaves the outcome uncertain; list recent
@@ -82,6 +84,65 @@ Notification, wake, starting, steering, interruption, and terminal-process
 control require the target to be loaded on the selected app-server. A thread id
 identifies persisted state under a Codex home, but it does not identify which
 server currently owns live execution.
+
+## Creation And Resume Configuration
+
+`create --config-file FILE` reads a caller-local TOML file and sends its settings
+in the native `thread/start.config` field. This permits worker-specific settings
+on a shared server without changing its global configuration:
+
+```sh
+WORKER=$(codex-threadctl create --cwd /path/to/project \
+  --config-file ./worker.toml --model MODEL_ID --permission-profile worker)
+```
+
+For example, `worker.toml` can exclude one skill from the worker's available
+catalog while leaving other skills enabled:
+
+```toml
+[[skills.config]]
+name = "lucid:lucid"
+enabled = false
+```
+
+The file contains ordinary Codex settings, not `[profiles.NAME]` tables or a
+profile selector. It is submitted as request overrides, not loaded as Codex's
+CLI `--profile` configuration layer. Supported keys and their behavior are
+defined by the selected Codex version.
+
+Explicit flags take precedence over file values. A permission-profile or sandbox
+flag also removes the file's competing `sandbox_mode` and `default_permissions`
+selectors. The file itself is not modified. TOML dates and non-finite numbers are
+rejected locally because they cannot be represented in the JSON request.
+
+The filename is resolved on the caller's host. Paths inside it retain native
+Codex semantics on the server; they are not rebased to the file's directory.
+Use absolute server-visible paths when location matters. Native skill paths were
+observed to resolve against the thread's working directory.
+
+Keep the file available and reapply it on cold resume:
+
+```sh
+codex-threadctl resume "$WORKER" --continue-goal --config-file ./worker.toml
+```
+
+Request overrides are not a durable profile binding. Isolated tests on Codex
+source revision `4aa808c` found that skill exclusions did not survive server
+restart without being resubmitted; resubmitting them restored the filtered
+catalog. A changed catalog does not erase older catalog text or previously read
+instructions from the conversation. Skill selection is not a filesystem access
+boundary.
+
+`--config-file` is available only for creation and unloaded-thread resume.
+`configure` exposes the smaller native live-settings API. Resume refuses file
+overrides for an already loaded thread rather than silently treating them as a
+live update. Another client can still win the loading race.
+
+JSON `configRequest.keys` lists submitted top-level configuration keys without
+echoing their potentially sensitive values. It is a request record, not an
+effective-configuration report. The separate `settings` field contains only
+settings that the server reports; it cannot confirm arbitrary file settings.
+Verify the behavior that matters before relying on it.
 
 ## Resuming
 
@@ -100,10 +161,56 @@ flag acknowledges possible continuation; it does not activate or change the
 goal. Resume also does not detect or coordinate another app-server that may
 have loaded the same thread.
 
+For an unloaded thread, settings overrides travel in the loading request so an
+active goal need not resume under old settings first:
+
+```sh
+codex-threadctl resume THREAD_ID --continue-goal --model MODEL_ID --effort high
+```
+
+Omitted settings use Codex's resume behavior: persisted turn settings where
+supported, and applicable configuration for the rest. This is the shared
+app-server resume path, not a standalone `codex exec resume` invocation with its
+own CLI configuration. JSON `settings` reports the server's response.
+
+Threadctl refuses resume overrides when the target is already loaded; use
+`configure` for supported live settings. Another client can still load it between
+that check and the request. If returned settings do not match explicit settings
+flags, the command reports a partial outcome: the thread was resumed and its
+goal may already be continuing, but the overrides were not confirmed.
+
 Current Codex rejects direct app-server input and raw-item injection to
 parent-owned v2 subagents. Control them through their native parent handle;
 threadctl wake, start, steer, and notify apply to threads that accept direct
 input.
+
+## Updating A Loaded Thread
+
+```sh
+codex-threadctl configure THREAD_ID --model MODEL_ID --effort high
+codex-threadctl configure THREAD_ID --permission-profile worker --approval-policy never
+```
+
+`configure` sends only the supplied fields to `thread/settings/update`, leaving
+the rest unchanged. Codex applies these settings to subsequent turns; the
+command neither interrupts current work nor starts a turn. The response confirms
+acceptance, not execution under the new settings. It requires a loaded thread
+and a Codex version supporting that method; an unsupported request fails without
+falling back to a new session or another launch path. Provider and context-window
+overrides are outside this command's scope.
+
+## Machine-Readable Failures
+
+With `--json`, runtime failures emit an `error` object with `code`, `outcome`,
+and `message`, plus known reconciliation identifiers. Exit status remains
+nonzero, and a human-readable error is also written to stderr. Parser errors
+retain argparse's usage output. `wake` retains its outcome record described below.
+
+`partial` means an earlier step succeeded, such as root creation before its
+initialization item failed. `uncertain` means a submitted operation may have
+taken effect. A generic `failed` outcome makes no claim about side effects;
+inspect before repeating a mutation. A known created thread id is included
+even when initialization fails, so recovery need not create another root.
 
 ## Advisory Notification
 

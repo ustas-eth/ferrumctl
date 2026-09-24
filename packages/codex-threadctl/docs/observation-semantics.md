@@ -40,6 +40,25 @@ atomic snapshot.
 The goal section is read-only. Its counters and status remain separate from
 app-server activity: an idle thread can still have an active goal.
 
+When goal or history reads fail, `inspect` keeps the available metadata and
+reports `goalError` or `historyError`. An empty turn section alongside an error
+means unavailable history, not an absence of work. Inspection does not resume
+the thread to obtain missing observations.
+
+## Settings
+
+Thread metadata includes model, provider, and reasoning effort when Codex
+returns them. For a local Unix endpoint, `recordedSettings` separately reports
+the newest rollout `turn_context`: its turn id, observation time, model, effort,
+approval policy, and available permission fields. JSON retains the recorded
+policy; plain output summarizes its profile and network setting.
+
+These are last-recorded turn settings, not a live configuration read. They may
+predate an accepted `configure` request and remain unavailable before the first
+turn or through a remote endpoint. Creation and resume instead return the
+server's settings at that operation. Neither observation establishes that a
+particular file or socket is accessible; check actual access when it matters.
+
 ## Turn History
 
 Codex reconstructs `thread/turns/list` from materialized history on each page.
