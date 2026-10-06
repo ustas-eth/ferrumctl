@@ -32,6 +32,7 @@ from .appserver import (
     wake_thread,
 )
 from .configuration import configure_thread, resume_thread
+from .attention import SUCCESSFUL_WAKES, wake_with_resume
 from .config_input import read_config_file
 from .context import read_context_state
 from .errors import AppServerResponseError, ThreadctlError, ThreadStateError
@@ -40,6 +41,7 @@ from .formatting import (
     format_agents,
     format_inspection,
     format_items,
+    format_loading_fields,
     format_messages,
     format_terminals,
     format_thread_list,
@@ -530,13 +532,17 @@ async def cmd_notify(args: argparse.Namespace) -> int:
 
 
 async def cmd_wake(args: argparse.Namespace) -> int:
+    if args.config_file and not args.resume:
+        raise ThreadctlError("--config-file requires --resume")
+    config = read_config_file(args.config_file)
     async with AppServer(args.endpoint, args.timeout) as app:
         thread_id = await resolve_thread_reference(
             app,
             args.thread_id,
             tree_thread_id=args.tree,
         )
-        result = await wake_thread(app, thread_id)
+        result = (await wake_with_resume(app, thread_id, config)
+                  if args.resume else await wake_thread(app, thread_id))
     if args.json:
         print(json.dumps(result, indent=2))
     else:
@@ -549,8 +555,10 @@ async def cmd_wake(args: argparse.Namespace) -> int:
             fields.append(
                 f"reason={json.dumps(result['reason'], ensure_ascii=False)}"
             )
+        if "loading" in result:
+            fields.extend(format_loading_fields(result["loading"]))
         print("\t".join(fields))
-    return 0 if result["outcome"] in {"confirmedStarted", "notSubmittedActive"} else 1
+    return 0 if result["outcome"] in SUCCESSFUL_WAKES else 1
 
 
 async def cmd_steer(args: argparse.Namespace) -> int:

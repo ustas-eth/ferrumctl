@@ -33,7 +33,7 @@ it does not use account credentials or contact the running app server:
 ```sh
 CODEX_THREADCTL_TEST_BINARY=/absolute/path/to/codex \
   PYTHONPATH=packages/codex-threadctl/src \
-  python3 -m unittest discover -s packages/codex-threadctl/tests -p test_config_native.py -v
+  python3 -m unittest discover -s packages/codex-threadctl/tests -p 'test_*native.py' -v
 ```
 
 ## Publishing Changes

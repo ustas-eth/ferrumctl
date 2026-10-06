@@ -2,9 +2,14 @@
 
 # Immediate Thread Control
 
-This reference describes the native operations behind notification, wake,
-root creation, settings, thread start, steering, resume, interruption, and
-terminal-process control.
+This reference describes immediate message delivery, execution, loading, and
+configuration. `send` carries agent context, `input` carries user input, and
+`wake` requests continuation without a message. Loading persisted state is a
+separate operation, exposed as `load` or explicitly composed with `--resume`.
+
+The compatibility commands retain their existing behavior and output:
+`notify` is agent delivery without wake, `start` is stopped-thread user input,
+`steer` is exact-turn user input, and `resume` is an alias of `load`.
 
 ## Creating An Independent Root
 
@@ -125,7 +130,7 @@ observed to resolve against the thread's working directory.
 Keep the file available and reapply it on cold resume:
 
 ```sh
-codex-threadctl resume "$WORKER" --continue-goal --config-file ./worker.toml
+codex-threadctl load "$WORKER" --continue-goal --config-file ./worker.toml
 ```
 
 Request overrides are not a durable profile binding. Isolated tests on Codex
@@ -146,19 +151,19 @@ effective-configuration report. The separate `settings` field contains only
 settings that the server reports; it cannot confirm arbitrary file settings.
 Verify the behavior that matters before relying on it.
 
-## Resuming
+## Loading Persisted State
 
-`resume` loads persisted state on the selected server without adding a user
+`load` calls native `thread/resume` on the selected server without adding a user
 message. Codex emits the thread's goal snapshot after the resume response and
 can immediately continue an active goal when the resumed thread is idle.
 
 Resume is a loading operation, not a failed-turn retry. If a thread is already
-loaded in `systemError`, resume can return that same state. Use `start` when a
+loaded in `systemError`, load can return that same state. Use `input` when a
 new ordinary input is needed or `wake` when its retained context and goal are
 enough to continue.
 
 App-server does not provide an atomic "resume only if no goal is active"
-operation. Threadctl therefore requires `--continue-goal` for every resume. The
+operation. Both `load` and its `resume` alias therefore require `--continue-goal`. The
 flag acknowledges possible continuation; it does not activate or change the
 goal. Resume also does not detect or coordinate another app-server that may
 have loaded the same thread.
@@ -167,7 +172,7 @@ For an unloaded thread, settings overrides travel in the loading request so an
 active goal need not resume under old settings first:
 
 ```sh
-codex-threadctl resume THREAD_ID --continue-goal --model MODEL_ID --effort high
+codex-threadctl load THREAD_ID --continue-goal --model MODEL_ID --effort high
 ```
 
 Omitted settings use Codex's resume behavior: persisted turn settings where
@@ -183,8 +188,7 @@ goal may already be continuing, but the overrides were not confirmed.
 
 Current Codex rejects direct app-server input and raw-item injection to
 parent-owned v2 subagents. Control them through their native parent handle;
-threadctl wake, start, steer, and notify apply to threads that accept direct
-input.
+threadctl wake, input, and send apply to threads that accept direct input.
 
 ## Updating A Loaded Thread
 
@@ -206,7 +210,8 @@ overrides are outside this command's scope.
 With `--json`, runtime failures emit an `error` object with `code`, `outcome`,
 and `message`, plus known reconciliation identifiers. Exit status remains
 nonzero, and a human-readable error is also written to stderr. Parser errors
-retain argparse's usage output. `wake` retains its outcome record described below.
+retain argparse's usage output. Wake outcomes and a `send --wake` partial result
+retain their operation records described below, rather than an `error` wrapper.
 
 `partial` means an earlier step succeeded, such as root creation before its
 initialization item failed. `uncertain` means a submitted operation may have
@@ -214,9 +219,9 @@ taken effect. A generic `failed` outcome makes no claim about side effects;
 inspect before repeating a mutation. A known created thread id is included
 even when initialization fails, so recovery need not create another root.
 
-## Advisory Notification
+## Agent Messages
 
-`notify` submits one raw `agent_message` to a loaded target through
+`send` submits one raw `agent_message` to a loaded target through
 `thread/inject_items`. Its author defaults to `CODEX_THREAD_ID` and its
 recipient is the target thread id. The text is advisory agent context rather
 than a user message.
@@ -226,12 +231,21 @@ output. An uncertain notification reports the same id for reconciliation. The
 materialized conversation view may assign its own item locator, so use the
 notice text or raw rollout when that original id must be found later.
 
-Notification is useful when authoritative content already exists in another
-state surface and an active target only needs a short pointer to it. It is not a
-replacement for a native message whose content is itself the exchange or whose
-purpose is lifecycle control.
+The text can be a complete report, question, request, or correction. Hierarchy
+does not change its role: a coordinator's message and a worker's report are both
+agent communication. When a stream is the chosen durable exchange, a message
+can instead announce its latest position. Neither a stream nor a separate file
+is required for direct communication.
 
-The operation does not start a turn. A notice can become available at a later
+`send --stdin` reads the exact text from redirected standard input instead of
+a positional message; `input --stdin` provides the same interface for deliberate
+user input. Empty text and simultaneous sources are rejected before connecting:
+
+```sh
+codex-threadctl send THREAD_ID --from WORKER_ID --stdin --json < report.txt
+```
+
+Plain `send` does not start a turn. A message can become available at a later
 model step, including during active reasoning, but app-server returns no native
 delivery disposition. Success means only that the injection request was
 accepted. It does not prove timing, retained materialization, model receipt, or
@@ -240,13 +254,19 @@ it announces.
 
 A connection failure after submission has an uncertain outcome. Do not retry
 automatically. Agent messages can be absorbed or retained by compaction, so
-`notify` is neither an ephemeral event channel nor a durable mailbox. Batch
-nearby announcements to the latest useful high-water position, and do not send
-notifications merely to acknowledge another notice.
+`send` is neither an ephemeral event channel nor a durable mailbox. For stream
+announcements, nearby appends can be batched into one notice of the latest
+position; the stream's durable acknowledgement needs no separate notice.
 
 A later response or state change does not reveal which channel prompted it.
 When transport choice matters, verify the operation that was actually submitted
 rather than inferring it from the recipient's behavior.
+
+`send --wake` follows accepted injection with an empty wake. JSON separates
+`messageOutcome: accepted`, its `itemId`, and the nested `wake` result. A failed
+or unconfirmed wake produces `outcome: partial` and nonzero exit status without
+undoing or resending the message. If injection itself is uncertain, no wake is
+attempted. Reconcile the agent-message id before repeating the send.
 
 ## Empty Wake
 
@@ -267,29 +287,62 @@ turn history. The machine outcomes are:
 - `rejected`: the observed state or app-server rejected the operation
 - `uncertain`: submission may have happened but the exact turn was not confirmed
 
-Only the first two outcomes exit successfully. Wake never resumes an unloaded
-thread, steers an active turn, adds instructions, or changes goal state.
+Only the first two outcomes exit successfully. Plain `wake` does not load an
+unloaded thread, intentionally steer active work, add instructions, or change
+goal state.
 `confirmedStarted` confirms the returned turn's identity, not successful model
 work or turn completion; observe the turn or goal separately when that matters.
 `notSubmittedActive` is a point-in-time result; it does not arrange another
 turn after the observed active turn ends.
 
+### Explicit Cold Recovery
+
+```sh
+codex-threadctl wake THREAD_ID --resume --config-file ./worker.toml
+codex-threadctl send THREAD_ID "The test results are ready." --wake --resume
+```
+
+`--resume` permits loading on the selected server, including possible goal
+continuation. For `send` it requires `--wake`, since loading can itself start
+work. A configuration file requires `--resume` and is submitted only if the
+thread was observed unloaded. Already-loaded targets keep their settings;
+`loading.configSubmitted` is false in that case. A true value records submission,
+not verification of every native setting. `loading.settings` contains the
+server-reported subset. Another client can still win the loading race.
+
+Cold recovery checks goal state around loading. With an active goal, it observes
+whether a new turn appears instead of immediately adding another turn. The
+additional successful outcome `confirmedResumed` means a new turn was observed
+after loading, not that its work succeeded or that this caller uniquely caused
+it. `continuationUnconfirmed` exits nonzero: loading succeeded but no new turn
+was observed within the confirmation timeout. Inspect before intervening again.
+When no active goal was observed, the normal empty-wake operation follows.
+For `send --wake`, a continuation observed before message submission does not
+substitute for attention to the new message: the normal post-send wake check
+applies, so a continuation that already finished cannot swallow the request.
+
+This is a sequence of native operations, not an atomic recovery transaction.
+Concurrent goal or turn changes can still race with it. Loading can begin goal
+work before `send` injects its text. If message submission fails after loading,
+the error preserves the loading result and message outcome. No step reactivates
+a stopped goal, changes models automatically, or retries a failed service.
+
 ## Starting Input
 
-`start` observes a loaded thread as `idle` or `systemError`, submits `turn/start`
-with a unique client message id, and waits until that message appears in
+`input` without `--turn` observes a loaded thread as `idle` or `systemError`,
+submits `turn/start` with a unique client message id, and waits until it appears in
 materialized turn history. The result reports the actual turn id and whether
 Codex started a new turn or steered the message into a turn that won the race.
 
 JSON output includes the client message id used for confirmation. Materialized
 item ids can change while an app-server catches up with earlier history, so
-`start` does not present the initially observed item id as a durable boundary.
+`input` does not present the initially observed item id as a durable boundary.
 After the turn stops, use its exact turn id to retrieve the response. The
 client message id confirms delivery; it does not identify the logical sender.
-When provenance matters, include it in the text with a natural label such as
-`From coordinator:`. The label provides context, not proof of identity.
+An origin label in the text does not change its user role.
 
-The stopped-state observation and `turn/start` request are not atomic.
+The canonical `input` result includes `messageRole: user`. The stopped-state
+observation and `turn/start` request are not atomic.
 Confirmation makes the outcome visible but cannot undo input that raced into
 active work. If confirmation fails, the operation is uncertain: retrying can
 duplicate the message.
@@ -302,13 +355,13 @@ observe the returned turn and stop or choose another policy if it fails again.
 Early Codex 0.144 item pagination omits turn attribution. A matching bare item
 proves persistence but not which turn accepted the message, so threadctl waits
 for an attributed item notification or turn view. If neither becomes
-available, `start` reports an uncertain outcome instead of substituting the
+available, `input` reports an uncertain outcome instead of substituting the
 submitted turn id.
 
 ## Steering
 
-`steer` uses native `turn/steer` with a required expected turn id. Codex rejects
-the request if that turn is no longer the active regular turn. Review and manual
+`input --turn TURN_ID` uses native `turn/steer` with an expected turn id. Codex
+rejects the request if it is no longer the active regular turn. Review and manual
 compaction turns do not accept steering.
 
 A rejected JSON-RPC request is a definite failure. A connection or protocol

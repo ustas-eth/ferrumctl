@@ -41,14 +41,13 @@ MAIN=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
 WORKER=$(codex-threadctl create --cwd "$PWD")
 
 codex-goalctl replace "$WORKER" \
-  "Review this package and mark the goal complete."
+  "Review this package and mark the goal complete." --token-budget 500000
 
 codex-wakectl add goal "$WORKER" \
   --status complete,blocked,budgetLimited,usageLimited \
   --to "$MAIN"
 
-codex-threadctl start "$WORKER" \
-  "From coordinator: A goal was assigned. Call get_goal and proceed."
+codex-threadctl wake "$WORKER" --resume
 ```
 
 Omit layers that are not needed. `create` makes a persisted root with no native
@@ -56,6 +55,11 @@ parent or automatic result return. A native subagent remains simpler when the
 current session should own the worker and direct external control is
 unnecessary. Native waiting can replace the wake only when the coordinator
 should remain active.
+
+The budget here is an example, not a default. Choose it for the assignment;
+omitting a budget leaves the goal unbounded. If creation used a configuration
+file, also pass it to `wake --resume --config-file FILE`: a cold worker can
+otherwise load without those overrides. A loaded worker keeps its settings.
 
 After the event, inspect each relevant state separately:
 
@@ -107,13 +111,13 @@ codex-wakectl add goal "$WORKER" \
   --to "$MAIN"
 ```
 
-Inspect before deciding whether intervention is useful. A non-blocking
-correction can use the currently observed turn id:
+Inspect before deciding whether intervention is useful. An agent correction
+can enter current context without pretending to be user input:
 
 ```sh
 codex-threadctl inspect "$WORKER"
-codex-threadctl steer "$WORKER" ACTIVE_TURN_ID \
-  "From coordinator: Apply this constraint to the next cycle and continue."
+codex-threadctl send "$WORKER" \
+  "Apply this constraint to the next cycle and continue."
 ```
 
 When a checkpoint must stop automatic continuation, goal status and turn
@@ -124,8 +128,8 @@ codex-goalctl update "$WORKER" --status paused
 codex-threadctl interrupt "$WORKER" ACTIVE_TURN_ID --wait
 
 codex-wakectl add stop "$WORKER" --to "$MAIN"
-codex-threadctl start "$WORKER" \
-  "From coordinator: Answer this checkpoint and stop: QUESTION"
+codex-threadctl send "$WORKER" \
+  "Answer this checkpoint and stop: QUESTION" --wake
 ```
 
 After reviewing the response, reactivate the assignment and direct the worker
@@ -133,8 +137,7 @@ back to its durable goal:
 
 ```sh
 codex-goalctl update "$WORKER" --status active
-codex-threadctl start "$WORKER" \
-  "From coordinator: Call get_goal and continue."
+codex-threadctl wake "$WORKER" --resume
 ```
 
 Skip interruption when current inspection already shows the worker idle.

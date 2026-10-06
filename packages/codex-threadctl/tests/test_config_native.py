@@ -46,6 +46,8 @@ class NativeServer:
     def __init__(self, home):
         self.home = home
         self.sequence = 0
+        self.turn_notifications = []
+        self.calls = []
 
     async def __aenter__(self):
         self.log = (self.home / 'server.log').open('a')
@@ -68,9 +70,13 @@ class NativeServer:
         raw = await asyncio.wait_for(self.process.stdout.readline(), self.timeout)
         if not raw:
             raise RuntimeError('test server exited: ' + (self.home / 'server.log').read_text())
-        return json.loads(raw)
+        message = json.loads(raw)
+        if "method" in message and "id" not in message:
+            self.turn_notifications.append(message)
+        return message
 
     async def request(self, method, params=None):
+        self.calls.append((method, params))
         self.sequence += 1
         self.process.stdin.write((json.dumps({
             'id': self.sequence, 'method': method, 'params': params or {},

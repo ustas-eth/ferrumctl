@@ -13,7 +13,8 @@ an ordered sequence of immutable entries with one cumulative acknowledgement
 per reader. It does not notify participants, start turns, authenticate
 identities, or decide how collaborators should respond.
 
-A short direct exchange is usually better served by native messaging. Once a
+A short direct exchange is usually better served by native messaging or, when
+its skill is available, threadctl `send`. Once a
 stream is authoritative, keep substantive peer content there and use other
 channels for attention or lifecycle control.
 
@@ -68,7 +69,7 @@ and prompt attention would help, announce only the latest committed position.
 `/root/reviewer`:
 
 ```sh
-codex-threadctl notify "$PEER" \
+codex-threadctl send "$PEER" \
   "Stream $STREAM has a checkpoint through $POSITION."
 ```
 
@@ -76,9 +77,9 @@ Notification and wake remain separate from the stream. Missing, delayed,
 reordered, or duplicate notices are reconciled by listing after the reader's
 acknowledgement.
 
-Use native messaging when the message itself is the exchange, the recipient is
-a parent-owned v2 child, or lifecycle must change. If an idle recipient must
-act, start it through its lifecycle owner; notification alone cannot do that.
+For a parent-owned v2 child, use its native parent message path. For a directly
+controlled idle recipient that must act, add `--wake` to the send. The message
+and wake are still separate operations from durable publication.
 
 ## Invariants
 
@@ -93,6 +94,8 @@ act, start it through its lifecycle owner; notification alone cannot do that.
   retrying to avoid an accidental duplicate.
 - Commands under the same host user share the default database. Use another
   `--state PATH` only when the workflow deliberately selected it.
+- Only `create` initializes a database. A missing or inaccessible store is a
+  path/access problem to resolve, not a reason to create a replacement stream.
 - Use `--json` when another program will parse output.
 
 ## References
@@ -102,6 +105,8 @@ reference.
 
 - Read `references/stream-semantics.md` when reasoning about concurrency,
   identity continuity, custom state, or an ambiguous failure.
+- Read `references/restricted-operations.md` when publication must be exposed
+  without access to other entries or the underlying database.
 - Read `references/coordination-principles.md` when designing a workflow across
   multiple ferrumctl state or control surfaces.
 - Read `references/peer-workflows.md` when setting up sustained collaboration,

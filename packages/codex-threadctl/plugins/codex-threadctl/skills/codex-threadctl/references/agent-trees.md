@@ -86,8 +86,8 @@ other records bound to a stable identity rather than a reusable routing name.
 - `parent` means the native parent owns lifecycle input.
 - `unknown` means the capability was not available from the selected server.
 
-For `parent` agents, current Codex rejects direct `start`, `steer`, idle `wake`,
-and advisory `notify`. It also reserves external goal changes and raw context
+For `parent` agents, current Codex rejects direct `input`, idle `wake`,
+and agent `send`. It also reserves external goal changes and raw context
 injection for the native owner. Use the native parent handle to continue or stop
 the child. Read-only inspection, retained history, goal reads, condition
 observation, and exact interruption remain separate surfaces.

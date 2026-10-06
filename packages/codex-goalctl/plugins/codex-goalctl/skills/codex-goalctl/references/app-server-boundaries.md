@@ -58,16 +58,9 @@ a canonical task name or resuming a child does not transfer ownership.
 Changing a goal does not reliably wake a CLI-owned thread. A worker may not act
 on the new goal until it receives another input turn or is otherwise resumed.
 
-After assigning work, send a small normal message when the worker should act
-immediately:
-
-```text
-From coordinator: A goal was assigned. Call get_goal and proceed.
-```
-
 Use native subagent input when a native subagent handle is available. For an
-independent root, use `codex-threadctl start` when immediate thread-id control
-is available and the worker is loaded on the selected shared app-server.
-Conditional or delayed delivery remains a separate scheduler concern. The
-source label distinguishes the follow-up from direct human input; it does not
-prove identity or override existing instructions.
+independent root, `codex-threadctl wake THREAD_ID --resume` can continue from
+the assigned goal without adding user input, when immediate thread control is
+available. Reapply any creation configuration file if cold loading needs those
+overrides. Agent requests or corrections can use `send --wake`; conditional or
+delayed delivery remains a separate scheduler concern.

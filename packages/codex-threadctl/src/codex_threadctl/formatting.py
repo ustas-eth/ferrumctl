@@ -9,6 +9,13 @@ def quoted(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
+def format_loading_fields(loading: dict[str, Any]) -> list[str]:
+    return [
+        f"loading={loading['outcome']}",
+        "config=" + ("submitted" if loading["configSubmitted"] else "notApplied"),
+    ]
+
+
 def format_time(timestamp: int | None) -> str:
     if timestamp is None:
         return "-"
@@ -199,7 +206,7 @@ def format_inspection(inspection: dict[str, Any]) -> str:
                     "goal",
                     str(goal.get("status") or "unknown"),
                     f"tokens={goal.get('tokensUsed', 0)}",
-                    f"budget={goal.get('tokenBudget') if goal.get('tokenBudget') is not None else '-'}",
+                    f"budget={goal.get('tokenBudget') if goal.get('tokenBudget') is not None else 'unbounded'}",
                     f"time={goal.get('timeUsedSeconds', 0)}s",
                 ]
             )

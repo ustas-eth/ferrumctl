@@ -79,7 +79,9 @@ def build_parser() -> argparse.ArgumentParser:
     append.add_argument("stream_id", help="stream to append to")
     add_identity_option(append, "--author", dest="author")
     append.add_argument("--reply-to", type=positive_int, help="position being answered")
-    append.add_argument("message", type=nonempty_text, help="entry text")
+    source = append.add_mutually_exclusive_group(required=True)
+    source.add_argument("message", nargs="?", type=nonempty_text, help="entry text")
+    source.add_argument("--stdin", action="store_true", help="read entry text from standard input")
     add_global_options(append, defaults=False)
     append.set_defaults(func=cmd_append)
 

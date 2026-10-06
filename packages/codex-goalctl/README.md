@@ -59,15 +59,16 @@ codex-goalctl replace "$WORKER" \
   "Review this package and mark the goal complete."
 ```
 
-Goal writes do not reliably wake a CLI-owned thread. Send a short follow-up
-message through the native subagent handle when you have one. If only the
-thread id remains, `codex-threadctl start` can deliver the follow-up when
-threadctl is installed and the worker accepts direct app-server input.
-Parent-owned children must be continued through their native parent handle:
+Goal writes do not reliably wake a CLI-owned thread. Continue a native child
+through its parent handle. For an independent root, when threadctl is installed:
 
-```text
-From coordinator: A goal was assigned. Call get_goal and proceed.
+```sh
+codex-threadctl wake "$WORKER" --resume
 ```
+
+This continues from the goal without adding another user instruction. If the
+worker needs its creation configuration on cold loading, reapply that file with
+`--config-file FILE`.
 
 Use `--json` when another program will parse output.
 

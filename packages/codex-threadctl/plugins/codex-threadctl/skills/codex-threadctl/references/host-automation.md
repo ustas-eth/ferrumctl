@@ -76,8 +76,7 @@ WORKER=$(codex-threadctl --endpoint "$ENDPOINT" create \
 codex-threadctl --endpoint "$ENDPOINT" loaded
 codex-threadctl --endpoint "$ENDPOINT" inspect "$WORKER"
 codex-goalctl replace "$WORKER" "Work from this external assignment."
-codex-threadctl --endpoint "$ENDPOINT" start "$WORKER" \
-  "From coordinator: A goal was assigned. Call get_goal and proceed."
+codex-threadctl --endpoint "$ENDPOINT" wake "$WORKER" --resume
 ```
 
 The new worker is an independent root rather than a child in a native agent

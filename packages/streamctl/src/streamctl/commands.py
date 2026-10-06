@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 
 from .errors import StreamctlError
 from .state import acknowledge, append_entry, create_stream, list_entries
@@ -34,12 +35,23 @@ def cmd_create(args: argparse.Namespace) -> int:
 
 
 def cmd_append(args: argparse.Namespace) -> int:
+    message = args.message
+    if args.stdin:
+        if sys.stdin.isatty():
+            raise StreamctlError("--stdin requires redirected entry text")
+        try:
+            message = sys.stdin.read()
+            message.encode("utf-8")
+        except (OSError, UnicodeError) as exc:
+            raise StreamctlError("could not read entry text from standard input") from exc
+        if not message.strip():
+            raise StreamctlError("entry text from standard input must not be empty")
     author = current_identity(args.author, "--author")
     result = append_entry(
         args.state,
         args.stream_id,
         author,
-        args.message,
+        message,
         reply_to=args.reply_to,
     )
     if args.json:

@@ -13,10 +13,22 @@ An append transaction records the entry and advances the stream tail together.
 `--reply-to` can name only an existing position in the same stream. It is a
 reference, not a branch or delivery instruction.
 
+`append --stdin` reads exact entry text from redirected standard input instead
+of a positional message. Empty text and simultaneous sources are rejected
+before opening the store. This supports pipelines and fixed-operation adapters
+without putting payload text in command arguments.
+
 Commands under the same host user share the default database. `--state` can
 select another database; participants using different databases do not share
 state. When a known stream is not found, verify both its exact id and the
 selected database before creating a replacement.
+
+Only `create` initializes the database and schema. `append` and `ack` open an
+existing store for writing; `list` opens it read-only without changing schema or
+permissions. Errors identify the operation and selected path. A successful read
+does not prove write access. SQLite may also need access to its WAL and shared
+memory files; a read-only open preserves live WAL visibility rather than treating
+the database as an immutable snapshot.
 
 ## Reader Acknowledgements
 

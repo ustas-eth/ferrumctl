@@ -31,13 +31,39 @@ def prepare_state_path(path: Path) -> None:
         path.chmod(0o600)
 
 
-def open_state(path: Path) -> sqlite3.Connection:
+def open_state(
+    path: Path, *, initialize: bool = False, readonly: bool = False,
+) -> sqlite3.Connection:
     path = path.expanduser().resolve()
-    prepare_state_path(path)
-    conn = sqlite3.connect(path, timeout=5.0, isolation_level=None)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA busy_timeout = 5000")
-    conn.execute("PRAGMA foreign_keys = ON")
+    if initialize and readonly:
+        raise ValueError("cannot initialize a read-only store")
+    conn = None
+    try:
+        if initialize:
+            prepare_state_path(path)
+        mode = "ro" if readonly else "rw"
+        conn = sqlite3.connect(
+            f"{path.as_uri()}?mode={mode}", uri=True, timeout=5.0, isolation_level=None,
+        )
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA busy_timeout = 5000")
+        conn.execute("PRAGMA foreign_keys = ON")
+        if initialize:
+            initialize_schema(conn)
+        else:
+            # Validate, never repair or initialize a selected existing database.
+            conn.execute("SELECT id, tail_position FROM streams LIMIT 0")
+            conn.execute("SELECT stream_id, position, body FROM entries LIMIT 0")
+            conn.execute("SELECT stream_id, reader, ack_through FROM readers LIMIT 0")
+        return conn
+    except (OSError, sqlite3.Error) as exc:
+        if conn is not None:
+            conn.close()
+        stage = "initialize" if initialize else "open existing"
+        raise StreamctlError(f"cannot {stage} stream store {path}: {exc}") from exc
+
+
+def initialize_schema(conn: sqlite3.Connection) -> None:
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute(
         """
@@ -77,7 +103,6 @@ def open_state(path: Path) -> sqlite3.Connection:
         )
         """
     )
-    return conn
 
 
 def now_seconds() -> int:
@@ -108,7 +133,7 @@ def require_stream(conn: sqlite3.Connection, stream_id: str) -> sqlite3.Row:
 def create_stream(path: Path, label: str | None = None) -> dict[str, Any]:
     stream_id = uuid.uuid4().hex
     created_at = now_seconds()
-    conn = open_state(path)
+    conn = open_state(path, initialize=True)
     try:
         conn.execute(
             """
@@ -190,7 +215,7 @@ def list_entries(
     after: int | None = None,
     limit: int = 20,
 ) -> dict[str, Any]:
-    conn = open_state(path)
+    conn = open_state(path, readonly=True)
     try:
         conn.execute("BEGIN")
         stream = require_stream(conn, stream_id)

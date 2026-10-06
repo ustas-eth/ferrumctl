@@ -82,7 +82,7 @@ the observed tail when updates to in-progress items matter.
 
 An app-server can initially materialize a live request before it has caught up
 with earlier history. The request's generated item id can then change as the
-history is rebuilt. `start` therefore returns a stable client message id for
+history is rebuilt. User `input` therefore returns a stable client message id for
 delivery correlation and the actual turn id for later response retrieval, not
 the early item id as a range boundary.
 

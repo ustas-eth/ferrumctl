@@ -56,6 +56,8 @@ class FormattingTests(unittest.TestCase):
         self.assertIn("context\tused=50000\twindow=200000\tleft=80%", output)
         self.assertIn("goal\tactive\ttokens=100\tbudget=1000\ttime=3s", output)
         self.assertIn('commandExecution:completed\t"make test"\tduration=<1ms\texit=0', output)
+        inspection["goal"]["tokenBudget"] = None
+        self.assertIn("budget=unbounded", formatting.format_inspection(inspection))
 
     def test_message_preview_is_single_line_and_bounded(self):
         preview = formatting.message_preview("first\n" + "x" * 200)

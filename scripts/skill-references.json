@@ -1,6 +1,14 @@
 {
   "references": [
     {
+      "source": "docs/restricted-operations.md",
+      "targets": [
+        "packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl/references/restricted-operations.md",
+        "packages/streamctl/plugins/streamctl/skills/streamctl/references/restricted-operations.md",
+        "packages/codex-wakectl/plugins/codex-wakectl/skills/codex-wakectl/references/restricted-operations.md"
+      ]
+    },
+    {
       "source": "docs/coordination-principles.md",
       "targets": [
         "packages/codex-goalctl/plugins/codex-goalctl/skills/codex-goalctl/references/coordination-principles.md",

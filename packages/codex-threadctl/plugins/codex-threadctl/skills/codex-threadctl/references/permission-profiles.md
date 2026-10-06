@@ -24,7 +24,7 @@ profile files nor lists available names. An unknown name is rejected. A
 permission profile is distinct from a general Codex CLI `--profile` and a
 native subagent role.
 
-For worker-specific skills or other general settings, `create` and `resume`
+For worker-specific skills or other general settings, `create` and `load`
 accept `--config-file FILE`. This submits native request overrides rather than
 selecting a permission profile or CLI profile. See
 [Creation And Resume Configuration](lifecycle-control.md#creation-and-resume-configuration).
@@ -58,6 +58,11 @@ Before relying on a new profile, exercise benign allowed reads and writes,
 denied reads, and any required local sockets from the worker. Check that the
 worker also receives its intended instructions: restricted filesystem reads can
 affect Codex's AGENTS.md discovery and loading.
+
+Execution permissions restrict local access, not the thread-control methods
+available after connecting to app-server. For workers that need only reporting,
+publication, or self-wakes, see
+[Restricted Worker Operations](https://github.com/ustas-eth/ferrumctl/blob/main/docs/restricted-operations.md).
 
 When the selected profile appears ineffective, check the server's configuration
 and launch flags against Codex's documented precedence rules. Legacy

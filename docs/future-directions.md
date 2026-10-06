@@ -18,6 +18,10 @@ already solve cleanly.
   materialized item identities visible.
 - **Stream reader status:** report the stream tail and each known reader's
   acknowledged position, unread count, and last activity in one compact view.
+- **Retry-safe publication:** consider caller-supplied request ids for stream
+  appends and scheduled jobs, with exact-payload conflict checks and durable
+  receipts. Write-only callers need reconciliation without reading the target;
+  native message item ids alone do not establish duplicate suppression.
 - **Thread predicates:** expose loaded state, thread status, active flags,
   context remaining, and activity age through exit status for shell and
   wakectl composition. Avoid a general `stalled` judgment.

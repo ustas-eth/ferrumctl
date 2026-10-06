@@ -24,8 +24,9 @@ Use native subagent input when the current session owns the live handle and
 needs to send an immediate message. Use native wait or poll when the current
 turn owns the live subagent or terminal handle and should stay active.
 
-`codex-threadctl start` and `steer` provide immediate thread-id control when no
-native handle is available.
+`codex-threadctl send` carries immediate agent communication when no native
+handle is available; `--wake` also requests attention if stopped. `input` is
+reserved for deliberate user input, with `--turn` for exact-turn steering.
 
 Use `codex-wakectl wait` when a script or thread-id-only controller needs an
 exit status from a Codex condition. It polls in the invoking process, exits `0`
@@ -66,7 +67,7 @@ Codex turn. Its process or service identity should be retained for inspection
 and cleanup, and diagnostics should be written somewhere the resumed session
 can read.
 
-The watcher can instead deliver directly with `codex-threadctl wake` or `start`
+The watcher can instead deliver directly with `codex-threadctl wake` or `send --wake`
 once the target is idle; an equivalent app-server client is the lower-level
 alternative.
 This avoids the second polling step, but the watcher then owns target
@@ -114,8 +115,8 @@ By default, an event waits for a target with no running turn. An `idle` or
 `systemError` target can start the event turn. `--notify-active` instead injects
 the event into current work and finishes the job without starting another turn.
 It is appropriate only when prompt awareness is useful and the event does not
-need a separate response. Use immediate `codex-threadctl steer` with an exact
-turn id for a correction or constraint.
+need a separate response. An immediate agent correction or constraint can use
+`codex-threadctl send` without adding user input.
 
 A running worker can send a handoff before its own final response is committed.
 Treat the handoff as readiness; use a stop condition when the receiver depends

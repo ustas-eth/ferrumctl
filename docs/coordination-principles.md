@@ -50,6 +50,9 @@ SQLite state is shared by callers using the same host user and state path.
 Thread ids, stream authors, readers, and message labels provide provenance and
 scope; they are not authentication.
 
+For selected worker operations without direct access to shared sockets or
+stores, see [Restricted Worker Operations](https://github.com/ustas-eth/ferrumctl/blob/main/docs/restricted-operations.md).
+
 ## Choosing Control
 
 Use a native subagent handle for direct input, lifecycle control, waiting, and
@@ -67,11 +70,13 @@ when attention must survive the current turn or wait for a later condition. A
 normal queued wake adds a short agent event and starts an empty turn; schedule
 ordinary input only when its text is deliberately the instruction.
 
-Keep durable assignment in goal state. Keep durable peer content in a stream.
-When a stream is authoritative, use native input or advisory notification only
-to draw attention to its committed position rather than copying its content into
-several conversations. Notification does not start an idle recipient; lifecycle
-control remains with the native owner or a target that accepts direct input.
+Keep durable assignment in goal state. For direct agent communication, use
+native messages or threadctl `send`; `input` deliberately carries the user role.
+A coordinator is still an agent. A stream adds shared ordering and reader
+acknowledgements when those are needed. Once a stream is authoritative, announce
+its committed position rather than copying its contents across conversations.
+Agent-message acceptance and execution remain separate; `send --wake` composes
+them for a directly controlled recipient.
 
 Use account limits to gate work only when a policy supplies the threshold.
 
