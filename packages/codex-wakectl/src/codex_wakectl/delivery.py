@@ -10,12 +10,14 @@ from codex_threadctl.appserver import (
     deliver_input,
     get_thread_status,
     list_loaded,
+    list_thread_turns,
     notify_thread,
-    resume_thread,
     wake_thread,
 )
+from codex_threadctl.attention import CONTROL_ERRORS, load_for_attention, wake_after_load
 from codex_threadctl.errors import (
     DirectInputUnsupported,
+    NotificationUncertain,
     ThreadNotLoaded,
     ThreadStateError,
     ThreadctlError,
@@ -61,57 +63,67 @@ async def deliver_event(
 ) -> dict[str, Any]:
     action = job["action"]
     thread_id = job["targetThreadId"]
-    resumed = False
-    if thread_id not in await list_loaded(app):
-        if not action.get("resume"):
-            raise ThreadNotLoaded(
-                f"thread is not loaded on this app-server: {thread_id}"
-            )
-        await resume_thread(app, thread_id, continue_goal=True)
-        resumed = True
+    loading = None
+    if action.get("resume"):
+        loading = await load_for_attention(app, thread_id, action.get("resumeConfig"))
+    elif thread_id not in await list_loaded(app):
+        raise ThreadNotLoaded(f"thread is not loaded on this app-server: {thread_id}")
+    resumed = loading is not None and loading["outcome"] == "resumed"
 
     status = status_name(await get_thread_status(app, thread_id))
     item_id = event_item_id(job)
+
+    async def inject_event() -> dict[str, Any]:
+        try:
+            result = await notify_thread(
+                app, thread_id, "wakectl", event_text(job, reason), item_id=item_id,
+            )
+        except NotificationUncertain as exc:
+            raise EventDeliveryUncertain(item_id, reason=str(exc), loading=loading) from exc
+        if loading is not None:
+            result["loading"] = loading
+        return result
+
     if status == "active":
         if not (action.get("notifyActive") or resumed):
             raise ThreadStateError(
                 "thread is active; active notification was not allowed"
             )
-        result = await notify_thread(
-            app,
-            thread_id,
-            "wakectl",
-            event_text(job, reason),
-            item_id=item_id,
-        )
-        result.update(
-            {
-                "turnId": await _active_turn_id(app, thread_id),
-                "delivery": "resumedActive" if resumed else "notifiedActive",
-            }
-        )
-        return result
-    if not can_start_turn(status):
+        if not resumed:
+            result = await inject_event()
+            result.update({"turnId": await _active_turn_id(app, thread_id),
+                           "delivery": "notifiedActive"})
+            return result
+    elif not can_start_turn(status):
         if status == "notLoaded":
             raise ThreadNotLoaded(
                 f"thread is not loaded on this app-server: {thread_id}"
             )
         raise ThreadStateError(f"thread status is {status}; refusing to deliver event")
 
-    notification = await notify_thread(
-        app,
-        thread_id,
-        "wakectl",
-        event_text(job, reason),
-        item_id=item_id,
-    )
-    wake = await wake_thread(app, thread_id)
+    # A continuation that finished before injection cannot attend to this event.
+    continuation_before_event = status == "active"
+    if resumed and not continuation_before_event:
+        turns = await list_thread_turns(app, thread_id, limit=1)
+        continuation_before_event = bool(
+            turns and turns[0]["id"] != loading["previousTurnId"]
+        )
+    notification = await inject_event()
+    try:
+        wake = (await wake_after_load(app, thread_id, loading)
+                if loading is not None and not continuation_before_event
+                else await wake_thread(app, thread_id))
+    except CONTROL_ERRORS as exc:
+        raise EventDeliveryUncertain(item_id, reason=str(exc), loading=loading) from exc
     outcome = wake["outcome"]
-    if outcome == "confirmedStarted":
+    if outcome in {"confirmedStarted", "confirmedResumed"}:
+        mode = "resumedStarted" if resumed else "eventStarted"
+        if outcome == "confirmedResumed":
+            mode = "resumedContinued"
         notification.update(
             {
                 "turnId": wake.get("turnId"),
-                "delivery": "resumedStarted" if resumed else "eventStarted",
+                "delivery": mode,
             }
         )
         return notification
@@ -119,7 +131,7 @@ async def deliver_event(
         notification.update(
             {
                 "turnId": wake.get("turnId"),
-                "delivery": "eventNotifiedActive",
+                "delivery": "resumedActive" if resumed and status == "active" else "eventNotifiedActive",
             }
         )
         return notification
@@ -130,6 +142,7 @@ async def deliver_event(
         item_id,
         turn_id=wake.get("turnId"),
         reason=reason,
+        loading=loading,
     )
 
 

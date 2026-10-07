@@ -88,7 +88,9 @@ fire number. Existing context remains authoritative.
 - Add `--notify-active` when the event should enter current work instead of
   waiting for a separate turn.
 - Add `--resume` when wakectl should load an unloaded target. Resume can
-  immediately continue an active goal.
+  immediately continue an active goal. If cold loading needs worker-specific
+  settings, add `--config-file FILE`; the job saves the TOML settings and
+  applies them only when loading, not to an already loaded thread.
 - Add `--input MESSAGE` only when delayed ordinary input is deliberately the
   instruction. It waits until no turn is running and must remain valid if late
   or duplicated.

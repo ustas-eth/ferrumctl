@@ -11,7 +11,7 @@ workflow layers; they do not change the semantics of the remaining tools.
 
 | Surface | Authority | Does not establish |
 | --- | --- | --- |
-| Goal state | Durable objective, status, budget, and counters | Turn execution or message delivery |
+| Goal state | Durable objective, status, budget, and counters | Turn execution, message delivery, or retraction of earlier instructions |
 | Thread state | Live app-server status and materialized history | An atomic or immutable transcript |
 | Wake queue | Conditions and later event or input delivery | The target's result |
 | Stream state | Ordered entries and reader acknowledgements | Notification, membership, or authorization |
@@ -83,6 +83,35 @@ Use account limits to gate work only when a policy supplies the threshold.
 Use memory transfer only when opaque compaction state is itself the needed
 input. An in-place injection is durable; use a disposable thread when the
 original conversation must remain unchanged.
+
+## Goals And Conversation Framing
+
+Goal state and user input are separate. Assigning or activating a goal does not
+replace earlier user messages. The latest user message can keep framing what
+the agent is doing, how it should respond, and when it should stop, even after
+later goal changes and substantial work.
+
+Compaction can retain that message while compressing the circumstances that
+made it appropriate. An empty wake continues the same conversation. Neither
+operation establishes which earlier instructions still apply to the current
+assignment.
+
+A brief, deliberate anchoring user message can renew the ongoing frame when a
+goal is assigned or after situational steering. For example:
+
+> Continue working autonomously toward the active goal, incorporating relevant
+> updates from this conversation.
+
+The goal still carries the objective, status, and budget. The message explains
+how the conversation relates to that work, preserving continuing constraints
+and clarifying those that have changed. Anchoring is useful when the framing
+needs renewal, rather than after every goal update or wake.
+
+A human can provide that message directly; threadctl `input` provides the
+explicit user-role path for directly controlled threads. Ordinary agent reports
+and coordination still use native messages or `send`. When an orchestrator or
+host process supplies user input, identify its origin in the text rather than
+presenting it as direct human speech.
 
 ## Independent Boundaries
 

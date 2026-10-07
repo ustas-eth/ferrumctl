@@ -22,10 +22,10 @@ messages, waiting, and control when you own the live child handle.
 | Load persisted state, allowing a goal to continue | `load THREAD_ID --continue-goal` |
 | Stop an exact turn | `interrupt THREAD_ID TURN_ID --wait` |
 
-Your message remains agent communication when you are the coordinator or are
-reporting to one. `send` carries the text itself; it is not limited to notices
-or file pointers. Its author defaults to `CODEX_THREAD_ID`; use `--from` when a
-host process needs an explicit identity. Author labels are provenance, not
+Routine coordinator requests and worker reports are agent communication.
+`send` carries the text itself; it is not limited to notices or file pointers.
+Its author defaults to `CODEX_THREAD_ID`; use `--from` when a host process needs
+an explicit identity. Author labels are provenance, not
 authentication or added authority.
 
 `send` alone does not start work. `--wake` adds a separate empty-turn request if
@@ -33,6 +33,11 @@ the recipient is stopped. Acceptance does not prove that the model read or acted
 on the message. Agent context may survive compaction, but is not a durable
 mailbox. Use a stream, when available, if shared ordering and processed-through
 acknowledgements matter; an ordinary direct exchange does not require one.
+
+Use `input` deliberately when user-role instructions are needed, including a
+brief anchor for ongoing goal-driven work after a focused exchange. Identify
+the sender in the text; read `references/coordination-principles.md` for when
+renewing that frame is useful.
 
 The older `notify`, `start`, `steer`, and `resume` commands remain compatible:
 they correspond to `send`, `input`, `input --turn`, and `load` respectively.

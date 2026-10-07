@@ -120,6 +120,10 @@ flag also removes the file's competing `sandbox_mode` and `default_permissions`
 selectors. The file itself is not modified. TOML dates and non-finite numbers are
 rejected locally because they cannot be represented in the JSON request.
 
+Reusing a file replays its values, not the effective settings of an earlier
+command. If creation flags overrode that file, carry those selections into the
+loading request or use a recovery file containing the intended settings.
+
 The filename is resolved on the caller's host. Paths inside it retain native
 Codex semantics on the server; they are not rebased to the file's directory.
 Use absolute server-visible paths when location matters. Native skill paths were

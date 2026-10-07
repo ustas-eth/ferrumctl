@@ -148,8 +148,9 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_resume_can_continue_goal_and_inject_event_into_active_turn(self) -> None:
         with (
-            mock.patch.object(delivery, "list_loaded", mock.AsyncMock(return_value=[])),
-            mock.patch.object(delivery, "resume_thread", mock.AsyncMock()) as resume,
+            mock.patch.object(delivery, "load_for_attention", mock.AsyncMock(return_value={
+                "outcome": "resumed", "configSubmitted": False,
+            })) as load,
             mock.patch.object(
                 delivery,
                 "get_thread_status",
@@ -164,15 +165,15 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
             ),
             mock.patch.object(
                 delivery,
-                "_active_turn_id",
-                mock.AsyncMock(return_value="goal-turn"),
+                "wake_thread",
+                mock.AsyncMock(return_value={"outcome": "notSubmittedActive", "turnId": "goal-turn"}),
             ),
         ):
             result = await delivery.deliver_event(
                 object(), event_job(resume=True), "matched"
             )
 
-        resume.assert_awaited_once_with(mock.ANY, "target", continue_goal=True)
+        load.assert_awaited_once_with(mock.ANY, "target", None)
         self.assertEqual(result["delivery"], "resumedActive")
         self.assertEqual(result["turnId"], "goal-turn")
 

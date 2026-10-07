@@ -93,9 +93,11 @@ App-server `idle` means no turn is running. It does not mean the target lacks an
 active goal or is free for unrelated work.
 
 An idle worker with an active externally assigned goal may not have observed
-that goal. An event wake starts a turn without adding another instruction; the
-goal remains the authority. Use app-server status to choose a delivery policy,
-not to infer work ownership.
+that goal. An event wake restores attention using the current goal and retained
+conversation; it does not renew the user-message framing. See
+[Goals And Conversation Framing](https://github.com/ustas-eth/ferrumctl/blob/main/docs/coordination-principles.md#goals-and-conversation-framing)
+when an earlier exchange still shapes the worker's behavior. Use app-server
+status to choose a delivery policy, not to infer work ownership.
 
 A terminal goal status and a completed turn are separate boundaries. If a
 coordinator needs the worker's final response, wait for the current turn to stop
@@ -148,6 +150,11 @@ remain safe if delayed or duplicated.
 if that thread has an active goal, Codex can continue the goal immediately.
 The event is then injected into that active turn. Resume does not coordinate a
 copy of the same thread loaded on another app-server.
+
+When recovery needs request-specific settings, add `--config-file FILE` to the
+resume job. This uses a saved snapshot for cold loading, so an ordinary time
+wake does not need a separate config-aware checkpoint script. See
+[Delivery](runtime-semantics.md#delivery) for snapshot and confirmation semantics.
 
 Record job ids when a workflow will need cleanup. The default queue is shared;
 proximity in `codex-wakectl list` does not establish ownership.

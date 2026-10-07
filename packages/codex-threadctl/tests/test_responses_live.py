@@ -2,9 +2,11 @@
 import asyncio
 import json
 import os
+import sys
 import unittest
 import uuid
 from pathlib import Path
+from unittest import mock
 
 from websockets.asyncio.client import connect
 
@@ -29,10 +31,14 @@ class CaptureApp:
 
 @unittest.skipUnless(
     os.environ.get("CODEX_THREADCTL_TEST_AUTH_FILE"),
-    "opt-in subscription Responses backend (three small model requests)",
+    "opt-in subscription Responses backend (four small model requests)",
 )
 class LiveResponsesTests(unittest.IsolatedAsyncioTestCase):
-    async def test_generated_agent_ids_work_on_websocket_continuations(self):
+    async def test_agent_and_scheduled_event_ids_work_on_websocket_continuations(self):
+        wakectl_source = str(Path(__file__).resolve().parents[2] / "codex-wakectl" / "src")
+        with mock.patch.object(sys, "path", [wakectl_source, *sys.path]):
+            from codex_wakectl.delivery import event_item_id
+
         auth = json.loads(Path(os.environ["CODEX_THREADCTL_TEST_AUTH_FILE"]).read_text())
         tokens = auth["tokens"]
         headers = {
@@ -43,6 +49,10 @@ class LiveResponsesTests(unittest.IsolatedAsyncioTestCase):
         app = CaptureApp()
         await create_thread(app, "/synthetic")
         await notify_thread(app, app.thread_id, "reviewer", "Synthetic report: reply OK.")
+        await notify_thread(
+            app, app.thread_id, "wakectl", "Scheduled event backend-fixture/1: scheduled time reached.",
+            item_id=event_item_id({"id": "backend-fixture", "fireCount": 0}),
+        )
         body = {
             "type": "response.create",
             "model": os.environ.get("CODEX_THREADCTL_TEST_MODEL", "gpt-6-luna"),

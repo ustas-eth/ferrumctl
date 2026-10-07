@@ -29,6 +29,7 @@ JOB_COLUMNS = {
     "lastClientMessageId": "last_client_message_id",
     "lastDeliveryMode": "last_delivery_mode",
     "lastEventItemId": "last_event_item_id",
+    "lastLoading": "last_loading_json",
     "lastReason": "last_reason",
     "lastError": "last_error",
     "lastTokensUsedBucket": "last_tokens_used_bucket",
@@ -45,6 +46,7 @@ OPTIONAL_JOB_FIELDS = [
     "lastClientMessageId",
     "lastDeliveryMode",
     "lastEventItemId",
+    "lastLoading",
     "lastReason",
     "lastError",
     "lastTokensUsedBucket",
@@ -100,6 +102,7 @@ def open_state(path: Path) -> sqlite3.Connection:
             last_client_message_id TEXT,
             last_delivery_mode TEXT,
             last_event_item_id TEXT,
+            last_loading_json TEXT,
             last_reason TEXT,
             last_error TEXT,
             last_tokens_used_bucket INTEGER,
@@ -122,6 +125,7 @@ def open_state(path: Path) -> sqlite3.Connection:
     ensure_column(conn, "last_delivery_mode", "TEXT")
     ensure_column(conn, "action_json", "TEXT")
     ensure_column(conn, "last_event_item_id", "TEXT")
+    ensure_column(conn, "last_loading_json", "TEXT")
     return conn
 
 
@@ -156,14 +160,12 @@ def decode_job(row: sqlite3.Row) -> dict[str, Any]:
     for key in OPTIONAL_JOB_FIELDS:
         value = row[JOB_COLUMNS[key]]
         if value is not None:
-            job[key] = value
+            job[key] = json.loads(value) if key == "lastLoading" else value
     return job
 
 
 def encode_value(key: str, value: Any) -> Any:
-    if key == "condition":
-        return json.dumps(value, sort_keys=True, separators=(",", ":"))
-    if key == "action":
+    if key in {"condition", "action", "lastLoading"} and value is not None:
         return json.dumps(value, sort_keys=True, separators=(",", ":"))
     return value
 
@@ -179,9 +181,10 @@ def insert_job(state_path: Path, job: dict[str, Any]) -> None:
                 created_at, updated_at, fired_at, fire_count, last_fired_at,
                 last_turn_id, last_reason, last_error, last_tokens_used_bucket,
                 last_time_used_bucket, lease_owner, lease_started_at, lease_until,
-                last_client_message_id, last_delivery_mode, last_event_item_id
+                last_client_message_id, last_delivery_mode, last_event_item_id,
+                last_loading_json
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 job["id"],
@@ -209,6 +212,7 @@ def insert_job(state_path: Path, job: dict[str, Any]) -> None:
                 job.get("lastClientMessageId"),
                 job.get("lastDeliveryMode"),
                 job.get("lastEventItemId"),
+                encode_value("lastLoading", job.get("lastLoading")),
             ),
         )
     finally:

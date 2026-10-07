@@ -67,10 +67,14 @@ codex-goalctl replace "$WORKER" "objective text"
 
 ## Start The Work
 
+Setting a goal leaves earlier user messages in place. If their framing no
+longer fits the ongoing assignment, deliberate anchoring user input can help;
+read `references/coordination-principles.md` for the distinction.
+
 If the goal has not already started work, prefer native control when the
 target's live subagent handle is available. For an independent root, if the
-threadctl skill is available, continue from the
-assigned goal without adding user input:
+threadctl skill is available, continue from the assigned goal without adding
+user input:
 
 ```sh
 codex-threadctl wake "$WORKER" --resume
@@ -89,7 +93,7 @@ Use `--json` when another program will parse output.
   token budgets, counters, and output behavior.
 - Read `references/app-server-boundaries.md` for endpoint selection, live
   accounting, thread-id reachability, and goal-driven continuation.
-- Read `references/coordination-principles.md` when composing goals with native
-  controls, messages, or scheduled wakes.
+- Read `references/coordination-principles.md` when goal changes or steering
+  need renewed conversation framing, or when composing goals with other controls.
 - Read `references/worker-workflows.md` for self-managed, coordinator-worker,
   supervision, and reviewer combinations.
