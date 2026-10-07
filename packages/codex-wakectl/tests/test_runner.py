@@ -10,6 +10,7 @@ from unittest import mock
 
 from codex_wakectl import commands
 from codex_wakectl import conditions
+from codex_wakectl import parser
 from codex_wakectl.actions import input_action
 from codex_wakectl.actions import event_action
 from codex_threadctl.errors import (
@@ -46,6 +47,44 @@ def runner_args(state: Path) -> argparse.Namespace:
 
 
 class RunnerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_goal_watch_can_precede_assignment_and_observe_first_terminal_goal(self) -> None:
+        goal = None
+
+        async def get_goal(app, thread_id):
+            self.assertEqual(thread_id, "worker")
+            return goal
+
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp) / "jobs.sqlite3"
+            args = parser.build_parser().parse_args([
+                "add", "goal", "worker", "--status", "complete", "--to", "main",
+                "--state", str(state),
+            ])
+            with (
+                mock.patch.object(commands, "AppServer", FakeAppServer),
+                mock.patch.object(commands, "get_goal", get_goal),
+                mock.patch.object(conditions, "get_goal", get_goal),
+                mock.patch.object(commands, "deliver_action", mock.AsyncMock(return_value={
+                    "itemId": "event", "turnId": "main-turn", "delivery": "eventStarted",
+                })) as deliver,
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                self.assertEqual(await commands.cmd_add(args), 0)
+                self.assertNotIn("goalCreatedAt", list_jobs(state)[0]["condition"])
+                self.assertEqual(await commands.cmd_run(runner_args(state)), 0)
+                self.assertEqual(list_jobs(state)[0]["status"], "pending")
+                deliver.assert_not_awaited()
+
+                # The worker may finish before the runner's first goal observation.
+                goal = {"status": "complete", "tokensUsed": 85, "createdAt": 10}
+                self.assertEqual(await commands.cmd_run(runner_args(state)), 0)
+                deliver.assert_awaited_once()
+
+            stored = list_jobs(state, include_all=True)[0]
+            self.assertEqual(stored["condition"]["goalCreatedAt"], 10)
+            self.assertEqual(stored["status"], "fired")
+            self.assertEqual(stored["fireCount"], 1)
+
     async def test_event_delivery_records_agent_item_and_empty_turn(self) -> None:
         async def ready(*args: object, **kwargs: object):
             return True, {}, "scheduled time reached"

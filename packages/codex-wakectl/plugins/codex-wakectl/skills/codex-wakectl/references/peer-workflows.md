@@ -87,14 +87,14 @@ step.
 
 ## Deferred Handoff
 
-When one loaded session should act after a host-visible condition, assign
-durable work first when goal management is available, then schedule the event:
+When a stopped, loaded session should act after a host-visible condition,
+stage its goal without starting work, then schedule the event:
 
 ```sh
 NEXT=next-thread-id
 
 codex-goalctl replace "$NEXT" \
-  "Continue from done.txt and complete the next step."
+  "Continue from done.txt and complete the next step." --standalone
 
 codex-wakectl add cmd --to "$NEXT" \
   -- test -f done.txt

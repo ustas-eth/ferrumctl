@@ -58,7 +58,9 @@ codex-threadctl loaded
 ```
 
 Keep the app-server process running while those sessions need live control.
-`codex-goalctl` and `codex-limitctl` use short-lived app-server processes.
+`codex-goalctl` reuses the default server when it holds the target, otherwise
+using a short-lived process for persisted state. Select `--endpoint` for a
+worker on another server. `codex-limitctl` uses a short-lived process.
 `streamctl` uses local files. Memory discovery and export
 also use local files; only memory injection needs the shared server.
 

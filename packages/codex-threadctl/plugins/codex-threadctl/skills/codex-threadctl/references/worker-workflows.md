@@ -33,21 +33,18 @@ codex-wakectl add goal "$SELF" --tokens-left-lte 300000 \
 
 ## Coordinator And Worker
 
-The full sequence assigns durable work, arranges the coordinator's later
-attention, and then starts the worker:
+Arm the coordinator's later attention before activating the worker's goal:
 
 ```sh
 MAIN=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
 WORKER=$(codex-threadctl create --cwd "$PWD")
 
-codex-goalctl replace "$WORKER" \
-  "Review this package and mark the goal complete." --token-budget 500000
-
 codex-wakectl add goal "$WORKER" \
   --status complete,blocked,budgetLimited,usageLimited \
   --to "$MAIN"
 
-codex-threadctl wake "$WORKER" --resume
+codex-goalctl replace "$WORKER" \
+  "Review this package and mark the goal complete." --token-budget 500000
 ```
 
 Omit layers that are not needed. `create` makes a persisted root with no native
@@ -57,9 +54,18 @@ unnecessary. Native waiting can replace the wake only when the coordinator
 should remain active.
 
 The budget here is an example, not a default. Choose it for the assignment;
-omitting a budget leaves the goal unbounded. If creation used a configuration
-file, also pass it to `wake --resume --config-file FILE`: a cold worker can
-otherwise load without those overrides. A loaded worker keeps its settings.
+omitting a budget leaves the goal unbounded. Goalctl automatically uses the
+default server when it holds the worker. Setting an active goal there may start
+work immediately. If inspection shows that work still needs starting, use
+`codex-threadctl wake "$WORKER" --resume`. If creation used a configuration
+file, also pass `--config-file FILE` on cold loading; a loaded worker keeps its
+settings. A watcher can be registered before a goal exists.
+
+Later edits use the same automatic routing:
+
+```sh
+codex-goalctl update "$WORKER" --token-budget 750000
+```
 
 After the event, inspect each relevant state separately:
 
@@ -132,27 +138,27 @@ codex-threadctl send "$WORKER" \
   "Answer this checkpoint and stop: QUESTION" --wake
 ```
 
-After reviewing the response, reactivate the assignment and direct the worker
-back to its durable goal:
+After reviewing the response, reactivate the assignment:
 
 ```sh
 codex-goalctl update "$WORKER" --status active
-codex-threadctl wake "$WORKER" --resume
 ```
 
 Skip interruption when current inspection already shows the worker idle.
+If reactivation does not start work, `wake --resume` can continue from the goal.
 
 ## Worker And Reviewer
 
-To insert a reviewer into the earlier sequence, omit its direct
-worker-to-coordinator wake. Keep the worker assignment, then
-arm the worker-to-reviewer and reviewer-to-coordinator wakes instead:
+To insert a reviewer, create the worker but defer its goal assignment. Replace
+the direct worker-to-coordinator watch with this chain, then activate the worker
+as above:
 
 ```sh
-REVIEWER=reviewer-thread-id
+REVIEWER=$(codex-threadctl create --cwd "$PWD")
 
 codex-goalctl replace "$REVIEWER" \
-  "Review thread $WORKER and its changes, report findings, and mark this goal complete."
+  "Review thread $WORKER and its changes, report findings, and mark this goal complete." \
+  --standalone
 
 codex-wakectl add goal "$WORKER" \
   --status complete,blocked,budgetLimited,usageLimited \
@@ -163,8 +169,10 @@ codex-wakectl add goal "$REVIEWER" \
   --to "$MAIN"
 ```
 
-The reviewer can inspect the worker through its thread id and examine its work,
-then leave its result in its own final response. Main retrieves that response
+Here `--standalone` stages a goal for the stopped reviewer without starting it;
+the worker's eventual event restores its attention. The reviewer can inspect
+the worker through its thread id and examine its work, then leave its result
+in its own final response. Main retrieves that response
 through the native handle or retained thread history.
 
 ## Standalone Sessions
@@ -178,5 +186,5 @@ codex-threadctl loaded
 codex-threadctl status "$WORKER"
 ```
 
-`codex-goalctl` uses its own short-lived stdio app-server, so it need not share
-the live endpoint. It must still use the same Codex home and thread identity.
+`codex-goalctl` reuses the default server when it holds the worker. For a worker
+on another server, select the same `--endpoint` for goal changes.

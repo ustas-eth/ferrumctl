@@ -517,7 +517,7 @@ printf 'limitctl parsed rollout history and thread activity\n'
 
 log "goalctl stdio app-server compatibility"
 missing_thread="00000000-0000-4000-8000-000000000001"
-if goalctl --json --timeout 5 get "$missing_thread" >"$SMOKE_ROOT/goal.out" 2>"$SMOKE_ROOT/goal.err"; then
+if goalctl --standalone --json --timeout 5 get "$missing_thread" >"$SMOKE_ROOT/goal.out" 2>"$SMOKE_ROOT/goal.err"; then
   fail "expected missing temporary thread to fail"
 fi
 grep -Eq 'thread not found|invalid thread id' "$SMOKE_ROOT/goal.err" || {
@@ -526,7 +526,7 @@ grep -Eq 'thread not found|invalid thread id' "$SMOKE_ROOT/goal.err" || {
 }
 printf 'goalctl reached app-server and got expected temporary-thread error\n'
 
-if goalctl --json --timeout 5 update "$missing_thread" \
+if goalctl --standalone --json --timeout 5 update "$missing_thread" \
   --clear-token-budget >"$SMOKE_ROOT/goal-clear.out" 2>"$SMOKE_ROOT/goal-clear.err"; then
   fail "expected missing token-budget thread to fail"
 fi
@@ -690,10 +690,10 @@ assert status["threadId"] == sys.argv[2]
 assert status["loaded"] is True
 assert status["inputOwner"] == "direct"
 PY
-goalctl replace "$created_thread" "Smoke-test independent root." \
+goalctl replace "$created_thread" "Smoke-test independent root." --status paused \
   >"$SMOKE_ROOT/created-thread-goal.out"
 goalctl get "$created_thread" >"$SMOKE_ROOT/created-thread-goal-get.out"
-grep -Fqx $'active\tSmoke-test independent root.' \
+grep -Fqx $'paused\tSmoke-test independent root.' \
   "$SMOKE_ROOT/created-thread-goal-get.out" ||
   fail "goalctl did not manage the independent root"
 goalctl clear "$created_thread" >"$SMOKE_ROOT/created-thread-goal-clear.out"

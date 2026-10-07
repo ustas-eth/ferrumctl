@@ -7,7 +7,7 @@ import os
 import sys
 from typing import Any
 
-from .appserver import CLIENT_VERSION, AppServer, appserver_request, connect_appserver
+from .appserver import CLIENT_VERSION, RpcConnection, appserver_request, connect_appserver
 from .errors import GoalctlError
 
 
@@ -91,7 +91,7 @@ def cmd_get(args: argparse.Namespace) -> int:
 
 
 def set_goal(
-    app: AppServer,
+    app: RpcConnection,
     thread_id: str,
     objective: str | None = None,
     status: str | None = None,
@@ -173,6 +173,18 @@ def cmd_clear(args: argparse.Namespace) -> int:
 
 
 def add_common_options(parser: argparse.ArgumentParser, *, defaults: bool) -> None:
+    transport = parser.add_mutually_exclusive_group()
+    transport.add_argument(
+        "--endpoint",
+        default=None if defaults else argparse.SUPPRESS,
+        help="use this app-server explicitly (default: prefer unix:// when it holds the thread)",
+    )
+    transport.add_argument(
+        "--standalone",
+        action="store_true",
+        default=False if defaults else argparse.SUPPRESS,
+        help="use a new stdio app-server for persisted state, skipping the shared server",
+    )
     parser.add_argument(
         "--json",
         action="store_true",
@@ -192,7 +204,7 @@ def add_common_options(parser: argparse.ArgumentParser, *, defaults: bool) -> No
     parser.add_argument(
         "--codex-bin",
         default=os.environ.get("CODEX_BIN", "codex") if defaults else argparse.SUPPRESS,
-        help="codex executable path",
+        help="codex executable when standalone access is selected",
     )
 
 

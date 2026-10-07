@@ -8,17 +8,54 @@ import subprocess
 import time
 from typing import Any, IO
 
-from .errors import GoalctlError
+from . import __version__ as CLIENT_VERSION
+from .errors import GoalctlError, ServerUnavailable
 
 
-CLIENT_VERSION = "0.1.13"
 DIRECT_INPUT_TO_V2_SUBAGENT = (
     "direct app-server input is not allowed for multi-agent v2 sub-agents"
 )
 GOAL_WRITE_METHODS = {"thread/goal/set", "thread/goal/clear"}
 
 
-class AppServer:
+class RpcConnection:
+    def request(self, method: str, params: dict[str, Any] | None = None) -> Any:
+        request_id = self.next_id
+        self.next_id += 1
+        msg: dict[str, Any] = {"method": method, "id": request_id}
+        if params is not None:
+            msg["params"] = params
+        self.send(msg)
+        try:
+            return self.wait_for(request_id)
+        except GoalctlError as exc:
+            if method in GOAL_WRITE_METHODS and DIRECT_INPUT_TO_V2_SUBAGENT in str(exc):
+                raise GoalctlError(
+                    "thread is controlled by its native parent; external goal "
+                    "changes are unavailable"
+                ) from exc
+            raise
+
+    def notify(self, method: str) -> None:
+        self.send({"method": method})
+
+    def parse_response(self, line: bytes | str, request_id: int) -> dict[str, Any] | None:
+        try:
+            msg = json.loads(line)
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise GoalctlError("app-server returned invalid JSON") from exc
+        if not isinstance(msg, dict):
+            raise GoalctlError("app-server returned a non-object message")
+        if "method" in msg or msg.get("id") != request_id:
+            return None
+        if "error" in msg:
+            raise GoalctlError(json.dumps(msg["error"], separators=(",", ":")))
+        if "result" not in msg:
+            raise GoalctlError("app-server response has no result")
+        return msg
+
+
+class AppServer(RpcConnection):
     def __init__(self, codex_bin: str, timeout: float):
         self.timeout = timeout
         try:
@@ -65,26 +102,6 @@ class AppServer:
         self.stdin.write(line.encode())
         self.stdin.flush()
 
-    def request(self, method: str, params: dict[str, Any] | None = None) -> Any:
-        request_id = self.next_id
-        self.next_id += 1
-        msg: dict[str, Any] = {"method": method, "id": request_id}
-        if params is not None:
-            msg["params"] = params
-        self.send(msg)
-        try:
-            return self.wait_for(request_id)
-        except GoalctlError as exc:
-            if method in GOAL_WRITE_METHODS and DIRECT_INPUT_TO_V2_SUBAGENT in str(exc):
-                raise GoalctlError(
-                    "thread is controlled by its native parent; external goal "
-                    "changes are unavailable"
-                ) from exc
-            raise
-
-    def notify(self, method: str) -> None:
-        self.send({"method": method})
-
     def wait_for(self, request_id: int) -> Any:
         deadline = time.monotonic() + self.timeout
         while time.monotonic() < deadline:
@@ -93,23 +110,9 @@ class AppServer:
                 self.stderr_tail = self.stderr_tail[-20:]
 
             while (line := self.pop_line("stdout")) is not None:
-                try:
-                    msg = json.loads(line)
-                except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-                    raise GoalctlError(
-                        f"invalid app-server JSON: {line.decode(errors='replace')}"
-                    ) from exc
-                if not isinstance(msg, dict):
-                    raise GoalctlError("app-server returned a non-object message")
-                if "method" in msg:
-                    continue
-                if msg.get("id") != request_id:
-                    continue
-                if "error" in msg:
-                    raise GoalctlError(json.dumps(msg["error"], separators=(",", ":")))
-                if "result" not in msg:
-                    raise GoalctlError("app-server response has no result")
-                return msg["result"]
+                msg = self.parse_response(line, request_id)
+                if msg is not None:
+                    return msg["result"]
 
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -148,8 +151,7 @@ def appserver_request(args: argparse.Namespace, method: str, params: dict[str, A
         app.close()
 
 
-def connect_appserver(args: argparse.Namespace) -> AppServer:
-    app = AppServer(args.codex_bin, args.timeout)
+def initialize_connection(app: RpcConnection) -> RpcConnection:
     try:
         app.request(
             "initialize",
@@ -166,3 +168,50 @@ def connect_appserver(args: argparse.Namespace) -> AppServer:
     except Exception:
         app.close()
         raise
+
+
+def holds_thread(app: RpcConnection, thread_id: str) -> bool:
+    cursor = None
+    seen = set()
+    while True:
+        result = app.request("thread/loaded/list", {"cursor": cursor} if cursor else {})
+        if not isinstance(result, dict) or not isinstance(result.get("data"), list):
+            raise GoalctlError("app-server returned invalid loaded-thread data")
+        if not all(isinstance(value, str) for value in result["data"]):
+            raise GoalctlError("app-server returned invalid loaded-thread data")
+        if thread_id in result["data"]:
+            return True
+        cursor = result.get("nextCursor")
+        if cursor is None:
+            return False
+        if not isinstance(cursor, str) or not cursor or cursor in seen:
+            raise GoalctlError("app-server returned invalid loaded-thread cursor")
+        seen.add(cursor)
+
+
+def connect_appserver(args: argparse.Namespace) -> RpcConnection:
+    from .websocket import WebSocketAppServer
+
+    endpoint = getattr(args, "endpoint", None)
+    if getattr(args, "standalone", False):
+        if endpoint is not None:
+            raise GoalctlError("--standalone and --endpoint are mutually exclusive")
+        return initialize_connection(AppServer(args.codex_bin, args.timeout))
+    if endpoint is None:
+        endpoint = os.environ.get("CODEX_GOALCTL_ENDPOINT")
+    if endpoint is not None:
+        return initialize_connection(WebSocketAppServer(endpoint, args.timeout))
+
+    try:
+        app = WebSocketAppServer("unix://", args.timeout)
+    except ServerUnavailable:
+        return initialize_connection(AppServer(args.codex_bin, args.timeout))
+    app = initialize_connection(app)
+    try:
+        if holds_thread(app, args.thread_id):
+            return app
+    except Exception:
+        app.close()
+        raise
+    app.close()
+    return initialize_connection(AppServer(args.codex_bin, args.timeout))

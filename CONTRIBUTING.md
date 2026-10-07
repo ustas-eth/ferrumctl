@@ -46,6 +46,18 @@ CODEX_THREADCTL_TEST_AUTH_FILE=/path/to/codex-home/auth.json \
   python3 -m unittest discover -s packages/codex-threadctl/tests -p 'test_responses_live.py' -v
 ```
 
+Goal accounting has an isolated real-server check with gated local model
+responses. It covers initial assignment, mid-turn assignment and replacement,
+automatic routing, budget updates, and native idle continuation without using
+account credentials. Standalone mid-turn controls demonstrate the accounting
+gap that shared-server routing avoids:
+
+```sh
+CODEX_GOALCTL_TEST_BINARY=/absolute/path/to/codex \
+  PYTHONPATH=packages/codex-goalctl/src:packages/codex-threadctl/src \
+  python3 -m unittest discover -s packages/codex-goalctl/tests -p 'test_*native.py' -v
+```
+
 ## Publishing Changes
 
 Use a branch and pull request for changes to command behavior, persisted state,

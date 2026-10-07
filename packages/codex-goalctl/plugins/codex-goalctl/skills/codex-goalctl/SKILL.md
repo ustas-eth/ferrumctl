@@ -1,6 +1,6 @@
 ---
 name: codex-goalctl
-description: "Use when another Codex thread's persisted goal must be read, or when a directly controlled thread's goal must be assigned, updated, or cleared. Use built-in goal tools for this session. Goalctl requires a thread id; resolve a canonical task name through the threadctl skill when available. It does not message or wake the target, and current Codex reserves goal changes on parent-owned v2 children for their native workflow."
+description: "Use when another Codex thread's persisted goal must be read, or when a directly controlled thread's goal must be assigned, updated, or cleared. Use built-in goal tools for this session. Goalctl requires a thread id; resolve a canonical task name through the threadctl skill when available. Current Codex reserves goal changes on parent-owned v2 children for their native workflow."
 ---
 
 # Codex Goalctl
@@ -8,11 +8,18 @@ description: "Use when another Codex thread's persisted goal must be read, or wh
 ## Purpose
 
 Use `codex-goalctl` to manage another Codex thread's persisted goal from the
-host. Each command starts a short-lived stdio app-server; no shared app-server
-is required.
+host. By default, it reuses the shared server at `unix://` when that server holds
+the target, so changes also reach live goal accounting. Otherwise it starts a
+short-lived server for persisted state:
 
-Goal state and thread execution are separate. A successful write does not start
-a turn or guarantee that the target observes the change.
+```sh
+codex-goalctl update THREAD_ID --token-budget 500000
+```
+
+Use `--endpoint` when another server holds the worker, or `--standalone` for
+persisted-only access. An active goal written on its owning server may start or
+continue work without another input. A successful write confirms the goal
+change, not execution.
 
 ## Choose A Primitive
 
@@ -60,8 +67,9 @@ codex-goalctl replace "$WORKER" "objective text"
 
 ## Start The Work
 
-Prefer native control when the target's live subagent handle is available.
-For an independent root, if the threadctl skill is available, continue from the
+If the goal has not already started work, prefer native control when the
+target's live subagent handle is available. For an independent root, if the
+threadctl skill is available, continue from the
 assigned goal without adding user input:
 
 ```sh
@@ -79,8 +87,8 @@ Use `--json` when another program will parse output.
 
 - Read `references/goal-lifecycle.md` for reset semantics, status transitions,
   token budgets, counters, and output behavior.
-- Read `references/app-server-boundaries.md` for transport, thread-id
-  reachability, and the boundary between goal writes and thread execution.
+- Read `references/app-server-boundaries.md` for endpoint selection, live
+  accounting, thread-id reachability, and goal-driven continuation.
 - Read `references/coordination-principles.md` when composing goals with native
   controls, messages, or scheduled wakes.
 - Read `references/worker-workflows.md` for self-managed, coordinator-worker,

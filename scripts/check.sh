@@ -88,7 +88,7 @@ run git diff --check
   run "$bin_dir/codex-wakectl" --version
   run "$UV" pip check --python "$tool_dir/codex-memoryctl/bin/python"
   run "$UV" pip check --python "$tool_dir/codex-wakectl/bin/python"
-  test "$("$bin_dir/codex-goalctl" --version)" = "codex-goalctl 0.1.13"
+  test "$("$bin_dir/codex-goalctl" --version)" = "codex-goalctl 0.2.1"
   test "$("$bin_dir/codex-limitctl" --version)" = "codex-limitctl 0.2.11"
   test "$("$bin_dir/codex-memoryctl" --version)" = "codex-memoryctl 0.5.6"
   test "$("$bin_dir/streamctl" --version)" = "streamctl 0.2.5"
