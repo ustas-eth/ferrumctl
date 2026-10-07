@@ -26,7 +26,7 @@ from codex_threadctl.errors import (
     ThreadStateError,
 )
 
-from .actions import build_action
+from .actions import build_action, public_job
 from .conditions import (
     condition_needs_app,
     condition_ready,
@@ -149,7 +149,7 @@ async def cmd_add(args: argparse.Namespace) -> int:
     await seed_stop_job(args, job)
     insert_job(args.state, job)
     if args.json:
-        print(json.dumps({"job": job}, indent=2))
+        print(json.dumps({"job": public_job(job)}, indent=2))
     else:
         print(job["id"])
     return 0
@@ -373,6 +373,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
                     "lastClientMessageId": delivery.get("clientMessageId"),
                     "lastEventItemId": delivery.get("itemId"),
                     "lastDeliveryMode": delivery.get("delivery"),
+                    "lastLoading": delivery.get("loading"),
                     "lastReason": reason,
                     "lastError": None,
                 }
@@ -392,6 +393,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
                         "turnId": delivery.get("turnId"),
                         "delivery": delivery.get("delivery"),
                         "reason": reason,
+                        **({"loading": delivery["loading"]} if "loading" in delivery else {}),
                     }
                 )
             else:
@@ -476,6 +478,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
                     "status": "uncertain",
                     "lastTurnId": exc.turn_id,
                     "lastEventItemId": exc.item_id,
+                    "lastLoading": exc.loading,
                     "lastError": reason,
                 },
             )
@@ -521,7 +524,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
 def cmd_list(args: argparse.Namespace) -> int:
     selected = list_jobs(args.state, include_all=args.all)
     if args.json:
-        print(json.dumps({"jobs": selected}, indent=2))
+        print(json.dumps({"jobs": [public_job(job) for job in selected]}, indent=2))
     else:
         for job in selected:
             print(

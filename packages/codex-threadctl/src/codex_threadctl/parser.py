@@ -26,6 +26,7 @@ from .commands import (
     cmd_wake,
 )
 from .constants import CLIENT_VERSION, DEFAULT_TIMEOUT
+from .communication_commands import cmd_input, cmd_send
 
 
 def positive_float(value: str) -> float:
@@ -117,10 +118,30 @@ def add_settings_options(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_resume_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--resume", action="store_true",
+        help="load the target if needed; an active goal may continue during loading",
+    )
+    parser.add_argument(
+        "--config-file", type=nonempty_text,
+        help="with --resume, submit caller-local TOML only when loading a cold thread",
+    )
+
+
+def add_message_options(parser: argparse.ArgumentParser) -> None:
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("message", nargs="?", type=nonempty_text, help="message text")
+    source.add_argument("--stdin", action="store_true", help="read message text from standard input")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="codex-threadctl",
         description="Inspect and control app-server-backed Codex threads.",
+        epilog="Communication: send (agent), input (user), wake (no message). "
+               "Loading: load --continue-goal, or wake --resume. "
+               "Compatibility commands: notify, start, steer, resume.",
     )
     parser.add_argument(
         "--version", action="version", version=f"%(prog)s {CLIENT_VERSION}"
@@ -334,9 +355,33 @@ def build_parser() -> argparse.ArgumentParser:
     add_global_options(message, defaults=False)
     message.set_defaults(func=cmd_message)
 
-    start = sub.add_parser(
-        "start", help="send input to a loaded idle or systemError thread"
+    send = sub.add_parser(
+        "send", help="send agent context, optionally waking the target",
+        description="Send a report, question, or request as agent context, not user input. "
+                    "--wake requests attention if stopped; --resume requires --wake.",
     )
+    send.add_argument("thread_id")
+    add_message_options(send)
+    send.add_argument("--from", dest="author", help="author identity (default: CODEX_THREAD_ID)")
+    send.add_argument("--wake", action="store_true", help="also request attention if stopped")
+    add_resume_options(send)
+    add_tree_option(send)
+    add_global_options(send, defaults=False)
+    send.set_defaults(func=cmd_send)
+
+    input_parser = sub.add_parser(
+        "input", help="submit deliberate user input; --turn steers an exact turn",
+        description="Submit user-role input. For agent communication use send. "
+                    "Without --turn, the target must be loaded and stopped.",
+    )
+    input_parser.add_argument("thread_id")
+    add_message_options(input_parser)
+    input_parser.add_argument("--turn", help="expected active turn id; otherwise require a stopped thread")
+    add_tree_option(input_parser)
+    add_global_options(input_parser, defaults=False)
+    input_parser.set_defaults(func=cmd_input)
+
+    start = sub.add_parser("start", help="compatibility: input without --turn (user role)")
     start.add_argument("thread_id", help="loaded thread in idle or systemError state")
     start.add_argument("message")
     add_tree_option(start)
@@ -345,7 +390,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     notify = sub.add_parser(
         "notify",
-        help="append an advisory agent message without starting a turn",
+        help="compatibility: send without --wake (agent role)",
     )
     notify.add_argument("thread_id", help="loaded thread to receive the notice")
     notify.add_argument(
@@ -360,14 +405,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     wake = sub.add_parser(
         "wake",
-        help="start an empty turn on a loaded idle or systemError thread",
+        help="continue retained context without a message; --resume permits loading",
+        description="Request an empty turn if stopped; leave active work running. "
+                    "Loading requires --resume and may itself continue an active goal.",
     )
-    wake.add_argument("thread_id", help="loaded thread in idle or systemError state")
+    wake.add_argument("thread_id", help="target thread; active work is left running")
+    add_resume_options(wake)
     add_tree_option(wake)
     add_global_options(wake, defaults=False)
     wake.set_defaults(func=cmd_wake)
 
-    steer = sub.add_parser("steer", help="send input to one expected active turn")
+    steer = sub.add_parser("steer", help="compatibility: input --turn (user role)")
     steer.add_argument("thread_id")
     steer.add_argument("turn_id")
     steer.add_argument("message")
@@ -425,7 +473,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_global_options(configure, defaults=False)
     configure.set_defaults(func=cmd_configure)
 
-    resume = sub.add_parser("resume", help="load a persisted thread, optionally with settings overrides")
+    resume = sub.add_parser("load", aliases=["resume"], help="load persisted state; may continue an active goal")
     resume.add_argument("thread_id")
     resume.add_argument(
         "--continue-goal",

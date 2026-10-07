@@ -22,8 +22,9 @@ Use native subagent input when the current session owns the live handle and
 needs to send an immediate message. Use native wait or poll when the current
 turn owns the live subagent or terminal handle and should stay active.
 
-`codex-threadctl start` and `steer` provide immediate thread-id control when no
-native handle is available.
+`codex-threadctl send` carries immediate agent communication when no native
+handle is available; `--wake` also requests attention if stopped. `input` is
+reserved for deliberate user input, with `--turn` for exact-turn steering.
 
 Use `codex-wakectl wait` when a script or thread-id-only controller needs an
 exit status from a Codex condition. It polls in the invoking process, exits `0`
@@ -64,7 +65,7 @@ Codex turn. Its process or service identity should be retained for inspection
 and cleanup, and diagnostics should be written somewhere the resumed session
 can read.
 
-The watcher can instead deliver directly with `codex-threadctl wake` or `start`
+The watcher can instead deliver directly with `codex-threadctl wake` or `send --wake`
 once the target is idle; an equivalent app-server client is the lower-level
 alternative.
 This avoids the second polling step, but the watcher then owns target
@@ -90,9 +91,11 @@ App-server `idle` means no turn is running. It does not mean the target lacks an
 active goal or is free for unrelated work.
 
 An idle worker with an active externally assigned goal may not have observed
-that goal. An event wake starts a turn without adding another instruction; the
-goal remains the authority. Use app-server status to choose a delivery policy,
-not to infer work ownership.
+that goal. An event wake restores attention using the current goal and retained
+conversation; it does not renew the user-message framing. See
+[Goals And Conversation Framing](https://github.com/ustas-eth/ferrumctl/blob/main/docs/coordination-principles.md#goals-and-conversation-framing)
+when an earlier exchange still shapes the worker's behavior. Use app-server
+status to choose a delivery policy, not to infer work ownership.
 
 A terminal goal status and a completed turn are separate boundaries. If a
 coordinator needs the worker's final response, wait for the current turn to stop
@@ -112,8 +115,8 @@ By default, an event waits for a target with no running turn. An `idle` or
 `systemError` target can start the event turn. `--notify-active` instead injects
 the event into current work and finishes the job without starting another turn.
 It is appropriate only when prompt awareness is useful and the event does not
-need a separate response. Use immediate `codex-threadctl steer` with an exact
-turn id for a correction or constraint.
+need a separate response. An immediate agent correction or constraint can use
+`codex-threadctl send` without adding user input.
 
 A running worker can send a handoff before its own final response is committed.
 Treat the handoff as readiness; use a stop condition when the receiver depends
@@ -145,6 +148,11 @@ remain safe if delayed or duplicated.
 if that thread has an active goal, Codex can continue the goal immediately.
 The event is then injected into that active turn. Resume does not coordinate a
 copy of the same thread loaded on another app-server.
+
+When recovery needs request-specific settings, add `--config-file FILE` to the
+resume job. This uses a saved snapshot for cold loading, so an ordinary time
+wake does not need a separate config-aware checkpoint script. See
+[Delivery](runtime-semantics.md#delivery) for snapshot and confirmation semantics.
 
 Record job ids when a workflow will need cleanup. The default queue is shared;
 proximity in `codex-wakectl list` does not establish ownership.

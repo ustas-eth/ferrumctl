@@ -3,11 +3,11 @@
 `codex-goalctl` reads and changes persisted Codex thread goals.
 
 Use it when one session, script, or agent needs to inspect or assign durable
-goal state for another Codex thread. It does not start agents, send chat
-messages, or send wake messages.
+goal state for another Codex thread.
 
-Each command starts a short-lived stdio app-server internally, so there is no
-shared server to manage for normal use.
+It reuses the usual shared app-server when that server holds the target,
+including live goal accounting. Otherwise it starts a short-lived server to
+access persisted state.
 
 ## Install
 
@@ -41,6 +41,16 @@ codex-goalctl update THREAD_ID --clear-token-budget
 codex-goalctl clear THREAD_ID
 ```
 
+Change a worker's budget:
+
+```sh
+codex-goalctl update THREAD_ID --token-budget 500000
+```
+
+Use `--endpoint` for a worker on a different server, or `--standalone` to force
+persisted-only access. The owning server may start an idle active goal itself;
+arm completion watches before activation when using them.
+
 Canonical task names returned by native subagent tools are not goal identifiers.
 When threadctl is available, resolve one for a goal read:
 
@@ -59,15 +69,16 @@ codex-goalctl replace "$WORKER" \
   "Review this package and mark the goal complete."
 ```
 
-Goal writes do not reliably wake a CLI-owned thread. Send a short follow-up
-message through the native subagent handle when you have one. If only the
-thread id remains, `codex-threadctl start` can deliver the follow-up when
-threadctl is installed and the worker accepts direct app-server input.
-Parent-owned children must be continued through their native parent handle:
+When work still needs starting, continue a native child through its parent
+handle. For an independent root, when threadctl is installed:
 
-```text
-From coordinator: A goal was assigned. Call get_goal and proceed.
+```sh
+codex-threadctl wake "$WORKER" --resume
 ```
+
+This continues from the goal without adding another user instruction. If the
+worker needs its creation configuration on cold loading, reapply that file with
+`--config-file FILE`.
 
 Use `--json` when another program will parse output.
 

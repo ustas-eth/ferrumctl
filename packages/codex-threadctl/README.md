@@ -39,8 +39,8 @@ process:
 
 ```sh
 WORKER=$(codex-threadctl create --cwd "$PWD")
-codex-threadctl start "$WORKER" \
-  "From coordinator: Begin the assigned work."
+codex-threadctl send "$WORKER" \
+  "Review this package and report your findings." --wake
 ```
 
 The command prints only the new thread id and does not start a turn. It writes a
@@ -68,7 +68,7 @@ WORKER=$(codex-threadctl create --cwd "$PWD" --config-file ./worker.toml)
 ```
 
 Explicit flags override file values. Keep the file and reapply it with
-`resume --continue-goal --config-file ./worker.toml` when loading the worker;
+`wake --resume --config-file ./worker.toml` when continuing a cold worker;
 these overrides are not a saved profile binding. See
 [creation and resume configuration](docs/lifecycle-control.md#creation-and-resume-configuration)
 for a skill-selection example and the configuration boundaries.
@@ -133,45 +133,42 @@ codex-threadctl messages THREAD_ID --limit 10
 codex-threadctl message THREAD_ID TURN_ID ITEM_ID
 ```
 
-Start input on a loaded thread with no running turn, or steer one exact active
-turn. `start` can request a new turn after `systemError`; inspect the returned
-turn to see whether execution fails again:
+Send agent communication without presenting it as human input. Add `--wake`
+when a stopped recipient should act:
 
 ```sh
-codex-threadctl start THREAD_ID \
-  "From coordinator: Check your goal and continue."
-codex-threadctl steer THREAD_ID TURN_ID \
-  "From coordinator: Focus on the failing test first."
+codex-threadctl send THREAD_ID "The failing test points to the retry boundary."
+codex-threadctl send THREAD_ID "Please review the latest changes." --wake
 ```
 
-The target sees the message as ordinary input. Name the logical sender when it
-could be mistaken for direct human input.
-
-`notify` adds advisory agent context without starting a turn. `wake` starts an
-empty turn on a loaded `idle` or `systemError` target:
+To continue retained work without a message, use `wake`. `--resume` permits
+loading when needed; an already active thread keeps running. A new turn after
+`systemError` can still fail on the same underlying problem:
 
 ```sh
-codex-threadctl notify THREAD_ID --from AUTHOR \
-  "Stream STREAM_ID has a checkpoint through POSITION."
-codex-threadctl wake THREAD_ID
+codex-threadctl wake THREAD_ID --resume
 ```
 
 When a native subagent tool returns canonical task names, the parent retains
 ownership of its v2 children. Threadctl can inspect them by task name, but
-current Codex rejects direct `start`, `steer`, `wake`, and `notify`. Create an
+current Codex rejects direct `input`, `wake`, and `send`. Create an
 independent root instead when external direct control is required.
 
 Other immediate operations include resuming persisted state, interrupting one
 turn, and inspecting or terminating a tracked terminal process:
 
 ```sh
-codex-threadctl resume THREAD_ID --continue-goal
+codex-threadctl load THREAD_ID --continue-goal
 codex-threadctl interrupt THREAD_ID TURN_ID --wait
 codex-threadctl terminals THREAD_ID
 codex-threadctl terminate-terminal THREAD_ID PROCESS_ID --item ITEM_ID
 ```
 
-Use `--json` when another program will parse output.
+Use `input THREAD_ID "TEXT"` for deliberate user input, adding `--turn TURN_ID`
+to steer an exact active turn. The older `start`, `steer`, `notify`, and `resume`
+commands retain their behavior for existing callers. Use `--json` for exact
+outcomes: message acceptance, wake confirmation, and cold loading are reported
+separately.
 
 More detail:
 

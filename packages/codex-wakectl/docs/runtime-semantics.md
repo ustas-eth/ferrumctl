@@ -120,6 +120,25 @@ By default, an active or unloaded target defers event delivery. With
 started. With `--resume`, an unloaded target is loaded; an active persisted goal
 can continue immediately, in which case the event enters that active turn.
 
+`--resume --config-file FILE` reads caller-local TOML at job creation and saves
+the settings in the action. The runner submits that snapshot in the cold-loading
+request; it does not reread the file or reconfigure a loaded target. File edits
+do not change existing jobs. The file uses threadctl's
+[configuration override format](https://github.com/ustas-eth/ferrumctl/blob/main/packages/codex-threadctl/docs/lifecycle-control.md#creation-and-resume-configuration),
+including native server-side path resolution:
+
+```sh
+codex-wakectl add time --after 30m --to WORKER \
+  --resume --config-file ./worker.toml
+```
+
+For resume jobs, JSON delivery output and the stored `lastLoading` record
+report whether loading occurred, whether configuration was submitted, and the
+server-reported settings. Submission does not verify every native setting.
+An active goal's delayed continuation is observed rather than given a second
+turn; that delivery records `resumedContinued`. If continuation cannot be
+confirmed after event injection, the job becomes `uncertain`.
+
 Event injection and empty turn start are separate requests. If another turn
 wins the idle race after injection, the event enters that active work and the
 job records `eventNotifiedActive`. If event acceptance or the following wake
@@ -161,6 +180,10 @@ The default state directory is mode `0700` and the database is mode `0600`.
 Existing default state is tightened when opened. A custom `--state` file is
 created as `0600`, but wakectl does not change permissions on an existing
 custom file or directory.
+
+Saved configuration values remain in the database. `add --json` and
+`list --json` report only their top-level keys under `action.configRequest`.
+Avoid embedding credentials in a configuration snapshot.
 
 Version 0.5 adds a structured action to each job. Existing rows without that
 field decode as legacy input actions; upgrading does not reinterpret their

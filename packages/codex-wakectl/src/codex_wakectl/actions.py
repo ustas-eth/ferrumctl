@@ -3,11 +3,14 @@ from __future__ import annotations
 import argparse
 from typing import Any
 
+from codex_threadctl.config_input import read_config_file
+
 from .errors import WakectlError
 
 
 _CMD_OPTIONS = {
     "--allow-active",
+    "--config-file",
     "--endpoint",
     "--input",
     "--json",
@@ -20,12 +23,24 @@ _CMD_OPTIONS = {
 }
 
 
-def event_action(*, notify_active: bool = False, resume: bool = False) -> dict[str, Any]:
+def event_action(
+    *, notify_active: bool = False, resume: bool = False,
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     return {
         "type": "event",
         **({"notifyActive": True} if notify_active else {}),
         **({"resume": True} if resume else {}),
+        **({"resumeConfig": config} if config is not None else {}),
     }
+
+
+def public_job(job: dict[str, Any]) -> dict[str, Any]:
+    """Report submitted config keys without exposing the saved values."""
+    action = dict(job["action"])
+    if "resumeConfig" in action:
+        action["configRequest"] = {"keys": sorted(action.pop("resumeConfig"))}
+    return {**job, "action": action}
 
 
 def input_action(
@@ -73,6 +88,9 @@ def build_action(args: argparse.Namespace) -> dict[str, Any]:
     allow_active = bool(getattr(args, "allow_active", False))
     notify_active = bool(getattr(args, "notify_active", False))
     resume = bool(getattr(args, "resume", False))
+    config_file = getattr(args, "config_file", None)
+    if config_file and not resume:
+        raise WakectlError("--config-file requires --resume")
 
     if legacy_message is not None and input_message is not None:
         raise WakectlError("use either legacy MESSAGE or --input, not both")
@@ -95,4 +113,7 @@ def build_action(args: argparse.Namespace) -> dict[str, Any]:
 
     if allow_active:
         raise WakectlError("use --notify-active for an event wake")
-    return event_action(notify_active=notify_active, resume=resume)
+    return event_action(
+        notify_active=notify_active, resume=resume,
+        config=read_config_file(config_file),
+    )

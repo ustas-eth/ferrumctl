@@ -2,6 +2,7 @@ import contextlib
 import os
 import tempfile
 import unittest
+import uuid
 from pathlib import Path
 from unittest import mock
 
@@ -169,7 +170,10 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
             },
         )
         self.assertEqual(result["instructionSources"], ["/project/AGENTS.md"])
-        self.assertTrue(result["initializationItemId"].startswith("amsg_"))
+        item_id = result["initializationItemId"]
+        self.assertEqual(item_id, f"amsg_{uuid.UUID(item_id.removeprefix('amsg_'))}")
+        self.assertEqual(uuid.UUID(item_id.removeprefix("amsg_")).version, 4)
+        self.assertEqual(app.calls[-1][1]["items"][0]["id"], item_id)
 
     async def test_create_thread_passes_named_permission_profile(self):
         class CreateApp:
@@ -1010,7 +1014,9 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(result["outcome"], "accepted")
-        self.assertRegex(result["itemId"], r"^amsg_[0-9a-f]{32}$")
+        item_id = result["itemId"]
+        self.assertEqual(item_id, f"amsg_{uuid.UUID(item_id.removeprefix('amsg_'))}")
+        self.assertEqual(uuid.UUID(item_id.removeprefix("amsg_")).version, 4)
         method, params = app.calls[-1]
         self.assertEqual(method, "thread/inject_items")
         self.assertEqual(params["threadId"], "thread")
@@ -1032,6 +1038,23 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
         self.assertFalse(any(method == "turn/start" for method, _ in app.calls))
+
+    async def test_notify_preserves_explicit_item_id(self):
+        app = FakeApp()
+        original_request = app.request
+
+        async def request(method, params=None):
+            if method == "thread/inject_items":
+                app.calls.append((method, params))
+                return {}
+            return await original_request(method, params)
+
+        app.request = request
+        result = await appserver.notify_thread(
+            app, "thread", "author", "message", item_id="amsg_wake_job123_1",
+        )
+        self.assertEqual(result["itemId"], "amsg_wake_job123_1")
+        self.assertEqual(app.calls[-1][1]["items"][0]["id"], result["itemId"])
 
     async def test_notify_preserves_rejection_and_marks_other_failures_uncertain(self):
         app = FakeApp()

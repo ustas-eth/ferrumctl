@@ -1,4 +1,5 @@
 import concurrent.futures
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -111,6 +112,63 @@ class StateTests(unittest.TestCase):
         with self.assertRaisesRegex(StreamctlError, "stream not found"):
             state.list_entries(self.path, "missing")
 
+    def test_noncreation_commands_never_initialize_a_missing_store(self):
+        missing = self.path.parent / "absent" / "streams.sqlite3"
+        for operation in (
+            lambda: state.list_entries(missing, "s"),
+            lambda: state.append_entry(missing, "s", "a", "message"),
+            lambda: state.acknowledge(missing, "s", "a", 0),
+        ):
+            with self.assertRaisesRegex(StreamctlError, "open existing stream store") as raised:
+                operation()
+            self.assertIn(str(missing), str(raised.exception))
+            self.assertFalse(missing.parent.exists())
+
+    def test_noncreation_does_not_repair_an_unrelated_database(self):
+        other = self.path.parent / "other.sqlite3"
+        with sqlite3.connect(other) as conn:
+            conn.execute("CREATE TABLE unrelated (id INTEGER)")
+        before = other.read_bytes()
+        for readonly in (True, False):
+            with self.assertRaisesRegex(StreamctlError, "no such table"):
+                state.open_state(other, readonly=readonly)
+        self.assertEqual(other.read_bytes(), before)
+
+    def test_list_leaves_database_and_permissions_unchanged(self):
+        state.append_entry(self.path, self.stream["streamId"], "a", "one")
+        before = self.path.read_bytes()
+        self.path.chmod(0o440)
+        self.path.parent.chmod(0o750)
+        with mock.patch.object(state, "default_state_path", return_value=self.path):
+            result = state.list_entries(self.path, self.stream["streamId"])
+        self.assertEqual(result["lastPosition"], 1)
+        self.assertEqual(self.path.read_bytes(), before)
+        self.assertEqual(self.path.stat().st_mode & 0o777, 0o440)
+        self.assertEqual(self.path.parent.stat().st_mode & 0o777, 0o750)
+
+    def test_readonly_connection_cannot_write_and_reads_committed_wal(self):
+        writer = state.open_state(self.path)
+        try:
+            writer.execute("PRAGMA wal_autocheckpoint = 0")
+            state.append_entry(self.path, self.stream["streamId"], "a", "WAL entry")
+            self.assertTrue(Path(str(self.path) + "-wal").exists())
+            reader = state.open_state(self.path, readonly=True)
+            try:
+                with self.assertRaisesRegex(sqlite3.OperationalError, "readonly"):
+                    reader.execute("DELETE FROM streams")
+            finally:
+                reader.close()
+            result = state.list_entries(self.path, self.stream["streamId"])
+            self.assertEqual(result["entries"][0]["text"], "WAL entry")
+        finally:
+            writer.close()
+
+    def test_uri_special_characters_in_database_path(self):
+        special = self.path.parent / "stream?#test.sqlite3"
+        created = state.create_stream(special)
+        state.append_entry(special, created["streamId"], "a", "one")
+        self.assertEqual(state.list_entries(special, created["streamId"])["lastPosition"], 1)
+
     def test_concurrent_appends_receive_unique_contiguous_positions(self):
         stream_id = self.stream["streamId"]
 
@@ -208,7 +266,7 @@ class StateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "state" / "streamctl" / "streams.sqlite3"
             with mock.patch.object(state, "default_state_path", return_value=path):
-                conn = state.open_state(path)
+                conn = state.open_state(path, initialize=True)
                 conn.close()
 
             self.assertEqual(path.parent.stat().st_mode & 0o777, 0o700)
@@ -244,7 +302,7 @@ class StateTests(unittest.TestCase):
             path = directory / "streams.sqlite3"
             path.touch(mode=0o644)
 
-            conn = state.open_state(path)
+            conn = state.open_state(path, initialize=True)
             conn.close()
 
             self.assertEqual(directory.stat().st_mode & 0o777, 0o755)

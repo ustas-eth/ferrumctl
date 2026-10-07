@@ -33,7 +33,38 @@ it does not use account credentials or contact the running app server:
 ```sh
 CODEX_THREADCTL_TEST_BINARY=/absolute/path/to/codex \
   PYTHONPATH=packages/codex-threadctl/src \
-  python3 -m unittest discover -s packages/codex-threadctl/tests -p test_config_native.py -v
+  python3 -m unittest discover -s packages/codex-threadctl/tests -p 'test_*native.py' -v
+```
+
+Scheduled cold recovery has a matching queue-to-delivery check. It tests saved
+configuration, an already loaded worker, and automatic goal continuation:
+
+```sh
+CODEX_THREADCTL_TEST_BINARY=/absolute/path/to/codex \
+  PYTHONPATH=packages/codex-wakectl/src:packages/codex-threadctl/src \
+  python3 -m unittest discover -s packages/codex-wakectl/tests -p 'test_*native.py' -v
+```
+
+Agent-message IDs also have an opt-in check against the subscription Responses
+WebSocket backend. It makes four small synthetic model requests, leaves running
+threads untouched, and reads credentials only from the explicitly supplied file:
+
+```sh
+CODEX_THREADCTL_TEST_AUTH_FILE=/path/to/codex-home/auth.json \
+  PYTHONPATH=packages/codex-threadctl/src \
+  python3 -m unittest discover -s packages/codex-threadctl/tests -p 'test_responses_live.py' -v
+```
+
+Goal accounting has an isolated real-server check with gated local model
+responses. It covers initial assignment, mid-turn assignment and replacement,
+automatic routing, budget updates, and native idle continuation without using
+account credentials. Standalone mid-turn controls demonstrate the accounting
+gap that shared-server routing avoids:
+
+```sh
+CODEX_GOALCTL_TEST_BINARY=/absolute/path/to/codex \
+  PYTHONPATH=packages/codex-goalctl/src:packages/codex-threadctl/src \
+  python3 -m unittest discover -s packages/codex-goalctl/tests -p 'test_*native.py' -v
 ```
 
 ## Publishing Changes

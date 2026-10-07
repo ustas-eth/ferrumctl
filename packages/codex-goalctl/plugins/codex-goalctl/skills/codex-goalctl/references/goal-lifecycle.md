@@ -16,6 +16,10 @@ non-cached input plus output toward a goal token budget.
 set, or clear goal fields; a running thread may later update its own goal state
 through Codex.
 
+Goal writes leave the conversation's instructions in place. See
+[Goals And Conversation Framing](https://github.com/ustas-eth/ferrumctl/blob/main/docs/coordination-principles.md#goals-and-conversation-framing)
+for anchoring ongoing work after assignment changes or situational steering.
+
 Valid statuses are:
 
 - `active`

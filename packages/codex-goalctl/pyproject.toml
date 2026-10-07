@@ -4,12 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "codex-goalctl"
-version = "0.1.12"
+version = "0.2.1"
 description = "Small Unix-style CLI for Codex thread goals"
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"
 license-files = ["LICENSE"]
+dependencies = ["websockets>=15,<16"]
 
 [project.urls]
 Repository = "https://github.com/ustas-eth/ferrumctl"

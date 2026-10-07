@@ -34,6 +34,13 @@ An unloaded target remains pending unless an event job has `--resume`. Resume
 can immediately continue an active goal. Confirm that another app-server does
 not already own the same thread before choosing that policy.
 
+For workers created with request-specific settings, a resume job can also use
+`--config-file FILE`. Check `lastLoading` in `list --all --json`: it distinguishes
+configuration submitted during loading from an already loaded target left
+unchanged. The job uses the snapshot saved at creation, not the file's current
+contents. Native permission-profile restoration is described in threadctl's
+[Permission Profiles](https://github.com/ustas-eth/ferrumctl/blob/main/packages/codex-threadctl/docs/permission-profiles.md).
+
 A job with `status=failed` and a native-parent ownership error targeted a child
 that cannot accept direct app-server input. Keep the child as the goal or stop
 condition subject and target `/root` or another thread that accepts direct

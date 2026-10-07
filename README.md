@@ -88,6 +88,7 @@ upgrading Codex.
 - [Worker workflows](docs/worker-workflows.md)
 - [Peer workflows](docs/peer-workflows.md)
 - [Host automation](docs/host-automation.md)
+- [Restricted worker operations](docs/restricted-operations.md)
 - [Coordination principles](docs/coordination-principles.md)
 
 Each package keeps its own examples and detailed mechanics beside the code.

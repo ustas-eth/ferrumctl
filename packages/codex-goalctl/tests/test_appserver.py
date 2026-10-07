@@ -36,7 +36,7 @@ class AppServerTests(unittest.TestCase):
         return path
 
     def connect(self, path: Path):
-        return connect_appserver(argparse.Namespace(codex_bin=str(path), timeout=2.0))
+        return connect_appserver(argparse.Namespace(codex_bin=str(path), timeout=2.0, standalone=True))
 
     def test_ignores_server_request_with_matching_id(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

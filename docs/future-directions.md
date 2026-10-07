@@ -10,6 +10,12 @@ already solve cleanly.
 
 ## Near-Term Ideas
 
+- **Shared-server account reads:** let limitctl reuse a selected app-server
+  rather than starting a process for every account request. Make account
+  identity and timeout behavior explicit before changing the default.
+- **Targeted local updates:** reinstall selected commands and refresh selected
+  plugins, including affected dependencies and generated references. Preserve
+  live plugin-cache invalidation without reloading active threads by default.
 - **Multi-thread observation:** inspect several workers in one compact request,
   including loaded state, active flags, goal status, context pressure, current
   turn, and recent activity.
@@ -18,6 +24,10 @@ already solve cleanly.
   materialized item identities visible.
 - **Stream reader status:** report the stream tail and each known reader's
   acknowledged position, unread count, and last activity in one compact view.
+- **Retry-safe publication:** consider caller-supplied request ids for stream
+  appends and scheduled jobs, with exact-payload conflict checks and durable
+  receipts. Write-only callers need reconciliation without reading the target;
+  native message item ids alone do not establish duplicate suppression.
 - **Thread predicates:** expose loaded state, thread status, active flags,
   context remaining, and activity age through exit status for shell and
   wakectl composition. Avoid a general `stalled` judgment.
@@ -33,6 +43,13 @@ already solve cleanly.
 
 ## Later Ideas
 
+- **Runner connection reuse:** reduce per-job handshakes for jobs on the same
+  endpoint while preserving individual timeouts, leases, and uncertain-delivery
+  handling. Measure slow-job delays before adding concurrency.
+- **Incremental memory discovery:** avoid rescanning large rollout prefixes
+  when finding checkpoints. Any cached offsets must detect replacement,
+  truncation, and rollback rather than treating the file as permanently
+  append-only.
 - **External compaction:** reconsider a guarded threadctl command for long-lived
   workers. Codex exposes `thread/compact/start`, but it has no atomic idle
   precondition; ownership, races, and completion reporting need a sound design.

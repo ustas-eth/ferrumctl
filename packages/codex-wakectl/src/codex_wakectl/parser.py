@@ -118,6 +118,11 @@ def add_target_action(
         action="store_true",
         help="resume an unloaded target before delivering an event",
     )
+    parser.add_argument(
+        "--config-file",
+        metavar="FILE",
+        help="with --resume, snapshot caller-local TOML for cold loading",
+    )
     parser.add_argument("--allow-active", action="store_true", help=argparse.SUPPRESS)
     if legacy_message:
         parser.add_argument(

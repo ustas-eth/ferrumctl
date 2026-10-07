@@ -61,8 +61,10 @@ command should remain bound to one state surface.
 
 ## Package Contracts
 
-- `codex-goalctl` manages persisted goal state. Goal writes do not wake a
-  thread, and `replace` is intentionally a fresh clear-then-set assignment.
+- `codex-goalctl` manages persisted goal state. Writes through the owning
+  app-server also update live accounting and may continue an idle active goal.
+  Standalone writes do not synchronize another server's runtime; `replace`
+  is intentionally a fresh clear-then-set assignment.
   Parent-owned v2 children keep external goal writes under their native owner.
 - `codex-threadctl` creates independently controlled roots and combines live
   app-server operations with selected persisted history. An independent root is

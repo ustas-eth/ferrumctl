@@ -88,7 +88,9 @@ fire number. Existing context remains authoritative.
 - Add `--notify-active` when the event should enter current work instead of
   waiting for a separate turn.
 - Add `--resume` when wakectl should load an unloaded target. Resume can
-  immediately continue an active goal.
+  immediately continue an active goal. If cold loading needs worker-specific
+  settings, add `--config-file FILE`; the job saves the TOML settings and
+  applies them only when loading, not to an already loaded thread.
 - Add `--input MESSAGE` only when delayed ordinary input is deliberately the
   instruction. It waits until no turn is running and must remain valid if late
   or duplicated.
@@ -99,8 +101,8 @@ codex-wakectl add cmd --to WORKER \
   test -f done.txt
 ```
 
-Use immediate thread steering for a correction to active work. Do not schedule
-such intervention speculatively.
+For a correction to active work, use native messaging or threadctl `send` when
+its skill is available. Do not schedule such intervention speculatively.
 
 ## Run And Manage Jobs
 
@@ -156,13 +158,15 @@ before canceling a job. Use `--json` when another program will parse output.
 
 - Read `references/runtime-semantics.md` for condition matching, goal identity,
   stop cursors, repeats, delivery outcomes, leases, and SQLite state.
+- Read `references/restricted-operations.md` when a worker needs scheduling
+  access without control of the shared queue or arbitrary host predicates.
 - Read `references/coordination-practices.md` when choosing native polling,
   synchronous waiting, event wakes, explicit input, resume, custom watchers,
   recovery deadlines, or result channels.
 - Read `references/troubleshooting.md` when a job remains pending, fails, or
   becomes uncertain.
 - Read `references/coordination-principles.md` when composing wakes with native
-  controls, goals, thread inspection, streams, or coverage.
+  controls, goals, thread inspection, or streams.
 - Read `references/worker-workflows.md` for self-management, worker supervision,
   and reviewer chains.
 - Read `references/peer-workflows.md` for deferred handoff and peer attention.

@@ -9,15 +9,16 @@ explicitly requested it.
 
 For a short exchange, use a native subagent handle when one participant owns
 it. When the recipient is an independently controlled root and only thread ids
-are available, immediate thread control can start it:
+are available, an agent message can carry the exchange and request attention:
 
 ```sh
-codex-threadctl start "$B" \
-  "From peer A: Review the range semantics and reply with your conclusion."
+codex-threadctl send "$B" \
+  "Review the range semantics and reply with your conclusion." --wake
 ```
 
-Retrieve the answer through the native handle or from the exact turn returned
-by `start`.
+If B is already active, the message enters its context without starting another
+turn. Retrieve the answer through retained history or let B reply with `send`.
+Acceptance alone does not confirm that B read or answered it.
 
 ## Durable Discussion
 
@@ -39,14 +40,14 @@ announce only the highest committed position. The target can be a thread id or
 an unambiguous canonical task name such as `/root/reviewer`:
 
 ```sh
-codex-threadctl notify "$B" \
+codex-threadctl send "$B" \
   "Stream $STREAM has a checkpoint through $POSITION."
 ```
 
 Notification is advisory and does not define stream order. Current Codex
 rejects it for parent-owned v2 children; use their native parent message path.
-If B is idle and must act, start it through its native owner or use an empty
-wake when B accepts direct input:
+If B is idle and must act, use its native owner or add `--wake` to the send.
+An empty wake is also available separately:
 
 ```sh
 codex-threadctl wake "$B"
@@ -84,14 +85,14 @@ step.
 
 ## Deferred Handoff
 
-When one loaded session should act after a host-visible condition, assign
-durable work first when goal management is available, then schedule the event:
+When a stopped, loaded session should act after a host-visible condition,
+stage its goal without starting work, then schedule the event:
 
 ```sh
 NEXT=next-thread-id
 
 codex-goalctl replace "$NEXT" \
-  "Continue from done.txt and complete the next step."
+  "Continue from done.txt and complete the next step." --standalone
 
 codex-wakectl add cmd --to "$NEXT" \
   -- test -f done.txt

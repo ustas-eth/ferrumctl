@@ -51,7 +51,24 @@ class ParseTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 cli.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-goalctl 0.1.12\n")
+        self.assertEqual(output.getvalue(), "codex-goalctl 0.2.1\n")
+
+    def test_endpoint_option_and_environment(self) -> None:
+        with mock.patch.dict("os.environ", {"CODEX_GOALCTL_ENDPOINT": "unix://"}):
+            parser = cli.build_parser()
+            self.assertIsNone(parser.parse_args(["get", "thread"]).endpoint)
+            for arguments in (
+                ["--endpoint", "ws://localhost:1", "get", "thread"],
+                ["get", "thread", "--endpoint", "ws://localhost:1"],
+            ):
+                self.assertEqual(parser.parse_args(arguments).endpoint, "ws://localhost:1")
+
+    def test_standalone_before_and_after_subcommand(self):
+        for arguments in (["--standalone", "get", "thread"], ["get", "thread", "--standalone"]):
+            self.assertTrue(cli.build_parser().parse_args(arguments).standalone)
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                cli.build_parser().parse_args(["get", "thread", "--standalone", "--endpoint", "unix://"])
 
 
 class FakeApp:

@@ -36,8 +36,8 @@ DIRECT_INPUT_TO_V2_SUBAGENT = (
     "direct app-server input is not allowed for multi-agent v2 sub-agents"
 )
 PARENT_OWNED_INPUT_ERROR = (
-    "thread is controlled by its native parent; direct start, steer, wake, and "
-    "advisory injection are unavailable"
+    "thread is controlled by its native parent; use its native parent handle, "
+    "not direct input, send, or wake"
 )
 CREATE_NOTICE = "[threadctl] Independent thread initialized for direct control."
 
@@ -413,7 +413,8 @@ async def create_thread(
             code="creationUncertain", outcome="uncertain", threadId=thread_id,
         ) from exc
 
-    initialization_item_id = f"amsg_{uuid.uuid4().hex}"
+    # Native-style UUIDs avoid persisted-item lookup on Responses WS continuation.
+    initialization_item_id = f"amsg_{uuid.uuid4()}"
     try:
         await app.request(
             "thread/inject_items",
@@ -578,7 +579,11 @@ async def get_thread_status(app: AppServer, thread_id: str) -> dict[str, Any]:
 
 async def require_loaded(app: AppServer, thread_id: str) -> None:
     if thread_id not in await list_loaded(app):
-        raise ThreadNotLoaded(f"thread is not loaded on this app-server: {thread_id}")
+        raise ThreadNotLoaded(
+            f"thread is not loaded on this app-server: {thread_id}; "
+            "load --continue-goal loads it here and may continue its goal; "
+            "wake --resume combines loading with continuation"
+        )
 
 
 async def list_background_terminals(
@@ -889,7 +894,7 @@ async def notify_thread(
     item_id: str | None = None,
 ) -> dict[str, Any]:
     await require_loaded(app, thread_id)
-    item_id = item_id or f"amsg_{uuid.uuid4().hex}"
+    item_id = item_id or f"amsg_{uuid.uuid4()}"
     item = {
         "type": "agent_message",
         "id": item_id,

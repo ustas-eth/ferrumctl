@@ -24,7 +24,7 @@ profile files nor lists available names. An unknown name is rejected. A
 permission profile is distinct from a general Codex CLI `--profile` and a
 native subagent role.
 
-For worker-specific skills or other general settings, `create` and `resume`
+For worker-specific skills or other general settings, `create` and `load`
 accept `--config-file FILE`. This submits native request overrides rather than
 selecting a permission profile or CLI profile. See
 [Creation And Resume Configuration](lifecycle-control.md#creation-and-resume-configuration).
@@ -40,6 +40,13 @@ restarting the server. Editing its definition does not change an already loaded
 worker. Use `configure --permission-profile NAME` for a loaded thread's subsequent
 turns, or `resume --continue-goal --permission-profile NAME` while loading it.
 These operations select a policy; they do not edit its definition.
+
+Cold resume can restore a recorded permission-profile name when its definition
+is still applicable. This is not a saved policy snapshot: a missing definition
+can cause fallback to current configuration, and a newly created thread may
+not yet have a turn or settings record to restore. Request-only definitions and
+settings Codex does not restore, such as skill selection, need resubmitting
+during cold loading.
 
 `--approval-policy` controls whether execution can wait for a client decision;
 it does not widen filesystem access. The available creation options and their
@@ -58,6 +65,11 @@ Before relying on a new profile, exercise benign allowed reads and writes,
 denied reads, and any required local sockets from the worker. Check that the
 worker also receives its intended instructions: restricted filesystem reads can
 affect Codex's AGENTS.md discovery and loading.
+
+Execution permissions restrict local access, not the thread-control methods
+available after connecting to app-server. For workers that need only reporting,
+publication, or self-wakes, see
+[Restricted Worker Operations](https://github.com/ustas-eth/ferrumctl/blob/main/docs/restricted-operations.md).
 
 When the selected profile appears ineffective, check the server's configuration
 and launch flags against Codex's documented precedence rules. Legacy
