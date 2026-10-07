@@ -82,6 +82,40 @@ class AgentMetadataTests(unittest.TestCase):
 
 
 class AgentResolutionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_scoped_root_resolution_reads_lineage_without_descendant_scan(self):
+        root = thread("root", status="active", direct_input=True)
+        worker = thread("worker", parent="root", path="/root/worker", depth=1)
+        reviewer = thread("reviewer", parent="worker", path="/root/worker/reviewer", depth=2)
+        by_id = {entry["id"]: entry for entry in (root, worker, reviewer)}
+        for loaded_ids in (["root", "worker"], ["worker"]):
+            with (
+                self.subTest(loaded_ids=loaded_ids),
+                mock.patch.object(
+                    agents, "read_thread",
+                    mock.AsyncMock(side_effect=lambda _app, thread_id: by_id[thread_id]),
+                ) as read,
+                mock.patch.object(agents, "list_threads", mock.AsyncMock()) as descendants,
+                mock.patch.object(agents, "list_loaded", mock.AsyncMock(return_value=loaded_ids)),
+                mock.patch.dict("os.environ", {"CODEX_THREAD_ID": "reviewer"}),
+            ):
+                result = await agents.resolve_agent_path(object(), "/root")
+
+            self.assertEqual(result, agents.agent_record(
+                root, root=True, loaded_thread_ids=set(loaded_ids),
+            ))
+            self.assertEqual([call.args[1] for call in read.await_args_list], ["reviewer", "worker", "root"])
+            descendants.assert_not_awaited()
+
+    async def test_root_resolution_keeps_parent_cycle_validation(self):
+        cyclic = thread("worker", parent="worker", path="/root/worker", depth=1)
+        with (
+            mock.patch.object(agents, "read_thread", mock.AsyncMock(return_value=cyclic)),
+            mock.patch.object(agents, "list_threads", mock.AsyncMock()) as descendants,
+        ):
+            with self.assertRaisesRegex(ThreadctlError, "cycle"):
+                await agents.resolve_agent_path(object(), "/root", tree_thread_id="worker")
+        descendants.assert_not_awaited()
+
     async def test_lists_tree_from_any_member(self):
         root = thread("root", status="active", direct_input=True)
         worker = thread(

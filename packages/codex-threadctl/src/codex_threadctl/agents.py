@@ -213,6 +213,11 @@ async def resolve_agent_path(
     if anchor is not None and anchor.strip():
         if is_agent_path(anchor):
             raise ThreadctlError("--tree and CODEX_THREAD_ID must identify a thread by id")
+        if path == AGENT_PATH_ROOT:
+            root = (await read_agent_lineage(app, anchor))[-1]
+            return agent_record(
+                root, root=True, loaded_thread_ids=set(await list_loaded(app)),
+            )
         records = await list_agent_tree(app, anchor)
     else:
         records = await loaded_agent_records(app)
