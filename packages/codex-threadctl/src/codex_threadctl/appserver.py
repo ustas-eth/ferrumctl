@@ -413,7 +413,8 @@ async def create_thread(
             code="creationUncertain", outcome="uncertain", threadId=thread_id,
         ) from exc
 
-    initialization_item_id = f"amsg_{uuid.uuid4().hex}"
+    # Native-style UUIDs avoid persisted-item lookup on Responses WS continuation.
+    initialization_item_id = f"amsg_{uuid.uuid4()}"
     try:
         await app.request(
             "thread/inject_items",
@@ -893,7 +894,7 @@ async def notify_thread(
     item_id: str | None = None,
 ) -> dict[str, Any]:
     await require_loaded(app, thread_id)
-    item_id = item_id or f"amsg_{uuid.uuid4().hex}"
+    item_id = item_id or f"amsg_{uuid.uuid4()}"
     item = {
         "type": "agent_message",
         "id": item_id,

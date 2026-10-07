@@ -92,7 +92,7 @@ run git diff --check
   test "$("$bin_dir/codex-limitctl" --version)" = "codex-limitctl 0.2.11"
   test "$("$bin_dir/codex-memoryctl" --version)" = "codex-memoryctl 0.5.6"
   test "$("$bin_dir/streamctl" --version)" = "streamctl 0.2.5"
-  test "$("$bin_dir/codex-threadctl" --version)" = "codex-threadctl 0.8.0"
+  test "$("$bin_dir/codex-threadctl" --version)" = "codex-threadctl 0.8.1"
   test "$("$bin_dir/codex-wakectl" --version)" = "codex-wakectl 0.5.6"
 )
 

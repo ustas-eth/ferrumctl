@@ -36,6 +36,16 @@ CODEX_THREADCTL_TEST_BINARY=/absolute/path/to/codex \
   python3 -m unittest discover -s packages/codex-threadctl/tests -p 'test_*native.py' -v
 ```
 
+Agent-message IDs also have an opt-in check against the subscription Responses
+WebSocket backend. It makes three small synthetic model requests, leaves running
+threads untouched, and reads credentials only from the explicitly supplied file:
+
+```sh
+CODEX_THREADCTL_TEST_AUTH_FILE=/path/to/codex-home/auth.json \
+  PYTHONPATH=packages/codex-threadctl/src \
+  python3 -m unittest discover -s packages/codex-threadctl/tests -p 'test_responses_live.py' -v
+```
+
 ## Publishing Changes
 
 Use a branch and pull request for changes to command behavior, persisted state,
