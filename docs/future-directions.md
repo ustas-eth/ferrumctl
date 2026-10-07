@@ -10,6 +10,12 @@ already solve cleanly.
 
 ## Near-Term Ideas
 
+- **Shared-server account reads:** let limitctl reuse a selected app-server
+  rather than starting a process for every account request. Make account
+  identity and timeout behavior explicit before changing the default.
+- **Targeted local updates:** reinstall selected commands and refresh selected
+  plugins, including affected dependencies and generated references. Preserve
+  live plugin-cache invalidation without reloading active threads by default.
 - **Multi-thread observation:** inspect several workers in one compact request,
   including loaded state, active flags, goal status, context pressure, current
   turn, and recent activity.
@@ -37,6 +43,13 @@ already solve cleanly.
 
 ## Later Ideas
 
+- **Runner connection reuse:** reduce per-job handshakes for jobs on the same
+  endpoint while preserving individual timeouts, leases, and uncertain-delivery
+  handling. Measure slow-job delays before adding concurrency.
+- **Incremental memory discovery:** avoid rescanning large rollout prefixes
+  when finding checkpoints. Any cached offsets must detect replacement,
+  truncation, and rollback rather than treating the file as permanently
+  append-only.
 - **External compaction:** reconsider a guarded threadctl command for long-lived
   workers. Codex exposes `thread/compact/start`, but it has no atomic idle
   precondition; ownership, races, and completion reporting need a sound design.

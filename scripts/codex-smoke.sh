@@ -374,7 +374,12 @@ rate_limit_requests = list(request_definitions(requests, "account/rateLimits/rea
 assert len(rate_limit_requests) == 1
 request = rate_limit_requests[0]
 assert set(request["required"]) == {"id", "method"}
-assert request["properties"]["params"] == {"type": "null"}
+rate_limit_params = request["properties"]["params"]
+if rate_limit_params != {"type": "null"}:
+    assert {
+        entry.get("$ref") or entry.get("type")
+        for entry in rate_limit_params["anyOf"]
+    } == {"#/definitions/GetAccountRateLimitsParams", "null"}
 
 usage_requests = list(request_definitions(requests, "account/usage/read"))
 assert len(usage_requests) == 1
