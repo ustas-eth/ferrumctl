@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+import uuid
 from unittest import mock
 
 from codex_threadctl.errors import ThreadNotLoaded, ThreadStateError
@@ -29,12 +30,20 @@ class EventTextTests(unittest.TestCase):
     def test_repeating_event_has_a_stable_sequence(self) -> None:
         job = event_job()
         job["fireCount"] = 2
-        self.assertEqual(delivery.event_item_id(job), "amsg_wake_job123_3")
+        item_id = delivery.event_item_id(job)
+        self.assertEqual(item_id, delivery.event_item_id(dict(job)))
+        self.assertEqual(
+            item_id,
+            f"amsg_{uuid.uuid5(uuid.NAMESPACE_URL, 'codex-wakectl:event:job123:3')}",
+        )
+        self.assertEqual(uuid.UUID(item_id.removeprefix("amsg_")).version, 5)
+        self.assertNotEqual(item_id, delivery.event_item_id(event_job()))
+        self.assertNotEqual(item_id, delivery.event_item_id(dict(job, id="other")))
 
 
 class DeliveryTests(unittest.IsolatedAsyncioTestCase):
     async def test_idle_event_injects_context_then_starts_empty_turn(self) -> None:
-        notification = {"itemId": "amsg_wake_job123_1", "outcome": "accepted"}
+        notification = {"itemId": delivery.event_item_id(event_job()), "outcome": "accepted"}
         with (
             mock.patch.object(delivery, "list_loaded", mock.AsyncMock(return_value=["target"])),
             mock.patch.object(
@@ -64,12 +73,12 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
             "target",
             "wakectl",
             "Scheduled event job123/1: goal condition for worker matched: matched.",
-            item_id="amsg_wake_job123_1",
+            item_id=delivery.event_item_id(event_job()),
         )
         wake.assert_awaited_once_with(mock.ANY, "target")
 
     async def test_system_error_event_injects_context_then_starts_recovery_turn(self) -> None:
-        notification = {"itemId": "amsg_wake_job123_1", "outcome": "accepted"}
+        notification = {"itemId": delivery.event_item_id(event_job()), "outcome": "accepted"}
         with (
             mock.patch.object(delivery, "list_loaded", mock.AsyncMock(return_value=["target"])),
             mock.patch.object(
@@ -121,7 +130,7 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
                 delivery,
                 "notify_thread",
                 mock.AsyncMock(
-                    return_value={"itemId": "amsg_wake_job123_1", "outcome": "accepted"}
+                    return_value={"itemId": delivery.event_item_id(event_job()), "outcome": "accepted"}
                 ),
             ),
             mock.patch.object(
@@ -160,7 +169,7 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
                 delivery,
                 "notify_thread",
                 mock.AsyncMock(
-                    return_value={"itemId": "amsg_wake_job123_1", "outcome": "accepted"}
+                    return_value={"itemId": delivery.event_item_id(event_job()), "outcome": "accepted"}
                 ),
             ),
             mock.patch.object(
@@ -189,7 +198,7 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
                 delivery,
                 "notify_thread",
                 mock.AsyncMock(
-                    return_value={"itemId": "amsg_wake_job123_1", "outcome": "accepted"}
+                    return_value={"itemId": delivery.event_item_id(event_job()), "outcome": "accepted"}
                 ),
             ),
             mock.patch.object(
@@ -220,7 +229,7 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
                 delivery,
                 "notify_thread",
                 mock.AsyncMock(
-                    return_value={"itemId": "amsg_wake_job123_1", "outcome": "accepted"}
+                    return_value={"itemId": delivery.event_item_id(event_job()), "outcome": "accepted"}
                 ),
             ),
             mock.patch.object(
@@ -238,7 +247,7 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(EventDeliveryUncertain) as raised:
                 await delivery.deliver_event(object(), event_job(), "matched")
 
-        self.assertEqual(raised.exception.item_id, "amsg_wake_job123_1")
+        self.assertEqual(raised.exception.item_id, delivery.event_item_id(event_job()))
         self.assertEqual(raised.exception.turn_id, "turn-1")
 
     async def test_input_action_uses_the_existing_confirmed_path(self) -> None:

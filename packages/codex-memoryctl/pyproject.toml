@@ -4,14 +4,14 @@ build-backend = "hatchling.build"
 
 [project]
 name = "codex-memoryctl"
-version = "0.5.6"
+version = "0.5.7"
 description = "Locate, describe, compare, export, and inject Codex compaction memory"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
 dependencies = [
-  "codex-threadctl>=0.8,<0.9",
+  "codex-threadctl>=0.8.3,<0.9",
   "websockets>=15,<16",
 ]
 

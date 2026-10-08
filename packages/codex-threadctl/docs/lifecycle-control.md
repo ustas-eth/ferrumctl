@@ -228,10 +228,15 @@ even when initialization fails, so recovery need not create another root.
 recipient is the target thread id. The text is advisory agent context rather
 than a user message.
 
-Threadctl assigns the raw item an `amsg_` id and returns it as `itemId` in JSON
-output. An uncertain notification reports the same id for reconciliation. The
-materialized conversation view may assign its own item locator, so use the
-notice text or raw rollout when that original id must be found later.
+Threadctl assigns the raw item a native-style `amsg_UUID` id and returns it as
+`itemId` in JSON output. An uncertain notification reports the same id for
+reconciliation. The materialized conversation view may assign its own item
+locator, so use the notice text or raw rollout when that original id must be
+found later.
+
+Explicit `--item-id` values are passed through unchanged. Use native-style ids
+for locally authored messages: other formats may be accepted on injection but
+rejected by the model backend during a WebSocket continuation.
 
 The text can be a complete report, question, request, or correction. Hierarchy
 does not change its role: a coordinator's message and a worker's report are both

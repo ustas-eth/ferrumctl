@@ -121,6 +121,11 @@ Keep dependencies on Codex app-server methods, transcript schemas, and parser
 output narrow and visible in documentation or tests. Test stateful behavior
 through persisted command transitions, not only helper functions.
 
+Use native prefixed UUIDs for locally authored Responses items. Keep transport
+item ids distinct from client-message correlation ids, queue keys, and source
+provenance. Preserve copied provider-issued ids; test continuation and
+post-compaction replay, not only app-server acceptance.
+
 Follow `CONTRIBUTING.md` for verification and commit conventions. Keep delegated
 review focused: use at most two reviewers at `xhigh` effort, never `max`.
 

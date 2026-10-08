@@ -5,7 +5,6 @@ import copy
 import json
 import os
 import sys
-import uuid
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -22,6 +21,7 @@ from codex_threadctl.appserver import (
     require_object,
 )
 from codex_threadctl.errors import AppServerResponseError, ThreadctlError
+from codex_threadctl.response_items import agent_message_id
 
 from .constants import CLIENT_VERSION
 from .discovery import search_rollout
@@ -289,7 +289,7 @@ def perspective_frame(
     payload = {"event": f"memoryctl.perspective.{event}", **fields}
     return {
         "type": "agent_message",
-        "id": f"amsg_memoryctl_{uuid.uuid4().hex}",
+        "id": agent_message_id(),
         "author": "memoryctl",
         "recipient": target,
         "content": [

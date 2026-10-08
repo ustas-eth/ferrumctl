@@ -860,6 +860,7 @@ wakectl --json list --all >"$SMOKE_ROOT/wakectl-all.json"
   "$wake_job" <<'PY'
 import json
 import sys
+import uuid
 
 with open(sys.argv[1], encoding="utf-8") as handle:
     run = json.load(handle)
@@ -870,7 +871,8 @@ job = next(item for item in jobs if item["id"] == sys.argv[3])
 assert fired["delivery"] == "eventStarted"
 assert fired["turnId"]
 assert job["action"] == {"type": "event"}
-assert job["lastEventItemId"] == f"amsg_wake_{sys.argv[3]}_1"
+expected_id = uuid.uuid5(uuid.NAMESPACE_URL, f"codex-wakectl:event:{sys.argv[3]}:1")
+assert job["lastEventItemId"] == f"amsg_{expected_id}"
 assert job["lastTurnId"] == fired["turnId"]
 assert job["status"] == "fired"
 PY

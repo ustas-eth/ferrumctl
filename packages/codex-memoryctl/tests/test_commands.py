@@ -2,6 +2,7 @@ import io
 import json
 import tempfile
 import unittest
+import uuid
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import replace
 from pathlib import Path
@@ -222,6 +223,12 @@ class InjectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(items), 5)
         self.assertEqual(items[1], first.memory_item)
         self.assertEqual(items[3], second.memory_item)
+        framing_ids = [items[index]["id"] for index in (0, 2, 4)]
+        self.assertEqual(len(set(framing_ids)), 3)
+        for item_id in framing_ids:
+            value = uuid.UUID(item_id.removeprefix("amsg_"))
+            self.assertEqual(item_id, f"amsg_{value}")
+            self.assertEqual(value.version, 4)
         opening = json.loads(items[0]["content"][0]["text"])
         transition = json.loads(items[2]["content"][0]["text"])
         closing = json.loads(items[4]["content"][0]["text"])
@@ -339,6 +346,10 @@ class InjectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(opening["type"], "agent_message")
         self.assertEqual(opening["author"], "memoryctl")
         self.assertEqual(opening["recipient"], "target")
+        for frame in (opening, params["items"][2]):
+            item_uuid = uuid.UUID(frame["id"].removeprefix("amsg_"))
+            self.assertEqual(frame["id"], f"amsg_{item_uuid}")
+            self.assertEqual(item_uuid.version, 4)
         opened = json.loads(opening["content"][0]["text"])
         self.assertEqual(opened["event"], "memoryctl.perspective.open")
         frame = params["items"][2]
