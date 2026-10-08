@@ -23,13 +23,14 @@ from codex_threadctl.errors import (
     ThreadctlError,
 )
 from codex_threadctl.formatting import status_name
+from codex_threadctl.response_items import agent_message_id
 
 from .errors import EventDeliveryUncertain, WakectlError
 
 
 def event_item_id(job: dict[str, Any]) -> str:
     sequence = int(job.get("fireCount") or 0) + 1
-    return f"amsg_wake_{job['id']}_{sequence}"
+    return agent_message_id(f"codex-wakectl:event:{job['id']}:{sequence}")
 
 
 def event_text(job: dict[str, Any], reason: str) -> str:

@@ -46,8 +46,10 @@ CODEX_THREADCTL_TEST_BINARY=/absolute/path/to/codex \
 ```
 
 Agent-message IDs also have an opt-in check against the subscription Responses
-WebSocket backend. It makes four small synthetic model requests, leaves running
-threads untouched, and reads credentials only from the explicitly supplied file:
+WebSocket backend. It exercises generated threadctl, wakectl, and memoryctl
+items, prewarm continuations, and replay after real compaction using short
+synthetic model requests. It leaves running threads untouched and reads
+credentials only from the explicitly supplied file:
 
 ```sh
 CODEX_THREADCTL_TEST_AUTH_FILE=/path/to/codex-home/auth.json \

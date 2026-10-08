@@ -114,8 +114,10 @@ context without adding a user message. Both the event and resulting response
 remain in thread history.
 
 The generated text begins with `Scheduled event JOB/FIRE`, and each event has a
-stable `lastEventItemId`. A repeating job uses the same job id and increments
-the fire number.
+stable, native-style `lastEventItemId` derived from the job id and fire number.
+A repeating job uses the same job id and increments the fire number. Read the
+recorded item id rather than reconstructing its encoding. Previously recorded
+delivery ids remain unchanged when the runner is upgraded.
 
 By default, an active or unloaded target defers event delivery. With
 `--notify-active`, an active target receives the agent event and no new turn is

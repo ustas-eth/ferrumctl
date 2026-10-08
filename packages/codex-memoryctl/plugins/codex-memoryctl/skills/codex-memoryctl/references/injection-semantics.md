@@ -75,6 +75,12 @@ Once recorded, injected items are part of model-visible history and have no
 paired remove operation. A later compaction can combine their influence with
 the recipient's history into a new opaque memory.
 
+New perspective boundaries use native-style agent-message ids. Imported items
+keep their source ids. Earlier versions generated `amsg_memoryctl_HEX` boundary
+ids that can fail backend lookup during WebSocket continuation, including when
+retained after compaction. Upgrading prevents new occurrences but does not
+rewrite existing history; reinjecting memory does not repair those boundaries.
+
 Repeated `--state` arguments are submitted as one batch in command order. The
 order is model-visible and may change the result. With boundary framing,
 memoryctl labels the first memory, closes one perspective before opening the
