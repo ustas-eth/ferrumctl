@@ -120,6 +120,10 @@ app-server, and removes its temporary data when finished.
 
 ## Older Installations
 
+If an older thread reports a `persisted-item lookup` error after an upgrade,
+see [Repair legacy response item IDs](repair-response-item-ids.md). Retained
+history needs a separate repair; reinstalling commands does not rewrite it.
+
 `codex-readcov` has been retired; its source remains in Git history. The update
 helper installs the current suite but leaves earlier installations in place.
 Remove its command and plugin when they are no longer needed:
