@@ -133,6 +133,33 @@ class LiveResponsesTests(unittest.IsolatedAsyncioTestCase):
                     ws, previous_response_id=previous["id"], input=[item],
                 )
 
+    async def test_repaired_legacy_ids_survive_continuation_and_compaction(self):
+        import importlib.util
+        script = Path(__file__).resolve().parents[3] / "scripts/repair-response-item-ids.py"
+        spec = importlib.util.spec_from_file_location("repair_ids", script)
+        repair = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(repair)
+        frames = self.frame_memory("synthetic-recipient", [{}], self.sources, "Synthetic recall.")
+        legacy = [item for item in frames if item.get("type") == "agent_message"]
+        legacy[0]["id"] = "amsg_memoryctl_0123456789abcdef0123456789abcdef"
+        legacy[1]["id"] = "amsg_fedcba9876543210fedcba9876543210"
+        encoded = json.dumps({"type": "compacted", "payload": {"replacement_history": legacy}}).encode()
+        patched, count = repair.repair_line(encoded)
+        self.assertEqual(count, 2)
+        self.assertEqual(len(encoded), len(patched))
+        fixed = json.loads(patched)["payload"]["replacement_history"]
+        self.assertTrue(all(item["id"] is None for item in fixed))
+        async with self.connection() as ws:
+            warmup = await self.completed(ws, generate=False, input=[self.prefix])
+            response = await self.completed(ws, previous_response_id=warmup["id"], input=[self.user, *fixed])
+            compacted = await self.completed(ws, previous_response_id=response["id"], input=[{"type": "compaction_trigger"}])
+        memory = self.memory(compacted)
+        async with self.connection() as ws:
+            warmup = await self.completed(ws, generate=False, input=[self.prefix])
+            await self.completed(ws, previous_response_id=warmup["id"], input=[self.user, *fixed, memory, self.message("Continue.")])
+        async with self.connection() as ws:
+            await self.completed(ws, input=[self.prefix, self.user, *fixed, memory])
+
     async def test_framed_memory_survives_compaction_and_prewarm_replay(self):
         async with self.connection() as ws:
             donor = await self.completed(

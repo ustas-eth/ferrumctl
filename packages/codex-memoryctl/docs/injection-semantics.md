@@ -78,6 +78,8 @@ keep their source ids. Earlier versions generated `amsg_memoryctl_HEX` boundary
 ids that can fail backend lookup during WebSocket continuation, including when
 retained after compaction. Upgrading prevents new occurrences but does not
 rewrite existing history; reinjecting memory does not repair those boundaries.
+The repository's [legacy ID repair helper](https://github.com/ustas-eth/ferrumctl/blob/main/docs/repair-response-item-ids.md)
+can clear affected IDs while preserving conversation and opaque memory.
 
 Repeated `--state` arguments are submitted as one batch in command order. The
 order is model-visible and may change the result. With boundary framing,
