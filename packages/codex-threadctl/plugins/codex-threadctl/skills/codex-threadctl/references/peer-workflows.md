@@ -5,7 +5,8 @@
 These examples cover direct exchanges, durable peer discussion, and handoff
 between coding agents. Use only the layers needed by the participants. In an
 agent session, a command should have its corresponding skill unless the user
-explicitly requested it.
+explicitly requested it. Thread-control examples target Codex threads; streams
+can be shared by participants using any harness.
 
 ## Direct Exchange
 
@@ -55,7 +56,7 @@ An empty wake is also available separately:
 codex-threadctl wake "$B"
 ```
 
-In B's thread, `CODEX_THREAD_ID` selects B's reader acknowledgement:
+In B's Codex thread, `CODEX_THREAD_ID` selects B's reader acknowledgement:
 
 ```sh
 streamctl list "$STREAM" --limit 0 --json
@@ -72,6 +73,10 @@ An empty result has nothing to acknowledge. Acknowledgement is already durable
 reader state. It does not require a notice or a receipt entry. Missing, delayed,
 reordered, or duplicate notices are reconciled by listing after the saved
 acknowledgement.
+
+Participants outside Codex pass a stable identity with `append --author`,
+`list --reader`, and `ack --reader`. Their attention channel belongs to their
+own harness; stream publication and acknowledgement remain the same.
 
 ## Collaboration Cadence
 

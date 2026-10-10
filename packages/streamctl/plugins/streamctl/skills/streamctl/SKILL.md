@@ -13,12 +13,18 @@ an ordered sequence of immutable entries with one cumulative acknowledgement
 per reader. It does not notify participants, start turns, authenticate
 identities, or decide how collaborators should respond.
 
-A short direct exchange is usually better served by native messaging or, when
-its skill is available, threadctl `send`. Once a
-stream is authoritative, keep substantive peer content there and use other
+A short direct exchange is usually better served by native messaging. For a
+Codex recipient, threadctl `send` is an option when its skill is available.
+Once a stream is authoritative, keep substantive peer content there and use other
 channels for attention or lifecycle control.
 
 ## Exchange Records
+
+Within Codex, omit `--author` and `--reader` when `CODEX_THREAD_ID` identifies
+your thread. From another harness or a host process, pass your own stable
+participant identity explicitly; an inherited Codex id identifies the launcher,
+not you. Every distinct reader string has an independent acknowledgement.
+Reusing one across replacement threads deliberately continues its prior position.
 
 Create a stream and append a record:
 
@@ -35,11 +41,6 @@ Reply to a known entry:
 streamctl append "$STREAM" --reply-to "$POSITION" \
   "I will test cancellation while you check the public contract."
 ```
-
-When `CODEX_THREAD_ID` is set, omit `--author` and `--reader`; it supplies a
-stable per-thread identity. Every distinct reader string has an independent
-acknowledgement. Override the default only when separate identities or deliberate
-continuity across replacement threads are part of the workflow.
 
 List entries after the current reader's acknowledgement:
 
@@ -62,9 +63,9 @@ interval is required.
 
 ## Add Attention Separately
 
-An append is the durable publication boundary. If an immediate thread-control
-skill is also available, the active peer accepts direct app-server injection,
-and prompt attention would help, announce only the latest committed position.
+An append is the durable publication boundary. For a Codex peer that accepts
+direct app-server injection, use threadctl when its skill is available and prompt
+attention would help. Announce only the latest committed position.
 `$PEER` may be a thread id or an unambiguous canonical task name such as
 `/root/reviewer`:
 
@@ -77,8 +78,8 @@ Notification and wake remain separate from the stream. Missing, delayed,
 reordered, or duplicate notices are reconciled by listing after the reader's
 acknowledgement.
 
-For a parent-owned v2 child, use its native parent message path. For a directly
-controlled idle recipient that must act, add `--wake` to the send. The message
+For a parent-owned Codex v2 child, use its native parent message path. For a
+directly controlled idle recipient that must act, add `--wake` to the send. The message
 and wake are still separate operations from durable publication.
 
 ## Invariants

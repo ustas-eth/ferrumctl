@@ -51,7 +51,7 @@ class ParseTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 cli.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-goalctl 0.2.1\n")
+        self.assertEqual(output.getvalue(), "codex-goalctl 0.2.2\n")
 
     def test_endpoint_option_and_environment(self) -> None:
         with mock.patch.dict("os.environ", {"CODEX_GOALCTL_ENDPOINT": "unix://"}):

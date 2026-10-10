@@ -1,16 +1,17 @@
 ---
 name: codex-goalctl
-description: "Use when another Codex thread's persisted goal must be read, or when a directly controlled thread's goal must be assigned, updated, or cleared. Use built-in goal tools for this session. Goalctl requires a thread id; resolve a canonical task name through the threadctl skill when available. Current Codex reserves goal changes on parent-owned v2 children for their native workflow."
+description: "Use to read a Codex thread's persisted goal or assign, update, or clear a directly controlled Codex thread's goal. Within Codex, prefer built-in tools for your own goal. Current Codex reserves goal changes on parent-owned v2 children for their native workflow."
 ---
 
 # Codex Goalctl
 
 ## Purpose
 
-Use `codex-goalctl` to manage another Codex thread's persisted goal from the
-host. By default, it reuses the shared server at `unix://` when that server holds
-the target, so changes also reach live goal accounting. Otherwise it starts a
-short-lived server for persisted state:
+Use `codex-goalctl` to manage a Codex thread's persisted goal from the host,
+including from another coding harness. Within Codex, prefer built-in goal tools
+for your own thread when available. By default, goalctl reuses the shared server
+at `unix://` when that server holds the target, so changes also reach live goal
+accounting. Otherwise it starts a short-lived server for persisted state:
 
 ```sh
 codex-goalctl update THREAD_ID --token-budget 500000
@@ -54,10 +55,10 @@ WORKER=$(codex-threadctl resolve /root/reviewer)
 codex-goalctl get "$WORKER"
 ```
 
-`CODEX_THREAD_ID` supplies the tree scope. Otherwise pass `--tree THREAD_ID` to
-`resolve`. Current Codex rejects external `replace`, `update`, and `clear` for a
-parent-owned v2 child. Give that child its assignment through the native parent
-workflow. When external goal control is required and the threadctl skill is
+`CODEX_THREAD_ID` supplies the Codex tree scope. Otherwise pass `--tree THREAD_ID`
+to `resolve`. Current Codex rejects external `replace`, `update`, and `clear`
+for a parent-owned v2 child. Give that child its assignment through the native
+parent workflow. When external goal control is required and the threadctl skill is
 available, create an independent root from the outset:
 
 ```sh
@@ -71,8 +72,8 @@ Setting a goal leaves earlier user messages in place. If their framing no
 longer fits the ongoing assignment, deliberate anchoring user input can help;
 read `references/coordination-principles.md` for the distinction.
 
-If the goal has not already started work, prefer native control when the
-target's live subagent handle is available. For an independent root, if the
+If the goal has not already started work, prefer native Codex control when you
+own the target's live subagent handle. For an independent root, if the
 threadctl skill is available, continue from the assigned goal without adding
 user input:
 

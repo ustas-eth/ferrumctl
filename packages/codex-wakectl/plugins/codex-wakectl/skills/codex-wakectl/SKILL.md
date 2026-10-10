@@ -1,17 +1,18 @@
 ---
 name: codex-wakectl
-description: "Use when this or another Codex thread must regain attention after a later time, goal state, turn completion, or host condition, when ordinary input must be scheduled deliberately, or when durable wake jobs and runners must be managed. Synchronous waits are only for scripts or thread-id-only controllers that need an exit status. Do not replace native polling of a live handle or use this for immediate control."
+description: "Use when a Codex thread must regain attention after a later time, goal state, turn completion, or host condition, when ordinary input must be scheduled deliberately, or when durable wake jobs and runners must be managed. Synchronous waits are only for scripts or thread-id-only controllers that need an exit status. Do not replace native polling of a live handle or use this for immediate control."
 ---
 
 # Codex Wakectl
 
 ## Purpose
 
-Use `codex-wakectl add` to persist a condition and wake action. A normal wake
-adds a short scheduled event to agent context and starts an empty turn when the
-target has no running turn, including after `systemError`. It restores
-attention without adding a user message or replacing the target's existing
-context, goal, or instructions.
+Use `codex-wakectl add` to persist a condition and wake action for a Codex
+thread. The caller can use Codex, another coding harness, or a host script.
+A normal wake adds a short scheduled event to agent context and starts an empty
+turn when the target has no running turn, including after `systemError`. It
+restores attention without adding a user message or replacing the target's
+existing context, goal, or instructions.
 
 `wait` is a separate synchronous interface. It blocks only its invoking
 process, creates no job, and does not notify or wake a thread.
@@ -27,22 +28,22 @@ Choose according to how attention should return:
   and should remain active.
 - Use `wait goal` or `wait stop` when a script or thread-id-only controller
   needs a synchronous exit status.
-- Use `add` when a runner should restore this or another thread's attention
+- Use `add` when a runner should restore a Codex thread's attention
   after a later condition, independently of the caller's execution.
-- Use native subagent input for an immediate message. When only a thread id is
-  available, use an immediate control tool only if its skill is available.
+- Use native Codex subagent input for an immediate message when you own the
+  live handle. When only a thread id is available, use an immediate control tool
+  only if its skill is available.
 
-An idle self-wake can be delivered only after this turn ends; do not block this
-turn waiting for it. Scheduling for another thread does not require this turn
-to end.
+For a Codex self-wake, idle delivery requires your turn to end; do not block
+that turn waiting for it. Scheduling for another thread does not require the
+caller's turn to end.
 
-The target normally must be loaded on the job's app-server endpoint. A default
-shared setup is:
+The target normally must be loaded on the job's app-server endpoint (`unix://`
+by default). Set `TARGET` to its Codex thread id. Within Codex, use
+`CODEX_THREAD_ID` for yourself:
 
 ```sh
-codex app-server --listen unix://
-codex --remote unix://
-SELF=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
+TARGET=codex-thread-id
 ```
 
 ## Schedule A Wake
@@ -50,7 +51,7 @@ SELF=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
 Schedule by time, goal state or usage, turn completion, or a host predicate:
 
 ```sh
-codex-wakectl add time --after 30m --to "$SELF"
+codex-wakectl add time --after 30m --to "$TARGET"
 
 codex-wakectl add goal WORKER \
   --status complete,blocked,budgetLimited,usageLimited \
@@ -61,7 +62,7 @@ codex-wakectl add goal WORKER --tokens-used-every 2000000 \
 
 codex-wakectl add stop WORKER --turn TURN_ID --to COORDINATOR
 
-codex-wakectl add cmd --to "$SELF" -- test -f done.txt
+codex-wakectl add cmd --to "$TARGET" -- test -f done.txt
 ```
 
 An unqualified stop watch records a boundary at creation and observes a later
@@ -70,8 +71,9 @@ especially when watch creation can race completion. A goal watch binds to one
 assignment; replacing that goal supersedes the watch.
 
 Canonical task names such as `/root/reviewer` can be condition subjects.
-`CODEX_THREAD_ID` supplies their tree scope; otherwise pass `--tree THREAD_ID`.
-Wakectl resolves each name once and stores the thread id. A parent-owned child
+`CODEX_THREAD_ID` supplies their Codex tree scope; otherwise pass
+`--tree THREAD_ID`. Wakectl resolves each name once and stores the thread id.
+A parent-owned child
 cannot be a delivery target, so direct the wake to `/root` or another thread
 that accepts app-server input.
 
@@ -148,7 +150,7 @@ is handled. When detection needs state, backoff, diagnostics, or expensive
 work, use a separate watcher and let wakectl test its durable result.
 
 For an unattended wait whose failure would require user recovery, schedule a
-separate time wake for the session that owns and can repair it. Record both job
+separate time wake for a Codex thread that can inspect and repair it. Record both job
 ids and cancel the remaining job after either path is handled.
 
 The default queue is shared by the host user. Inspect identity and ownership
