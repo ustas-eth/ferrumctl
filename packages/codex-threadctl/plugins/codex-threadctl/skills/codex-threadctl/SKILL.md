@@ -1,13 +1,14 @@
 ---
 name: codex-threadctl
-description: "Use to discover or inspect Codex threads beyond native results, create independent workers, exchange agent messages, or control threads through a thread id or canonical task name. Prefer native tools when this session owns the live child. Do not use for future conditions, goal editing, terminal keystrokes, or native subagent spawning."
+description: "Use to discover or inspect Codex threads beyond native results, create independent workers, exchange agent messages, or control threads through a thread id or canonical task name. Prefer native Codex tools when you own the live child handle. Do not use for future conditions, goal editing, terminal keystrokes, or native subagent spawning."
 ---
 
 # Codex Threadctl
 
-Use `codex-threadctl` for retained history and immediate control on a shared
-app-server (`unix://` by default). Prefer native subagent tools for ordinary
-messages, waiting, and control when you own the live child handle.
+Use `codex-threadctl` for retained Codex history and immediate control on a
+shared app-server (`unix://` by default), from Codex or another coding harness.
+Prefer native Codex subagent tools for ordinary messages, waiting, and control
+when you own the live child handle.
 
 ## Choose The Operation
 
@@ -24,9 +25,10 @@ messages, waiting, and control when you own the live child handle.
 
 Routine coordinator requests and worker reports are agent communication.
 `send` carries the text itself; it is not limited to notices or file pointers.
-Its author defaults to `CODEX_THREAD_ID`; use `--from` when a host process needs
-an explicit identity. Author labels are provenance, not
-authentication or added authority.
+Inside Codex, its author defaults to `CODEX_THREAD_ID`. From another harness or
+a host process, supply your own stable identity with `--from`; an inherited
+Codex id identifies the launching thread, not you. Author labels are provenance,
+not authentication or added authority.
 
 `send` alone does not start work. `--wake` adds a separate empty-turn request if
 the recipient is stopped. Acceptance does not prove that the model read or acted
@@ -105,8 +107,9 @@ not an immutable log: an active turn's item ids can change.
 
 `agents` lists a native tree; `resolve /root/reviewer` returns a thread id.
 Canonical task names work directly in threadctl commands. `CODEX_THREAD_ID`
-scopes them to your tree; pass `--tree THREAD_ID` for another. Resolve and retain
-the id when another package needs it or a reused task name would be ambiguous.
+scopes them to that Codex tree; pass `--tree THREAD_ID` for an explicit scope.
+Resolve and retain the id when another package needs it or a reused task name
+would be ambiguous.
 
 ## Interpret Results
 

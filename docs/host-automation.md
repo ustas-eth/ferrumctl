@@ -19,7 +19,7 @@ unavailable. Preserve all three outcomes. A successful gate is a point-in-time
 observation, not a capacity reservation.
 
 When scheduled wakes are available and the selected window includes a renewal
-time, a sleeping coordinator can wake then and evaluate the policy again:
+time, a sleeping Codex coordinator can wake then and evaluate the policy again:
 
 ```sh
 SELF=${CODEX_THREAD_ID:?CODEX_THREAD_ID is not set}
@@ -68,6 +68,7 @@ execution:
 ```sh
 export CODEX_HOME=/path/to/codex-home
 ENDPOINT=unix:///path/to/codex.sock
+ACTOR=external-coordinator
 WORKER=$(codex-threadctl --endpoint "$ENDPOINT" create \
   --cwd /path/to/project)
 
@@ -75,6 +76,8 @@ codex-threadctl --endpoint "$ENDPOINT" loaded
 codex-threadctl --endpoint "$ENDPOINT" inspect "$WORKER"
 codex-goalctl --endpoint "$ENDPOINT" replace "$WORKER" \
   "Work from this external assignment."
+codex-threadctl --endpoint "$ENDPOINT" send "$WORKER" \
+  "Report the verified result when the assignment is complete." --from "$ACTOR" --wake
 ```
 
 The new worker is an independent root rather than a child in a native agent
@@ -82,7 +85,10 @@ tree. The manager owns socket discovery, runner lifecycle, saved identifiers,
 result retrieval, and cleanup. Keep goal changes on the same endpoint so they
 also update live accounting. An active goal may start work immediately; if it
 does not, `codex-threadctl --endpoint "$ENDPOINT" wake "$WORKER" --resume` can
-continue it without another user instruction.
+continue it without another user instruction. The explicit `--from` identifies
+the manager rather than an inherited Codex environment id. Wakectl delivery
+also targets Codex threads; returning attention to an external manager uses
+that harness's own control channel.
 
 Use structured output and preserve exact thread, turn, item, stream, and job
 identifiers whenever another program will make the next decision.

@@ -65,7 +65,9 @@ ownership, membership, or access.
 
 When `CODEX_THREAD_ID` is available, the CLI uses it as the default author and
 reader. This gives each thread its own acknowledgement without additional
-configuration. Every distinct reader string has a separate acknowledgement;
+configuration. Callers outside Codex supply `--author` and `--reader` explicitly
+for their own identity; an inherited Codex id still identifies the launcher.
+Every distinct reader string has a separate acknowledgement;
 reusing a role string across replacement threads deliberately continues that
 role's prior position.
 

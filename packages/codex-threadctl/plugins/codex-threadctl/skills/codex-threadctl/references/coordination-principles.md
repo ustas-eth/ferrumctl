@@ -4,6 +4,8 @@
 
 Ferrumctl commands expose independent state and control surfaces. They can be
 installed separately and do not form one scheduler or state machine.
+The Codex-prefixed commands operate on Codex state regardless of the caller's
+harness. Streamctl exchanges records independently of any harness.
 
 In an agent session, a command should normally be used only when its skill is
 available or the user explicitly requests that command. Missing packages remove
@@ -28,7 +30,10 @@ as authoritative.
 
 The common handle is a Codex thread id. For v1 subagents, the spawn result's
 `agent_id` is that thread id. `CODEX_THREAD_ID` identifies the current thread
-when Codex provides it.
+when Codex provides it to that session. A session id from another harness is not
+a Codex thread id. External callers supply their own provenance through
+`send --from`, `append --author`, and `list` or `ack --reader`; an inherited
+`CODEX_THREAD_ID` still identifies the launching Codex thread.
 
 `codex-threadctl create` produces a persisted root whose thread id can be
 controlled directly through the selected app-server. It is independent of the
@@ -57,9 +62,9 @@ stores, see [Restricted Worker Operations](https://github.com/ustas-eth/ferrumct
 
 ## Choosing Control
 
-Use a native subagent handle for direct input, lifecycle control, waiting, and
-result retrieval when the current session owns that handle. Current Codex keeps
-v2 children under this parent ownership and rejects direct external input,
+Use a native Codex subagent handle for direct input, lifecycle control, waiting,
+and result retrieval when the current session owns that handle. Current Codex
+keeps v2 children under this parent ownership and rejects direct external input,
 injected context, and goal changes to those children.
 
 When a host process or another thread must control a worker directly, create an

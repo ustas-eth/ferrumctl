@@ -1,6 +1,6 @@
 # Install And Upgrade
 
-This guide covers command installation, optional Codex skills, shared
+This guide covers command installation, optional coding-agent skills, shared
 app-server setup, and updates from an existing checkout.
 
 ## Install Commands
@@ -44,6 +44,26 @@ If a shared app-server was already running, restart it after the first plugin
 install or use the repository update helper below to refresh its plugin cache.
 Existing sessions rebuild their model-visible skill list after a context
 refresh such as compaction.
+
+## Install Claude Code Skills
+
+The same skill directories can be installed in Claude Code. From the checkout,
+copy each skill you need, including its references:
+
+```sh
+mkdir -p ~/.claude/skills
+cp -R packages/codex-threadctl/plugins/codex-threadctl/skills/codex-threadctl ~/.claude/skills/
+```
+
+Repeat for the other installed commands, or use `.claude/skills/` in a project
+for project-local availability. Copy updated directories again after upgrading.
+SDK-created sessions must enable the corresponding settings source: `user` for
+personal skills or `project` for project skills. See
+[Claude Code skill locations](https://code.claude.com/docs/en/skills#choose-where-skills-load).
+
+The commands must also be installed and accessible from Claude's shell.
+Codex-prefixed commands still operate on Codex threads and account state;
+`streamctl` works across harnesses.
 
 ## Shared App Server
 

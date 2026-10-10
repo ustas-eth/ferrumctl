@@ -7,7 +7,9 @@ description: "Use when opaque Codex compaction memory must be located, described
 
 Use `codex-memoryctl` to find, interpret, or reuse opaque memory already created
 by Codex compaction. Structural operations read local rollouts. Generated
-descriptions use a model and keep a private plaintext cache.
+descriptions use a model and keep a private plaintext cache. Any coding harness
+can read these views or arrange a transfer; opaque injection targets Codex
+threads, not the caller's session in another harness.
 
 ## Find A Memory
 
@@ -62,9 +64,10 @@ persist locally. If the task needs the opaque state's retained fidelity, use an
 appropriate consultation or recall workflow instead of treating generated text
 as equivalent memory.
 
-## Use Memory In This Thread
+## Recall Or Consult Within Codex
 
-For older-self recall or consultation with another thread's perspective, run:
+When running inside a Codex thread, use `--self` for older-self recall or
+consultation with another thread's perspective:
 
 ```sh
 codex-memoryctl inject --self \
@@ -78,12 +81,12 @@ turn and adds attributed source boundaries. Use it when the memory may become
 part of this thread's continuing context. State what you want to recall or
 compare and why; a generic statement about authority adds little useful context.
 
-When another established agent needs the memory, give it the reference and
+When an established Codex agent needs the memory, give it the reference and
 concrete question so it can perform its own `--self` injection.
 
-Use a fresh disposable consultant when this thread should remain unchanged.
-Give it the question and memory reference, then use its answer without injecting
-the memory here.
+Use a fresh disposable Codex consultant when your own conversation should remain
+unchanged. Give it the question and memory reference, then use its answer without
+injecting the memory here.
 
 ## Transfer Memory
 
@@ -109,6 +112,8 @@ Use `--full-checkpoint` only when the donor's retained user, developer, and
 agent messages are needed. It requires `--to`, source binding, and no framing
 or purpose. Prefer `--expect-no-turns` when the target is intended to be fresh.
 
+Export a portable file; a Codex recipient can use it with `--self`:
+
 ```sh
 codex-memoryctl export DONOR_THREAD_ID@latest --output memory.json
 codex-memoryctl inject --self --file memory.json \
@@ -127,7 +132,7 @@ memory is a foreign perspective.
 ## Judge The Lifecycle
 
 - Once recorded, injected memory has no paired removal operation. A later
-  compaction may assimilate it into this thread's next opaque memory.
+  compaction may assimilate it into the recipient's next opaque memory.
 - An idle injection is recorded immediately. During an active turn it first
   enters pending input and may not appear in the rollout until Codex processes
   it.
