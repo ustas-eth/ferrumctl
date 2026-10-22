@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest import mock
 
 from codex_threadctl.errors import ThreadStateError, ThreadctlError
+from codex_threadctl.recovery import read_recovery, write_recovery
 from codex_wakectl import commands, delivery, parser, state
 from codex_wakectl.actions import build_action
 from codex_wakectl.conditions import new_job
@@ -18,6 +19,7 @@ from codex_wakectl.errors import EventDeliveryUncertain, WakectlError
 
 class RecoveryApp:
     timeout = 0.01
+    endpoint = "unix:///synthetic/control.sock"
 
     def __init__(self, *, loaded=False, goal=None, continuation=None):
         self.loaded = loaded
@@ -57,12 +59,26 @@ class RecoveryApp:
 
 def job_with_config(config=None):
     return new_job({"type": "time", "at": 1}, "target", {
-        "type": "event", "resume": True,
+        "type": "event", "resume": True, "noRecovery": True,
         **({"resumeConfig": config} if config is not None else {}),
     }, "unix://")
 
 
 class ScheduledConfigTests(unittest.TestCase):
+    def test_resume_saves_recovery_location_and_bypass_is_explicit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            recovery_state = Path(directory) / "thread-settings.sqlite3"
+            args = parser.build_parser().parse_args([
+                "add", "time", "--after", "1m", "--to", "target", "--resume",
+                "--recovery-state", str(recovery_state),
+            ])
+            self.assertEqual(build_action(args)["recoveryState"], str(recovery_state))
+            args = parser.build_parser().parse_args([
+                "add", "time", "--after", "1m", "--to", "target", "--resume", "--no-recovery",
+            ])
+            self.assertTrue(build_action(args)["noRecovery"])
+            self.assertNotIn("recoveryState", build_action(args))
+
     def test_config_file_requires_event_resume_before_reading_file(self):
         for options in (
             [], ["--input", "continue"], ["--resume", "--input", "continue"],
@@ -135,6 +151,23 @@ class ScheduledConfigTests(unittest.TestCase):
 
 
 class ColdDeliveryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_job_reuses_record_and_snapshot_does_not_replace_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "threads.sqlite3"
+            app = RecoveryApp()
+            saved = {"skills": {"include_instructions": False}, "model_context_window": 120000}
+            write_recovery(path, app.endpoint, "target", saved)
+            for override in (None, {"model_context_window": 130000}):
+                app = RecoveryApp()
+                job = job_with_config(override)
+                job["action"].pop("noRecovery")
+                job["action"]["recoveryState"] = str(path)
+                result = await delivery.deliver_event(app, job, "ready")
+                self.assertEqual(result["delivery"], "resumedStarted")
+                request = next(params for method, params in app.calls if method == "thread/resume")
+                self.assertEqual(request["config"], {**saved, **(override or {})})
+                self.assertEqual(read_recovery(path, app.endpoint, "target")["config"], saved)
+
     async def test_cold_delivery_applies_snapshot_and_starts_one_empty_turn(self):
         app = RecoveryApp()
         config = {"default_permissions": "worker", "model_reasoning_effort": "low"}

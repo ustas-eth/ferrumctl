@@ -1,6 +1,6 @@
 {
   "name": "codex-threadctl",
-  "version": "0.8.4",
+  "version": "0.9.0",
   "description": "Codex skill for creating independent workers, finding agent trees, inspecting threads, and applying app-server-backed control.",
   "author": {
     "name": "ustas-eth"
@@ -39,6 +39,7 @@
       "Explicit user input and steering",
       "Turn-scoped interruption",
       "Persisted thread loading and cold recovery",
+      "Remembered cold-loading overrides",
       "Exact terminal termination"
     ],
     "defaultPrompt": "Use $codex-threadctl to create, find, inspect, or immediately control a Codex thread."

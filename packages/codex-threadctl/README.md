@@ -67,9 +67,9 @@ context size, pass a native Codex TOML file:
 WORKER=$(codex-threadctl create --cwd "$PWD" --config-file ./worker.toml)
 ```
 
-Explicit flags override file values. Keep the file and reapply it with
-`wake --resume --config-file ./worker.toml` when continuing a cold worker;
-these overrides are not a saved profile binding. See
+Explicit flags override file values. Threadctl remembers supplementary settings
+for later `wake --resume` calls, while Codex preserves native model and permission
+selections. See [remembered recovery settings](docs/recovery-settings.md) and
 [creation and resume configuration](docs/lifecycle-control.md#creation-and-resume-configuration)
 for a skill-selection example and the configuration boundaries.
 

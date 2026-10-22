@@ -25,6 +25,7 @@ from .errors import (
 )
 from .settings import reported_settings
 from .response_items import agent_message_id
+from .recovery import database, recovery_config, remember_after_operation
 
 TRACKED_NOTIFICATIONS = {
     "turn/started",
@@ -137,7 +138,7 @@ class AppServer:
             if response.get("id") != request_id:
                 continue
             if "error" in response:
-                raise AppServerResponseError(response["error"])
+                raise AppServerResponseError(response["error"], method=method)
             if "result" not in response:
                 raise ThreadctlError(f"app-server method {method} returned no result")
             return response["result"]
@@ -369,6 +370,7 @@ async def create_thread(
     permission_profile: str | None = None,
     effort: str | None = None,
     config_overrides: dict[str, Any] | None = None,
+    recovery_state: Path | None = None,
 ) -> dict[str, Any]:
     params: dict[str, Any] = {"cwd": cwd}
     if model is not None:
@@ -388,6 +390,10 @@ async def create_thread(
     )
     if config:
         params["config"] = config
+    supplementary = recovery_config(config) if recovery_state is not None else {}
+    if supplementary:
+        with database(recovery_state, write=True):
+            pass
 
     thread_id = None
     try:
@@ -447,6 +453,9 @@ async def create_thread(
             threadId=thread_id, itemId=initialization_item_id,
         ) from exc
 
+    recovery = (remember_after_operation(
+        recovery_state, app.endpoint, thread_id, supplementary, "was created",
+    ) if supplementary else None)
     return {
         "threadId": thread_id,
         "thread": thread,
@@ -459,6 +468,7 @@ async def create_thread(
         "initializationItemId": initialization_item_id,
         "settings": reported_settings(result, "thread/start"),
         **({"configRequest": {"keys": sorted(config)}} if config_overrides is not None else {}),
+        **({"recovery": recovery} if recovery is not None else {}),
     }
 
 

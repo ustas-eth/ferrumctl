@@ -41,6 +41,7 @@ async def cmd_send(args: argparse.Namespace) -> int:
         target = await resolve_thread_reference(app, args.thread_id, tree_thread_id=args.tree)
         result = await send_message(
             app, target, author, message, wake=args.wake, resume=args.resume, config=config,
+            recovery_state=None if args.no_recovery else args.state,
         )
     if args.json:
         print(json.dumps(result, indent=2))

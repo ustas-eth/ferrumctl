@@ -50,6 +50,7 @@ The tools observe or mutate independent state surfaces:
 - account rate-limit snapshots
 - the streamctl SQLite exchange store
 - the wakectl SQLite queue
+- threadctl's caller-owned recovery override store
 
 These surfaces can differ in freshness and can disagree without either being
 corrupt. Code, output, and documentation must identify the source being
@@ -73,6 +74,9 @@ command should remain bound to one state surface.
   distinguish request acceptance, confirmed delivery, and materialized history.
   Canonical task names are tree-scoped routing aliases; they do not transfer
   ownership from the native parent.
+  Recovery records supplement native persisted selections only during explicit
+  cold loading; do not replay stale launch models or treat saved overrides as
+  confirmed effective configuration.
 - `codex-wakectl` coordinates durable jobs, condition cursors, leases, and
   later event or input actions. Default event wakes restore attention without
   adding user instructions; explicit input retains ordinary input semantics.

@@ -81,8 +81,8 @@ user input:
 codex-threadctl wake "$WORKER" --resume
 ```
 
-`--resume` permits loading on the selected server; reapply any worker-specific
-configuration file when cold loading requires it. Keep the objective in goal
+`--resume` permits loading on the selected server and reuses threadctl's
+remembered recovery overrides. Keep the objective in goal
 state. Setting `paused` changes persisted status; it does not interrupt an active
 turn. A missing token budget means unbounded work, not a default allowance.
 

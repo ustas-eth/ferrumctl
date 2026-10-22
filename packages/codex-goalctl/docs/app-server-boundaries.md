@@ -101,7 +101,7 @@ can still notice persisted goal changes at a later turn boundary.
 When work still needs starting, use native control when a native subagent handle
 is available. For an independent root, `codex-threadctl wake THREAD_ID --resume`
 can continue from the assigned goal without adding user input, when immediate
-thread control is available. Reapply any creation configuration file if cold
-loading needs those overrides. Agent requests or corrections can use
+thread control is available. Threadctl reuses remembered supplementary settings
+on cold loading. Agent requests or corrections can use
 `send --wake`; conditional or delayed delivery remains a separate scheduler
 concern.

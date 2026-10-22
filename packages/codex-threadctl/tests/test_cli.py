@@ -24,7 +24,7 @@ class ParserTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 parser.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-threadctl 0.8.4\n")
+        self.assertEqual(output.getvalue(), "codex-threadctl 0.9.0\n")
 
     def test_default_timeout_allows_for_history_reconstruction(self):
         self.assertEqual(parser.build_parser().parse_args(["loaded"]).timeout, 30.0)
@@ -180,6 +180,7 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
             sandbox=None,
             permission_profile=None,
             effort=None,
+            recovery_state=args.state,
         )
         self.assertEqual(output.getvalue(), "created\n")
 
@@ -225,6 +226,7 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
             sandbox="danger-full-access",
             permission_profile=None,
             effort=None,
+            recovery_state=args.state,
         )
         self.assertEqual(output.getvalue(), "created\n")
 
@@ -889,6 +891,7 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
             effort=None,
             permission_profile=None,
             approval_policy=None,
+            recovery_state=args.state,
         )
         self.assertTrue(json.loads(output.getvalue())["goalContinuationAllowed"])
 

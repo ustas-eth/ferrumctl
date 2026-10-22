@@ -28,7 +28,9 @@ Run `./scripts/check.sh` before committing.
 
 Thread configuration also has an opt-in integration test against a real Codex
 binary. It uses a temporary Codex home, synthetic skills, and a local mock model;
-it does not use account credentials or contact the running app server:
+it does not use account credentials or contact the running app server. This
+also tests remembered overrides across restarts and later native model and
+permission changes:
 
 ```sh
 CODEX_THREADCTL_TEST_BINARY=/absolute/path/to/codex \

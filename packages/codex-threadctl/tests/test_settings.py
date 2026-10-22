@@ -223,12 +223,17 @@ class SettingsObservations(unittest.TestCase):
 
     def test_rejection_remains_distinct_from_uncertainty(self):
         with (
-            mock.patch.object(cli, "dispatch", mock.AsyncMock(side_effect=AppServerResponseError({"code": -32601, "message": "unknown method"}))),
+            mock.patch.object(cli, "dispatch", mock.AsyncMock(side_effect=AppServerResponseError(
+                {"code": -32601, "message": "unknown method"}, method="thread/settings/update",
+            ))),
             redirect_stdout(io.StringIO()) as output,
-            redirect_stderr(io.StringIO()),
+            redirect_stderr(io.StringIO()) as stderr,
         ):
             code = cli.main(["configure", "thread", "--effort", "high", "--json"])
         self.assertEqual(code, 1)
         error = json.loads(output.getvalue())["error"]
         self.assertEqual(error["outcome"], "rejected")
         self.assertEqual(error["rpcCode"], -32601)
+        self.assertEqual(error["method"], "thread/settings/update")
+        self.assertIn("app-server thread/settings/update: unknown method", error["message"])
+        self.assertIn(error["message"], stderr.getvalue())

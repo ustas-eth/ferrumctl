@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from pathlib import Path
 from typing import Any
 
 import websockets
@@ -23,13 +24,14 @@ async def continuation_goal(app: AppServer, thread_id: str) -> dict[str, Any] | 
     except AppServerResponseError as exc:
         # This native response confirms continuation is disabled. Other failures
         # cannot safely be treated as absence of an active goal.
-        if str(exc) == "goals feature is disabled":
+        if isinstance(exc.payload, dict) and exc.payload.get("message") == "goals feature is disabled":
             return None
         raise
 
 
 async def load_for_attention(
     app: AppServer, thread_id: str, config: dict[str, Any] | None,
+    *, recovery_state: Path | None = None, remember_config: bool = True,
 ) -> dict[str, Any]:
     """Observe before loading: a resumed active goal can start asynchronously."""
     if thread_id in await list_loaded(app):
@@ -39,13 +41,17 @@ async def load_for_attention(
     previous = turns[0]["id"] if turns else None
     thread = await resume_thread(
         app, thread_id, continue_goal=True, config_overrides=config,
+        recovery_state=recovery_state,
+        remember_config=remember_config,
     )
     return {
-        "outcome": "resumed", "configSubmitted": config is not None,
+        "outcome": "resumed",
+        "configSubmitted": bool(thread.get("configRequest", {}).get("keys")) or config is not None,
         "settings": thread.get("settings", {}),
         "previousTurnId": previous,
         "goalWasActive": goal is not None and goal.get("status") == "active",
         **({"configRequest": thread["configRequest"]} if "configRequest" in thread else {}),
+        **({"recovery": thread["recovery"]} if "recovery" in thread else {}),
     }
 
 
@@ -77,8 +83,9 @@ async def wake_after_load(
 
 async def wake_with_resume(
     app: AppServer, thread_id: str, config: dict[str, Any] | None = None,
+    *, recovery_state: Path | None = None,
 ) -> dict[str, Any]:
-    loading = await load_for_attention(app, thread_id, config)
+    loading = await load_for_attention(app, thread_id, config, recovery_state=recovery_state)
     try:
         result = await wake_after_load(app, thread_id, loading)
     except CONTROL_ERRORS as exc:
@@ -93,12 +100,14 @@ async def wake_with_resume(
 async def send_message(
     app: AppServer, thread_id: str, author: str, message: str, *,
     wake: bool = False, resume: bool = False, config: dict[str, Any] | None = None,
+    recovery_state: Path | None = None,
 ) -> dict[str, Any]:
     if resume and not wake:
         raise ThreadctlError("send --resume requires --wake; loading may continue a goal")
     if config is not None and not resume:
         raise ThreadctlError("--config-file requires --resume")
-    loading = await load_for_attention(app, thread_id, config) if resume else None
+    loading = (await load_for_attention(app, thread_id, config, recovery_state=recovery_state)
+               if resume else None)
     continuation_before_message = False
     try:
         if loading and loading["outcome"] == "resumed":
