@@ -132,19 +132,26 @@ class AttentionTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("turn/start", [m for m, _ in app.calls])
 
     async def test_disabled_goals_do_not_block_cold_wake(self):
-        app = CommunicationApp(loaded=False)
-        with mock.patch.object(attention, "get_goal", side_effect=AppServerResponseError(
-            {"message": "goals feature is disabled"},
-        )):
-            result = await attention.wake_with_resume(app, "thread")
-        self.assertEqual(result["outcome"], "confirmedStarted")
+        for method in (None, "thread/goal/get"):
+            with self.subTest(method=method):
+                app = CommunicationApp(loaded=False)
+                with mock.patch.object(attention, "get_goal", side_effect=AppServerResponseError(
+                    {"message": "goals feature is disabled"}, method=method,
+                )):
+                    result = await attention.wake_with_resume(app, "thread")
+                self.assertEqual(result["outcome"], "confirmedStarted")
 
     async def test_unreadable_goal_is_not_assumed_absent(self):
-        app = CommunicationApp(loaded=False)
-        with mock.patch.object(attention, "get_goal", side_effect=ThreadctlError("timeout")):
-            with self.assertRaises(ThreadctlError):
-                await attention.wake_with_resume(app, "thread")
-        self.assertFalse(app.resumed)
+        for failure in (
+            ThreadctlError("timeout"),
+            AppServerResponseError({"message": "goal unavailable"}, method="thread/goal/get"),
+        ):
+            with self.subTest(failure=str(failure)):
+                app = CommunicationApp(loaded=False)
+                with mock.patch.object(attention, "get_goal", side_effect=failure):
+                    with self.assertRaises(ThreadctlError):
+                        await attention.wake_with_resume(app, "thread")
+                self.assertFalse(app.resumed)
 
     async def test_goal_activated_during_loading_uses_continuation_path(self):
         app = CommunicationApp(loaded=False, continue_on_resume=True)

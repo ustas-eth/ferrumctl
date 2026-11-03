@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import websockets
@@ -24,6 +25,7 @@ from codex_threadctl.errors import (
 )
 from codex_threadctl.formatting import status_name
 from codex_threadctl.response_items import agent_message_id
+from codex_threadctl.recovery import default_state_path
 
 from .errors import EventDeliveryUncertain, WakectlError
 
@@ -66,7 +68,12 @@ async def deliver_event(
     thread_id = job["targetThreadId"]
     loading = None
     if action.get("resume"):
-        loading = await load_for_attention(app, thread_id, action.get("resumeConfig"))
+        recovery_state = (None if action.get("noRecovery") else
+                          Path(action.get("recoveryState") or default_state_path()))
+        loading = await load_for_attention(
+            app, thread_id, action.get("resumeConfig"), recovery_state=recovery_state,
+            remember_config=False,
+        )
     elif thread_id not in await list_loaded(app):
         raise ThreadNotLoaded(f"thread is not loaded on this app-server: {thread_id}")
     resumed = loading is not None and loading["outcome"] == "resumed"

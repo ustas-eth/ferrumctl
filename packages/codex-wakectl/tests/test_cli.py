@@ -14,6 +14,7 @@ from pathlib import Path
 from unittest import mock
 
 from codex_threadctl.errors import ThreadctlError
+from codex_threadctl.recovery import default_state_path as recovery_state_path
 from codex_wakectl import commands
 from codex_wakectl import conditions
 from codex_wakectl import parser
@@ -29,7 +30,7 @@ class ParseTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 parser.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-wakectl 0.5.9\n")
+        self.assertEqual(output.getvalue(), "codex-wakectl 0.6.0\n")
 
     def test_parse_duration(self) -> None:
         self.assertEqual(parsing.parse_duration("10s"), 10)
@@ -208,7 +209,8 @@ class ParseTests(unittest.TestCase):
         )
         self.assertEqual(
             build_action(notify),
-            {"type": "event", "notifyActive": True, "resume": True},
+            {"type": "event", "notifyActive": True, "resume": True,
+             "recoveryState": str(recovery_state_path().expanduser().resolve())},
         )
         self.assertEqual(
             build_action(send),

@@ -63,8 +63,8 @@ not this session's settings:
 - Select `--model MODEL_ID` and `--effort` when needed. Add `--model-provider`
   only for a non-default provider. A native agent role is not a model id.
 - Use `--config-file FILE` for other native Codex settings, including skills and
-  context size. Explicit flags win. Keep the TOML file for cold loading; the
-  overrides are not a saved profile binding.
+  context size. Explicit flags win. Threadctl remembers supplementary overrides
+  for cold loading; Codex owns its persisted model and permission selections.
 - Choose permissions for the assignment. An existing `--permission-profile`
   names a filesystem/network policy, not a general configuration profile. With
   no approval-capable client, `--approval-policy never` prevents approval waits
@@ -75,13 +75,17 @@ If work is already assigned in a goal or retained context, use `wake`. Add
 `--resume` when loading the persisted thread on this server is intended:
 
 ```sh
-codex-threadctl wake "$WORKER" --resume --config-file ./worker.toml
+codex-threadctl wake "$WORKER" --resume
 ```
 
-The file is submitted only during cold loading; output reports when it was not
-applied because the thread was already loaded. Use `configure` for supported
-live changes. `send --wake` also accepts `--resume` and `--config-file`.
-Loading may continue an active goal before a new message arrives.
+Remembered overrides apply only during cold loading, through ferrumctl; a native
+TUI resume uses Codex's own configuration. Add `--config-file FILE` for new
+overrides, or `--no-recovery` to bypass the record. `recovery THREAD_ID` inspects
+the saved keys; add `--config-file FILE` to replace that record or `--forget` to
+remove it. These local edits do not change live settings. Use `configure` for
+supported live changes.
+`send --wake --resume` uses the same loading path. Loading may continue an active
+goal before a new message arrives.
 
 An active target keeps running; a loaded `idle` or `systemError` target can
 receive an empty turn. After cold loading with an active goal, threadctl checks
@@ -132,6 +136,8 @@ pauses a persisted goal.
 
 - Read `references/lifecycle-control.md` for configuration, cold loading,
   exact delivery outcomes, compatibility commands, or ambiguous recovery.
+- Read `references/recovery-settings.md` for remembered overrides, precedence,
+  state locations, changing endpoints, or recovery without the original file.
 - Read `references/permission-profiles.md` for named policies, precedence, or
   unexpected access and missing worker instructions.
 - Read `references/restricted-operations.md` when a worker needs one-way

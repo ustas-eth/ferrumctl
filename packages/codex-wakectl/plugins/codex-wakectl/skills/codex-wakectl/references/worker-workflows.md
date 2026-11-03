@@ -58,8 +58,9 @@ omitting a budget leaves the goal unbounded. Goalctl automatically uses the
 default server when it holds the worker. Setting an active goal there may start
 work immediately. If inspection shows that work still needs starting, use
 `codex-threadctl wake "$WORKER" --resume`. If creation used a configuration
-file, also pass `--config-file FILE` on cold loading; a loaded worker keeps its
-settings. A watcher can be registered before a goal exists.
+file, threadctl reuses its remembered supplementary overrides on cold loading;
+a loaded worker keeps its settings. A watcher can be registered before a goal
+exists.
 
 Later edits use the same automatic routing:
 

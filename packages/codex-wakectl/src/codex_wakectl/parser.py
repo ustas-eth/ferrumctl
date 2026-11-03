@@ -119,6 +119,14 @@ def add_target_action(
         help="resume an unloaded target before delivering an event",
     )
     parser.add_argument(
+        "--recovery-state", type=Path,
+        help="threadctl recovery database for cold loading (separate from --state wake queue)",
+    )
+    parser.add_argument(
+        "--no-recovery", action="store_true",
+        help="with --resume, bypass remembered thread settings",
+    )
+    parser.add_argument(
         "--config-file",
         metavar="FILE",
         help="with --resume, snapshot caller-local TOML for cold loading",

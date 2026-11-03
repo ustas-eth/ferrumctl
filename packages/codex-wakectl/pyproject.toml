@@ -4,14 +4,14 @@ build-backend = "hatchling.build"
 
 [project]
 name = "codex-wakectl"
-version = "0.5.9"
+version = "0.6.0"
 description = "Schedule conditional Codex wakes and synchronously poll conditions"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
 dependencies = [
-  "codex-threadctl>=0.8.3,<0.9",
+  "codex-threadctl>=0.9,<0.10",
   "websockets>=15,<16",
 ]
 

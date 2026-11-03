@@ -45,6 +45,7 @@ class NativeServer:
 
     def __init__(self, home):
         self.home = home
+        self.endpoint = "unix://" + str(home / "test-control.sock")
         self.sequence = 0
         self.turn_notifications = []
         self.calls = []
@@ -86,7 +87,7 @@ class NativeServer:
             message = await self.receive()
             if message.get('id') == self.sequence:
                 if 'error' in message:
-                    raise AppServerResponseError(message['error'])
+                    raise AppServerResponseError(message['error'], method=method)
                 return message['result']
 
     async def turn(self, thread_id):

@@ -124,10 +124,17 @@ By default, an active or unloaded target defers event delivery. With
 started. With `--resume`, an unloaded target is loaded; an active persisted goal
 can continue immediately, in which case the event enters that active turn.
 
+Cold loading uses threadctl's [remembered recovery settings](https://github.com/ustas-eth/ferrumctl/blob/main/packages/codex-threadctl/docs/recovery-settings.md).
+New resume jobs save the caller's resolved recovery-store path. Select another
+store with `--recovery-state PATH`, independently of the wake queue's `--state`,
+or bypass it with `--no-recovery`. Jobs created before this support use the
+runner's default recovery path.
+
 `--resume --config-file FILE` reads caller-local TOML at job creation and saves
 the settings in the action. The runner submits that snapshot in the cold-loading
 request; it does not reread the file or reconfigure a loaded target. File edits
-do not change existing jobs. The file uses threadctl's
+do not change existing jobs. Its keys override the remembered values for that
+delivery without updating the thread's record. The file uses threadctl's
 [configuration override format](https://github.com/ustas-eth/ferrumctl/blob/main/packages/codex-threadctl/docs/lifecycle-control.md#creation-and-resume-configuration),
 including native server-side path resolution:
 

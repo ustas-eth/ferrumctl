@@ -122,32 +122,30 @@ flag also removes the file's competing `sandbox_mode` and `default_permissions`
 selectors. The file itself is not modified. TOML dates and non-finite numbers are
 rejected locally because they cannot be represented in the JSON request.
 
-Reusing a file replays its values, not the effective settings of an earlier
-command. If creation flags overrode that file, carry those selections into the
-loading request or use a recovery file containing the intended settings.
-
 The filename is resolved on the caller's host. Paths inside it retain native
 Codex semantics on the server; they are not rebased to the file's directory.
 Use absolute server-visible paths when location matters. Native skill paths were
 observed to resolve against the thread's working directory.
 
-Keep the file available and reapply it on cold resume:
+Threadctl remembers supplementary overrides for later cold loading:
 
 ```sh
-codex-threadctl load "$WORKER" --continue-goal --config-file ./worker.toml
+codex-threadctl load "$WORKER" --continue-goal
 ```
 
-Request overrides are not a durable profile binding. Isolated tests on Codex
-source revision `4aa808c` found that skill exclusions did not survive server
-restart without being resubmitted; resubmitting them restored the filtered
-catalog. A changed catalog does not erase older catalog text or previously read
-instructions from the conversation. Skill selection is not a filesystem access
-boundary.
+Codex retains native selections such as model and permission profile; threadctl's
+local record supplies settings Codex does not restore. See
+[Remembered Recovery Settings](recovery-settings.md) for saved values,
+precedence, record management, and the native-client boundary. A changed skill
+catalog does not erase older catalog text or previously read instructions.
+Skill selection is not a filesystem access boundary.
 
 `--config-file` is available only for creation and unloaded-thread resume.
 `configure` exposes the smaller native live-settings API. Resume refuses file
 overrides for an already loaded thread rather than silently treating them as a
-live update. Another client can still win the loading race.
+live update. `recovery --config-file FILE` replaces saved supplementary overrides
+for a later cold load; it does not apply them to the loaded thread. Another
+client can still win the loading race.
 
 JSON `configRequest.keys` lists submitted top-level configuration keys without
 echoing their potentially sensitive values. It is a request record, not an
@@ -179,8 +177,8 @@ active goal need not resume under old settings first:
 codex-threadctl load THREAD_ID --continue-goal --model MODEL_ID --effort high
 ```
 
-Omitted settings use Codex's resume behavior: persisted turn settings where
-supported, and applicable configuration for the rest. This is the shared
+Omitted native selections use Codex's resume behavior; supplementary overrides
+come from the local recovery record when present. This is the shared
 app-server resume path, not a standalone `codex exec resume` invocation with its
 own CLI configuration. JSON `settings` reports the server's response.
 
@@ -209,6 +207,11 @@ and a Codex version supporting that method; an unsupported request fails without
 falling back to a new session or another launch path. Provider and context-window
 overrides are outside this command's scope.
 
+Selecting a named permission profile requires its definition in the configuration
+available to Codex for that thread. `configure` does not submit a config file or
+install definitions from the recovery record. If Codex rejects an unresolved
+profile, check that definition before repeating the same selection.
+
 ## Machine-Readable Failures
 
 With `--json`, runtime failures emit an `error` object with `code`, `outcome`,
@@ -216,6 +219,10 @@ and `message`, plus known reconciliation identifiers. Exit status remains
 nonzero, and a human-readable error is also written to stderr. Parser errors
 retain argparse's usage output. Wake outcomes and a `send --wake` partial result
 retain their operation records described below, rather than an `error` wrapper.
+
+An `appServerRejected` error includes the failing RPC `method` when known and
+preserves Codex's diagnostic. This identifies the rejected operation, not which
+configuration source caused it; threadctl does not infer that source.
 
 `partial` means an earlier step succeeded, such as root creation before its
 initialization item failed. `uncertain` means a submitted operation may have

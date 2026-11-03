@@ -14,6 +14,7 @@ from codex_threadctl.errors import (
     ThreadNotLoaded,
     ThreadStateError,
     ThreadctlError,
+    error_record,
 )
 
 
@@ -415,12 +416,19 @@ class AppServerOperationTests(unittest.IsolatedAsyncioTestCase):
                 pass
 
             async def recv(self):
-                return '{"id":1,"error":{"message":"rejected"}}'
+                return '{"id":1,"error":{"code":-32602,"message":"rejected"}}'
 
         app = appserver.AppServer("unix://", 1)
         app.ws = FakeWebSocket()
-        with self.assertRaisesRegex(AppServerResponseError, "rejected"):
-            await app.request("test")
+        with self.assertRaisesRegex(AppServerResponseError, "app-server thread/settings/update: rejected") as caught:
+            await app.request("thread/settings/update", {"private_request_value": "fixture-secret"})
+        self.assertEqual(caught.exception.payload, {"code": -32602, "message": "rejected"})
+        self.assertEqual(error_record(caught.exception), {
+            "code": "appServerRejected", "outcome": "rejected",
+            "method": "thread/settings/update", "rpcCode": -32602,
+            "message": "app-server thread/settings/update: rejected",
+        })
+        self.assertNotIn("fixture-secret", str(caught.exception))
 
     async def test_appserver_timeout_names_limit_and_history_remedy(self):
         class FakeWebSocket:

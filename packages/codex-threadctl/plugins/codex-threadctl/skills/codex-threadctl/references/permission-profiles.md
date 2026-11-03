@@ -42,11 +42,12 @@ turns, or `resume --continue-goal --permission-profile NAME` while loading it.
 These operations select a policy; they do not edit its definition.
 
 Cold resume can restore a recorded permission-profile name when its definition
-is still applicable. This is not a saved policy snapshot: a missing definition
-can cause fallback to current configuration, and a newly created thread may
-not yet have a turn or settings record to restore. Request-only definitions and
-settings Codex does not restore, such as skill selection, need resubmitting
-during cold loading.
+is still applicable. The recorded name is not a saved policy snapshot: a missing
+definition can cause fallback to current configuration. Request-only definitions
+and settings Codex does not restore, such as skill selection, need resubmitting
+during cold loading. Threadctl's [recovery record](recovery-settings.md) retains
+explicit supplementary overrides, including request-only definitions, for this
+purpose. It does not snapshot policies resolved from user or project configuration.
 
 `--approval-policy` controls whether execution can wait for a client decision;
 it does not widen filesystem access. The available creation options and their

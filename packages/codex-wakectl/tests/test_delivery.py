@@ -182,7 +182,8 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
                 object(), event_job(resume=True), "matched"
             )
 
-        load.assert_awaited_once_with(mock.ANY, "target", None)
+            load.assert_awaited_once_with(mock.ANY, "target", None,
+                                         recovery_state=mock.ANY, remember_config=False)
         self.assertEqual(result["delivery"], "resumedActive")
         self.assertEqual(result["turnId"], "goal-turn")
 

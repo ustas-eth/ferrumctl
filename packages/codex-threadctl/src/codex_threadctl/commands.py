@@ -132,6 +132,7 @@ async def cmd_create(args: argparse.Namespace) -> int:
             permission_profile=args.permission_profile,
             effort=args.effort,
             **({"config_overrides": config} if config is not None else {}),
+            recovery_state=None if args.no_recovery else args.state,
         )
     if args.json:
         thread = created["thread"]
@@ -152,6 +153,7 @@ async def cmd_create(args: argparse.Namespace) -> int:
                     "initializationItemId": created["initializationItemId"],
                     "settings": created.get("settings"),
                     **({"configRequest": created["configRequest"]} if "configRequest" in created else {}),
+                    **({"recovery": created["recovery"]} if "recovery" in created else {}),
                 },
                 indent=2,
             )
@@ -541,7 +543,9 @@ async def cmd_wake(args: argparse.Namespace) -> int:
             args.thread_id,
             tree_thread_id=args.tree,
         )
-        result = (await wake_with_resume(app, thread_id, config)
+        result = (await wake_with_resume(
+            app, thread_id, config, recovery_state=None if args.no_recovery else args.state,
+        )
                   if args.resume else await wake_thread(app, thread_id))
     if args.json:
         print(json.dumps(result, indent=2))
@@ -681,6 +685,7 @@ async def cmd_resume(args: argparse.Namespace) -> int:
             permission_profile=args.permission_profile,
             approval_policy=args.approval_policy,
             **({"config_overrides": config} if config is not None else {}),
+            recovery_state=None if args.no_recovery else args.state,
         )
     result = {
         "threadId": thread.get("id", thread_id),
@@ -688,6 +693,7 @@ async def cmd_resume(args: argparse.Namespace) -> int:
         "goalContinuationAllowed": args.continue_goal,
         "settings": thread.get("settings"),
         **({"configRequest": thread["configRequest"]} if "configRequest" in thread else {}),
+        **({"recovery": thread["recovery"]} if "recovery" in thread else {}),
     }
     if args.json:
         print(json.dumps(result, indent=2))
@@ -700,6 +706,8 @@ async def cmd_resume(args: argparse.Namespace) -> int:
         print("\t".join(fields))
         if result["settings"]:
             print("settings\t" + json.dumps(result["settings"], ensure_ascii=False))
+        if "recovery" in result:
+            print("recovery\t" + json.dumps(result["recovery"], ensure_ascii=False))
     return 0
 
 

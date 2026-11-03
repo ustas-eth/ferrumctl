@@ -14,6 +14,7 @@ from unittest import mock
 
 from codex_threadctl.appserver import create_thread, list_thread_turns
 from codex_threadctl.config_input import read_config_file
+from codex_threadctl.recovery import read_recovery
 from codex_wakectl import commands, parser, state
 
 
@@ -60,10 +61,12 @@ class NativeDeliveryTests(unittest.IsolatedAsyncioTestCase):
                 config = read_config_file(str(config_path))
                 queue = home / "jobs.sqlite3"
                 async with NativeServer(home) as server:
-                    target = (await create_thread(server, directory, config_overrides=config))["threadId"]
+                    target = (await create_thread(server, directory, config_overrides=config,
+                                                  recovery_state=home / "recovery.sqlite3"))["threadId"]
                     args = parser.build_parser().parse_args([
                         "add", "time", "--at", "2020-01-01T00:00:00Z", "--to", target,
                         "--resume", "--config-file", str(config_path), "--state", str(queue),
+                        "--recovery-state", str(home / "recovery.sqlite3"),
                     ])
                     with contextlib.redirect_stdout(io.StringIO()):
                         await commands.cmd_add(args)
@@ -131,7 +134,25 @@ class NativeDeliveryTests(unittest.IsolatedAsyncioTestCase):
                     finally:
                         backend.gate.set()
                     await stopped(server, fired["turnId"])
-                self.assertEqual(len(state.list_jobs(queue, include_all=True)), 3)
+                # No configuration file: a persisted queue action uses the thread's record.
+                args = parser.build_parser().parse_args([
+                    "add", "time", "--at", "2020-01-01T00:00:00Z", "--to", target,
+                    "--resume", "--state", str(queue),
+                    "--recovery-state", str(home / "recovery.sqlite3"),
+                ])
+                with contextlib.redirect_stdout(io.StringIO()):
+                    await commands.cmd_add(args)
+                async with NativeServer(home) as server:
+                    before = read_recovery(home / "recovery.sqlite3", server.endpoint, target)
+                    fired = await run_queue(server)
+                    self.assertEqual(fired["loading"]["recovery"]["outcome"], "submitted")
+                    await stopped(server, fired["turnId"])
+                    catalogs = [str(item) for item in backend.requests[-1]["input"]
+                                if item.get("role") == "developer" and "<skills_instructions>" in str(item)]
+                    self.assertNotIn("alpha-smoke", catalogs[-1])
+                    self.assertIn("beta-smoke", catalogs[-1])
+                    self.assertEqual(read_recovery(home / "recovery.sqlite3", server.endpoint, target), before)
+                self.assertEqual(len(state.list_jobs(queue, include_all=True)), 4)
         finally:
             backend.gate.set()
             await asyncio.to_thread(backend.shutdown)

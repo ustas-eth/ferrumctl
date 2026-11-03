@@ -76,9 +76,8 @@ handle. For an independent root, when threadctl is installed:
 codex-threadctl wake "$WORKER" --resume
 ```
 
-This continues from the goal without adding another user instruction. If the
-worker needs its creation configuration on cold loading, reapply that file with
-`--config-file FILE`.
+This continues from the goal without adding another user instruction. Threadctl
+reuses remembered worker-specific overrides when cold loading is needed.
 
 Use `--json` when another program will parse output.
 

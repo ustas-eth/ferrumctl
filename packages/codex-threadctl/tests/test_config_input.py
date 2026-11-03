@@ -119,7 +119,7 @@ class ConfigOperationsTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_loaded_resume_rejects_config_only_overrides(self):
         app = FakeApp()
-        with self.assertRaisesRegex(ThreadStateError, 'unloaded thread'):
+        with self.assertRaisesRegex(ThreadStateError, 'config-file overrides apply only on cold loading'):
             await configuration.resume_thread(app, 'thread', continue_goal=True,
                                                config_overrides={'skills': {'include_instructions': False}})
         self.assertEqual([method for method, _ in app.calls], ['thread/loaded/list'])

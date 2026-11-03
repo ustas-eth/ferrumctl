@@ -19,13 +19,14 @@ class OperationError(ThreadctlError):
 class AppServerResponseError(ThreadctlError):
     """App-server rejected a request with a JSON-RPC error response."""
 
-    def __init__(self, payload: Any):
+    def __init__(self, payload: Any, *, method: str | None = None):
         self.payload = payload
+        self.method = method
         if isinstance(payload, dict) and isinstance(payload.get("message"), str):
             message = payload["message"]
         else:
             message = json.dumps(payload, separators=(",", ":"))
-        super().__init__(message)
+        super().__init__(f"app-server {method}: {message}" if method else message)
 
 
 class ThreadNotLoaded(ThreadctlError):
@@ -77,6 +78,8 @@ def error_record(exc: Exception) -> dict[str, Any]:
         result.update(code="notificationUncertain", outcome="uncertain", itemId=exc.item_id)
     elif isinstance(exc, AppServerResponseError):
         result.update(code="appServerRejected", outcome="rejected")
+        if exc.method is not None:
+            result["method"] = exc.method
         if isinstance(exc.payload, dict) and "code" in exc.payload:
             result["rpcCode"] = exc.payload["code"]
     elif isinstance(exc, ThreadNotLoaded):

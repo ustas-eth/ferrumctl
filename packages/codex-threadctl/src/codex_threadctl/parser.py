@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import math
+from pathlib import Path
 
 from .commands import (
     cmd_agents,
@@ -27,6 +28,8 @@ from .commands import (
 )
 from .constants import CLIENT_VERSION, DEFAULT_TIMEOUT
 from .communication_commands import cmd_input, cmd_send
+from .recovery import default_state_path
+from .recovery_commands import cmd_recovery
 
 
 def positive_float(value: str) -> float:
@@ -57,6 +60,11 @@ def add_global_options(parser: argparse.ArgumentParser, *, defaults: bool) -> No
         "--endpoint",
         default="unix://" if defaults else argparse.SUPPRESS,
         help="app-server endpoint: unix://, unix://PATH, ws://HOST:PORT, or wss://HOST:PORT",
+    )
+    parser.add_argument(
+        "--state", type=Path,
+        default=default_state_path() if defaults else argparse.SUPPRESS,
+        help="thread recovery settings database",
     )
     parser.add_argument(
         "--timeout",
@@ -125,7 +133,15 @@ def add_resume_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--config-file", type=nonempty_text,
-        help="with --resume, submit caller-local TOML only when loading a cold thread",
+        help="with --resume, override remembered settings using caller-local TOML during cold loading",
+    )
+    add_recovery_option(parser)
+
+
+def add_recovery_option(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--no-recovery", action="store_true",
+        help="do not read or save local recovery overrides for this command",
     )
 
 
@@ -157,6 +173,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--config-file", type=nonempty_text,
         help="caller-local TOML settings sent as native configuration overrides; explicit flags win",
     )
+    add_recovery_option(create)
     create.add_argument(
         "--cwd",
         required=True,
@@ -484,10 +501,21 @@ def build_parser() -> argparse.ArgumentParser:
     add_settings_options(resume)
     resume.add_argument(
         "--config-file", type=nonempty_text,
-        help="reapply caller-local TOML overrides while loading an unloaded thread",
+        help="override remembered settings using caller-local TOML while cold loading",
     )
+    add_recovery_option(resume)
     add_tree_option(resume)
     add_global_options(resume, defaults=False)
     resume.set_defaults(func=cmd_resume)
+
+    recovery = sub.add_parser("recovery", help="inspect, replace, or forget local cold-loading overrides")
+    recovery.add_argument("thread_id")
+    operation = recovery.add_mutually_exclusive_group()
+    operation.add_argument("--config-file", help="replace the record from caller-local TOML; no live changes")
+    operation.add_argument("--forget", action="store_true", help="remove this endpoint's record")
+    recovery.add_argument("--values", action="store_true", help="show saved values as well as keys")
+    add_tree_option(recovery)
+    add_global_options(recovery, defaults=False)
+    recovery.set_defaults(func=cmd_recovery)
 
     return parser

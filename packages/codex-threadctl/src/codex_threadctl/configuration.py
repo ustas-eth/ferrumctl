@@ -1,6 +1,7 @@
 """Apply settings at the server's loading or subsequent-turn boundary."""
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import websockets
@@ -9,6 +10,9 @@ from .appserver import AppServer, list_loaded, require_loaded, require_object
 from .errors import AppServerResponseError, OperationError, ThreadctlError, ThreadStateError
 from .config_input import request_config
 from .settings import reported_settings, settings_overrides, unconfirmed_settings
+from .recovery import (
+    database, public_recovery, read_recovery, recovery_config, remember_after_operation,
+)
 
 
 async def resume_thread(
@@ -21,6 +25,8 @@ async def resume_thread(
     permission_profile: str | None = None,
     approval_policy: str | None = None,
     config_overrides: dict[str, Any] | None = None,
+    recovery_state: Path | None = None,
+    remember_config: bool = True,
 ) -> dict[str, Any]:
     if not continue_goal:
         raise ThreadStateError(
@@ -35,11 +41,42 @@ async def resume_thread(
         config_overrides, model=model, effort=effort,
         permission_profile=permission_profile, approval_policy=approval_policy,
     )
-    if (requested or config) and thread_id in await list_loaded(app):
+    loaded = (thread_id in await list_loaded(app)
+              if requested or config or recovery_state is not None else False)
+    if (requested or config) and loaded:
+        if config_overrides:
+            raise ThreadStateError(
+                "thread is already loaded; config-file overrides apply only on cold loading. "
+                "Use configure for model, effort, approval policy, or an existing permission profile; "
+                "recovery --config-file replaces saved supplementary overrides for a later cold load, "
+                "not live settings"
+            )
         raise ThreadStateError(
-            "thread is already loaded; use configure for supported live settings; "
-            "config-file overrides require an unloaded thread"
+            "thread is already loaded; use configure for model, effort, approval policy, "
+            "or an existing permission profile"
         )
+    recovery = None
+    record = None
+    save_requested = (not loaded and recovery_state is not None and config_overrides is not None
+                      and remember_config and bool(recovery_config(config_overrides)))
+    if recovery_state is not None and not loaded:
+        record = read_recovery(recovery_state, app.endpoint, thread_id)
+        saved = record["config"] if record else {}
+        # Like native request config, nested values are replaced as whole values.
+        config = request_config(
+            {**saved, **(config_overrides or {})}, model=model, effort=effort,
+            permission_profile=permission_profile, approval_policy=approval_policy,
+        )
+        if remember_config:
+            recovery_config(config)
+        recovery = public_recovery(recovery_state, app.endpoint, thread_id, record)
+        recovery["outcome"] = "submitted" if saved else "notFound"
+        recovery["submittedKeys"] = sorted(
+            key for key in saved if key not in (config_overrides or {})
+        )
+        if save_requested:
+            with database(recovery_state, write=True):
+                pass
     params: dict[str, Any] = {"threadId": thread_id, "excludeTurns": True, **requested}
     params.pop("effort", None)
     if config:
@@ -64,9 +101,16 @@ async def resume_thread(
             code="resumeSettingsUnconfirmed", outcome="partial", threadId=thread_id,
             requestedSettings=requested, settings=settings,
         )
+    if save_requested and not loaded:
+        saved_result = remember_after_operation(
+            recovery_state, app.endpoint, thread_id, config, "was resumed",
+            expected_revision=record["revision"] if record else None,
+        )
+        recovery = {**(recovery or {}), "saved": saved_result}
     return {
         **thread, "settings": settings,
-        **({"configRequest": {"keys": sorted(config)}} if config_overrides is not None else {}),
+        **({"configRequest": {"keys": sorted(config)}} if config_overrides is not None or config else {}),
+        **({"recovery": recovery} if recovery is not None else {}),
     }
 
 
