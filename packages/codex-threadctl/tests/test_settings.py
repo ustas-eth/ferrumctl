@@ -125,10 +125,13 @@ class SettingsOperations(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(any(m == "thread/settings/update" for m, _ in app.calls))
 
     async def test_resume_refuses_overrides_on_a_loaded_thread(self):
-        app = FakeApp()
-        with self.assertRaisesRegex(ThreadStateError, "configure"):
-            await configuration.resume_thread(app, "thread", continue_goal=True, model="new")
-        self.assertFalse(any(m == "thread/resume" for m, _ in app.calls))
+        for overrides in ({"model": "new"}, {"effort": "high"}):
+            with self.subTest(overrides=overrides):
+                app = FakeApp()
+                with self.assertRaisesRegex(ThreadStateError, "configure") as caught:
+                    await configuration.resume_thread(app, "thread", continue_goal=True, **overrides)
+                self.assertNotIn("config-file", str(caught.exception))
+                self.assertEqual([method for method, _ in app.calls], ["thread/loaded/list"])
 
     async def test_resume_race_does_not_claim_ignored_settings_were_applied(self):
         app = FakeApp(loaded=False)

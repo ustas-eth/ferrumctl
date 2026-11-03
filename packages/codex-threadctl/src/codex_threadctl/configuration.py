@@ -44,7 +44,7 @@ async def resume_thread(
     loaded = (thread_id in await list_loaded(app)
               if requested or config or recovery_state is not None else False)
     if (requested or config) and loaded:
-        if config:
+        if config_overrides:
             raise ThreadStateError(
                 "thread is already loaded; config-file overrides apply only on cold loading. "
                 "Use configure for model, effort, approval policy, or an existing permission profile; "
