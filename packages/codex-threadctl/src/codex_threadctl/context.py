@@ -4,7 +4,7 @@ import json
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterable, Iterator
 
 
 # Mirrors TokenUsage::percent_of_context_window_remaining in Codex 0.144.
@@ -54,6 +54,18 @@ def percent_left(used_tokens: int, window_tokens: int) -> int:
     return min(100, (remaining * 100 + effective_window // 2) // effective_window)
 
 
+def rollout_records(lines: Iterable[bytes], markers: tuple[bytes, ...]) -> Iterator[dict[str, Any]]:
+    for line in lines:
+        if not any(marker in line for marker in markers):
+            continue
+        try:
+            record = json.loads(line)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            continue
+        if isinstance(record, dict) and isinstance(record.get("payload"), dict):
+            yield record
+
+
 def read_context_state(
     path: str | None,
     *,
@@ -61,31 +73,34 @@ def read_context_state(
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     if not path:
         return None, None
+    try:
+        records = rollout_records(reverse_lines(Path(path)), RELEVANT_RECORD_TYPES)
+        return context_from_records(records, now=now)
+    except OSError:
+        return None, None
 
+
+def context_from_records(
+    records: Iterable[dict[str, Any]],
+    *,
+    newest_first: bool = True,
+    now: int | None = None,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     latest_usage: tuple[int, int, int, int] | None = None
     compacted_at: int | None = None
     compacted_rank: int | None = None
-    context_compacted_at: int | None = None
+    compaction_event: tuple[int, int] | None = None
     window_number: int | None = None
 
-    try:
-        for rank, line in enumerate(reverse_lines(Path(path))):
-            if not any(marker in line for marker in RELEVANT_RECORD_TYPES):
-                continue
-            try:
-                record = json.loads(line)
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                continue
-            if not isinstance(record, dict):
-                continue
-
-            payload = record.get("payload", {})
-            if not isinstance(payload, dict):
-                continue
-            if record.get("type") == "event_msg" and payload.get("type") == "token_count":
-                if latest_usage is None:
-                    info = payload.get("info") or {}
-                    usage = info.get("last_token_usage") or {}
+    for index, record in enumerate(records):
+        rank = -index if newest_first else index
+        payload = record["payload"]
+        kind = record.get("type")
+        if kind == "event_msg" and payload.get("type") == "token_count":
+            if latest_usage is None or not newest_first:
+                info = payload.get("info")
+                usage = info.get("last_token_usage") if isinstance(info, dict) else None
+                if isinstance(usage, dict):
                     observed_at = timestamp_seconds(record.get("timestamp"))
                     used_tokens = usage.get("total_tokens")
                     window_tokens = info.get("model_context_window")
@@ -97,29 +112,27 @@ def read_context_state(
                         and window_tokens > 0
                     ):
                         latest_usage = rank, observed_at, used_tokens, window_tokens
-            elif (
-                record.get("type") == "event_msg"
-                and payload.get("type") == "context_compacted"
-                and context_compacted_at is None
-            ):
-                context_compacted_at = timestamp_seconds(record.get("timestamp"))
-            elif record.get("type") == "compacted" and compacted_at is None:
-                compacted_at = timestamp_seconds(record.get("timestamp"))
+        elif kind == "event_msg" and payload.get("type") == "context_compacted":
+            if compaction_event is None or not newest_first:
+                observed_at = timestamp_seconds(record.get("timestamp"))
+                if observed_at is not None:
+                    compaction_event = rank, observed_at
+        elif kind == "compacted" and (compacted_at is None or not newest_first):
+            observed_at = timestamp_seconds(record.get("timestamp"))
+            if observed_at is not None or compacted_at is None:
+                compacted_at = observed_at
                 compacted_rank = rank
                 value = payload.get("window_number")
-                if isinstance(value, int) and value >= 0:
-                    window_number = value
+                window_number = value if isinstance(value, int) and value >= 0 else None
 
-            if latest_usage is not None and compacted_at is not None:
-                break
-    except OSError:
-        return None, None
+        if newest_first and latest_usage is not None and compacted_at is not None:
+            break
 
     current_time = int(time.time()) if now is None else now
     context = None
     if latest_usage is not None:
         usage_rank, observed_at, used_tokens, window_tokens = latest_usage
-        if compacted_rank is None or usage_rank < compacted_rank:
+        if compacted_rank is None or usage_rank > compacted_rank:
             context = {
                 "usedTokens": used_tokens,
                 "windowTokens": window_tokens,
@@ -129,10 +142,15 @@ def read_context_state(
             }
 
     last_compacted_at = compacted_at
-    if context_compacted_at is not None and (
-        compacted_at is None or context_compacted_at >= compacted_at
-    ):
-        last_compacted_at = context_compacted_at
+    if compaction_event is not None:
+        event_rank, event_at = compaction_event
+        # Match the reverse scan's boundary once it finds both observations.
+        if compacted_at is None or (
+            compacted_rank is not None
+            and event_at >= compacted_at
+            and (latest_usage is None or event_rank >= min(latest_usage[0], compacted_rank))
+        ):
+            last_compacted_at = event_at
     compaction = None
     if last_compacted_at is not None:
         compaction = {

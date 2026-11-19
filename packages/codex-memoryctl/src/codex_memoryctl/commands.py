@@ -22,6 +22,7 @@ from codex_threadctl.appserver import (
 )
 from codex_threadctl.errors import AppServerResponseError, ThreadctlError
 from codex_threadctl.response_items import agent_message_id
+from codex_threadctl.rollout_io import rollout_path
 
 from .constants import CLIENT_VERSION
 from .discovery import search_rollout
@@ -536,9 +537,10 @@ async def cmd_inject(args: argparse.Namespace) -> int:
             items = frame_memory_batch(target, items, source_memories, args.purpose)
         framing_item_count = len(items) - source_item_count
 
-        target_path = thread.get("path")
-        if isinstance(target_path, str) and Path(target_path).is_file():
-            existing = scan_rollout(Path(target_path)).visible_memory_ids
+        reported_path = thread.get("path")
+        target_path = rollout_path(Path(reported_path)) if isinstance(reported_path, str) else None
+        if target_path is not None and target_path.is_file():
+            existing = scan_rollout(target_path).visible_memory_ids
             duplicates = sorted(existing.intersection(memory_ids))
             if duplicates and not args.allow_duplicate:
                 raise MemoryctlError(

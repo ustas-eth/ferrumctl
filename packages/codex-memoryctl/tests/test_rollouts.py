@@ -1,5 +1,6 @@
 import hashlib
 import json
+import sys
 import tempfile
 import unittest
 from dataclasses import replace
@@ -8,6 +9,11 @@ from pathlib import Path
 from codex_memoryctl.errors import MemoryctlError
 from codex_memoryctl.rollouts import find_rollout, memory_ref, scan_rollout
 from codex_memoryctl.selectors import parse_state_reference, select_state
+
+if sys.version_info >= (3, 14):
+    from compression import zstd
+else:
+    from backports import zstd
 
 THREAD_ID = "01a00000-0000-7000-8000-000000000001"
 ORIGIN_THREAD_ID = "01a00000-0000-7000-8000-000000000002"
@@ -34,6 +40,36 @@ def write_rollout(
 
 
 class RolloutTests(unittest.TestCase):
+    def test_compressed_rollout_discovery_and_scan(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            plain = home / "archived_sessions" / f"rollout-2026-08-20T00-00-00-{THREAD_ID}.jsonl"
+            compressed = plain.with_suffix(".jsonl.zst")
+            write_rollout(plain, [
+                {"type": "session_meta", "payload": {"id": THREAD_ID}},
+                {"type": "response_item", "payload": {"type": "message", "role": "user",
+                    "content": [{"type": "input_text", "text": "A fixture message"}]}},
+                {"type": "compacted", "payload": {"replacement_history": [memory_item("one")]}},
+            ])
+            data = zstd.compress(plain.read_bytes())
+            compressed.write_bytes(data)
+            self.assertEqual(find_rollout(home, THREAD_ID), plain)
+            self.assertEqual(find_rollout(home, str(compressed)), compressed)
+            expected = scan_rollout(plain, include_messages=True)
+
+            plain.unlink()
+            self.assertEqual(find_rollout(home, THREAD_ID), compressed)
+            self.assertEqual(find_rollout(home, str(plain)), compressed)
+            actual = scan_rollout(compressed, include_messages=True)
+            self.assertEqual(actual, replace(
+                expected, path=compressed,
+                states=tuple(replace(state, rollout_path=compressed) for state in expected.states),
+            ))
+
+            compressed.write_bytes(data[:-2])
+            with self.assertRaisesRegex(MemoryctlError, "invalid Zstandard stream"):
+                scan_rollout(compressed)
+
     def test_scans_checkpoints_and_standalone_memory(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / f"rollout-{THREAD_ID}.jsonl"

@@ -102,6 +102,10 @@ recorded model exchange, not a continuous process measurement. It can remain
 unchanged during a long command, and the report includes its observation time
 and age for that reason.
 
+Local inspection reads the tail of a plain `.jsonl` rollout. For a
+`.jsonl.zst` rollout, it reads context, compaction, and recorded settings
+in one streaming pass. If both files exist, the plain rollout takes precedence.
+
 If a compaction record is newer than the latest token count, threadctl omits the
 old context value until Codex persists a post-compaction observation.
 

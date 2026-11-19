@@ -8,6 +8,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
+from codex_threadctl.rollout_io import open_rollout, rollout_path
+
 from .constants import MEMORY_ITEM_TYPES, MEMORY_REF_HEX_LENGTH
 from .errors import MemoryctlError
 
@@ -147,6 +149,9 @@ def find_rollout(codex_home: Path, source: str) -> Path:
     candidate = Path(source).expanduser()
     if candidate.is_file():
         return candidate.resolve()
+    sibling = rollout_path(candidate)
+    if sibling != candidate:
+        return sibling.resolve()
     if "/" in source and not THREAD_ID_RE.fullmatch(source):
         raise MemoryctlError(f"rollout path is not a file: {candidate}")
     if not THREAD_ID_RE.fullmatch(source):
@@ -157,7 +162,11 @@ def find_rollout(codex_home: Path, source: str) -> Path:
         if not directory.is_dir():
             continue
         try:
-            matches.extend(directory.rglob(f"rollout-*{source}.jsonl"))
+            matches.extend(
+                rollout_path(path)
+                for path in directory.rglob(f"rollout-*{source}.jsonl*")
+                if path.name.endswith((".jsonl", ".jsonl.zst"))
+            )
         except OSError as exc:
             raise MemoryctlError(f"failed to scan {directory}: {exc}") from exc
     unique = sorted({path.resolve() for path in matches if path.is_file()})
@@ -207,7 +216,7 @@ def scan_rollout(path: Path, *, include_messages: bool = False) -> RolloutMemory
     last_compaction_line: int | None = None
 
     try:
-        with path.open("r", encoding="utf-8", errors="strict") as handle:
+        with open_rollout(path, "rt", encoding="utf-8") as handle:
             for line_number, line in enumerate(handle, start=1):
                 if not any(marker in line for marker in INTERESTING_MARKERS) and not (
                     include_messages and '"response_item"' in line

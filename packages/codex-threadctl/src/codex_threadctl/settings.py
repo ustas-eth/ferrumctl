@@ -1,12 +1,11 @@
 """Settings observations retain their source rather than implying live execution."""
 from __future__ import annotations
 
-import json
 import time
 from pathlib import Path
 from typing import Any
 
-from .context import reverse_lines, timestamp_seconds
+from .context import reverse_lines, rollout_records, timestamp_seconds
 
 
 SERVER_SETTINGS = (
@@ -26,6 +25,16 @@ def reported_settings(response: dict[str, Any], source: str) -> dict[str, Any]:
 def read_recorded_settings(path: str | None) -> tuple[dict[str, Any] | None, str | None]:
     if not path:
         return None, "no local rollout path is available"
+    try:
+        for record in rollout_records(reverse_lines(Path(path)), (b'"turn_context"',)):
+            if record.get("type") == "turn_context":
+                return recorded_settings_from_record(record), None
+    except OSError as exc:
+        return None, f"local rollout settings unavailable: {exc}"
+    return None, "no turn settings have been recorded"
+
+
+def recorded_settings_from_record(record: dict[str, Any]) -> dict[str, Any]:
     fields = {
         "turn_id": "turnId", "model": "model", "effort": "reasoningEffort",
         "cwd": "cwd", "approval_policy": "approvalPolicy",
@@ -33,27 +42,12 @@ def read_recorded_settings(path: str | None) -> tuple[dict[str, Any] | None, str
         "permission_profile": "permissionProfile",
         "active_permission_profile": "activePermissionProfile",
     }
-    try:
-        for line in reverse_lines(Path(path)):
-            if b'"turn_context"' not in line:
-                continue
-            try:
-                record = json.loads(line)
-            except (ValueError, UnicodeDecodeError):
-                continue
-            if not isinstance(record, dict) or record.get("type") != "turn_context":
-                continue
-            payload = record.get("payload")
-            if not isinstance(payload, dict):
-                continue
-            return {
-                "source": "local-rollout",
-                "observedAt": timestamp_seconds(record.get("timestamp")),
-                **{dest: payload[src] for src, dest in fields.items() if src in payload},
-            }, None
-    except OSError as exc:
-        return None, f"local rollout settings unavailable: {exc}"
-    return None, "no turn settings have been recorded"
+    payload = record["payload"]
+    return {
+        "source": "local-rollout",
+        "observedAt": timestamp_seconds(record.get("timestamp")),
+        **{dest: payload[src] for src, dest in fields.items() if src in payload},
+    }
 
 
 def settings_overrides(

@@ -94,10 +94,11 @@ existing memory observation can contain that part of the conversation.
 ## Sources And Freshness
 
 Thread ids are resolved under `$CODEX_HOME/sessions` and
-`$CODEX_HOME/archived_sessions`. A direct rollout path is also accepted. An
-existing file takes precedence when its absolute path resembles a canonical
-task name. Both v1 and v2 agents use ordinary thread ids and separate rollout
-paths.
+`$CODEX_HOME/archived_sessions`, including plain `.jsonl` and compressed
+`.jsonl.zst` rollouts. When both versions of a file exist, thread-id lookups
+prefer the plain file. A direct path selects an existing file, including when
+its absolute path resembles a canonical task name. Both v1 and v2 agents use
+ordinary thread ids and separate rollout paths.
 
 The thread id in the rollout filename is canonical for that rollout. A resumed
 or forked file may retain a different `session_meta` id from its source;

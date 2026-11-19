@@ -34,9 +34,8 @@ from .appserver import (
 from .configuration import configure_thread, resume_thread
 from .attention import SUCCESSFUL_WAKES, wake_with_resume
 from .config_input import read_config_file
-from .context import read_context_state
 from .errors import AppServerResponseError, ThreadctlError, ThreadStateError
-from .settings import read_recorded_settings
+from .observations import read_rollout_observations
 from .formatting import (
     format_agents,
     format_inspection,
@@ -364,9 +363,9 @@ async def cmd_inspect(args: argparse.Namespace) -> int:
             history_error = str(exc)
 
     if local_rollout:
-        context, compaction = read_context_state(thread.get("path"))
-        context_error = None
-        recorded_settings, settings_error = read_recorded_settings(thread.get("path"))
+        context, compaction, context_error, recorded_settings, settings_error = (
+            read_rollout_observations(thread.get("path"))
+        )
     else:
         context, compaction = None, None
         context_error = "rollout context is unavailable through a remote endpoint"

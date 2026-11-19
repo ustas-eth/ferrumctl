@@ -1,9 +1,17 @@
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from codex_threadctl import context
+from codex_threadctl.observations import read_rollout_observations
+
+if sys.version_info >= (3, 14):
+    from compression import zstd
+else:
+    from backports import zstd
 
 
 class ContextTests(unittest.TestCase):
@@ -97,3 +105,44 @@ class ContextTests(unittest.TestCase):
             lines = [b"a" * 70_000, b"second", b"third"]
             path.write_bytes(b"\n".join(lines))
             self.assertEqual(list(context.reverse_lines(path)), list(reversed(lines)))
+
+    def test_compressed_rollout_matches_plain_before_and_after_new_usage(self):
+        records = [
+            ("event_msg", {"type": "token_count", "info": {
+                "last_token_usage": {"total_tokens": 70_000}, "model_context_window": 200_000,
+            }}),
+            ("compacted", {"window_number": 4}),
+            ("event_msg", {"type": "context_compacted"}),
+            ("turn_context", {"model": "test-model", "effort": "high"}),
+            ("event_msg", {"type": "token_count", "info": {
+                "last_token_usage": {"total_tokens": 20_000}, "model_context_window": 200_000,
+            }}),
+        ]
+        lines = [
+            (json.dumps({"timestamp": f"2026-01-01T00:00:{i:02}Z", "type": kind,
+                         "payload": payload}) + "\n").encode()
+            for i, (kind, payload) in enumerate(records)
+        ]
+        with tempfile.TemporaryDirectory() as tmp, patch.object(context.time, "time", return_value=1767225610):
+            plain = Path(tmp) / "rollout.jsonl"
+            compressed = plain.with_suffix(".jsonl.zst")
+            for end in (4, 5):
+                with self.subTest(records=end):
+                    plain.write_bytes(b"".join(lines[:end]))
+                    expected = read_rollout_observations(str(plain))
+                    compressed.write_bytes(zstd.compress(b"".join(lines[:2])) + zstd.compress(b"".join(lines[2:end])))
+                    plain.unlink()
+                    actual = read_rollout_observations(str(plain))
+                    self.assertEqual(actual, expected)
+                    self.assertEqual(actual[1]["windowNumber"], 4)
+                    self.assertEqual(actual[3]["model"], "test-model")
+                    self.assertEqual(actual[0]["usedTokens"] if actual[0] else None, 20_000 if end == 5 else None)
+
+            compressed.write_bytes(compressed.read_bytes()[:-2])
+            usage, compaction, context_error, settings, settings_error = read_rollout_observations(str(plain))
+            self.assertEqual((usage, compaction, settings), (None, None, None))
+            self.assertIn("invalid Zstandard stream", context_error)
+            self.assertEqual(context_error, settings_error)
+
+            plain.write_bytes(b"".join(lines[:4]))
+            self.assertEqual(read_rollout_observations(str(compressed)), read_rollout_observations(str(plain)))

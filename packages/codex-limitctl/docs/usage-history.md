@@ -14,10 +14,12 @@ estimate the current day, which may still be incomplete when observed.
 
 ## Local Rollouts
 
-`history` and `activity` scan rollout JSONL files under `sessions` and
-`archived_sessions` in `CODEX_HOME`. A file is selected by modification time,
-then its records are filtered by timestamp. This includes a long-running thread
-whose rollout remains in an older date directory.
+`history` and `activity` scan plain `.jsonl` and compressed `.jsonl.zst`
+rollouts under `sessions` and `archived_sessions` in `CODEX_HOME`. If both
+versions of a file exist, the plain file supplies the observations. A file is
+selected by modification time, then its records are filtered by timestamp.
+This includes a long-running thread whose rollout remains in an older date
+directory.
 
 Rollouts do not identify the ChatGPT account that produced them. These commands
 therefore report host-local, account-unscoped observations. Files retained from
