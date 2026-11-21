@@ -1,10 +1,11 @@
 # Remembered Recovery Settings
 
-Codex persists a thread's model, provider, reasoning effort, approval policy,
-working directory, and selected permission profile. Other request overrides,
-such as skill selection, context size, or request-only permission definitions,
-can be lost on cold loading. Threadctl retains those supplementary values so
-continuing a worker does not require rebuilding its launch file.
+Codex persists a thread's model, provider, reasoning settings, service tier,
+personality, approval policy, working directory, and selected permission
+profile. Other request overrides, such as skill selection, context size, or
+request-only permission definitions, can be lost on cold loading. Threadctl
+retains those supplementary values so continuing a worker does not require
+rebuilding its launch file.
 
 ## Creation And Cold Loading
 
@@ -23,12 +24,10 @@ loading an unloaded thread. The values enter the same `thread/resume` request
 that may continue an active goal. An already loaded thread keeps its settings.
 Native TUI resumes and other clients do not consult this local record.
 
-Codex remains responsible for its persisted selections. Threadctl does not save
-old model, provider, effort, approval, sandbox, permission-profile selector, or
-cwd values for later replay. A model or permission selection changed through
-another client therefore is not replaced by the worker's original launch value.
-Saved request-only profile definitions are snapshots; replacing their source
-TOML does not update them.
+Codex restores its persisted selections, including later changes made through
+another client. Threadctl filters those keys out of existing recovery records
+when it reads them. Saved request-only profile definitions are snapshots;
+replacing their source TOML does not update them.
 
 ## Override Or Replace
 
@@ -110,9 +109,8 @@ snapshot.
 
 ## Confirmation Boundary
 
-Isolated tests on Codex 0.161.0 verified native selections before the first
-model turn and after later settings changes. Recovery relies on the selected
-server's native persistence behavior.
+Recovery targets Codex 0.169.0 and later. Isolated tests verify native
+selections before the first model turn and after later settings changes.
 
 JSON `recovery` identifies the local record and submitted keys; `settings`
 contains the server-reported subset. Neither verifies every configuration key

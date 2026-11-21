@@ -70,10 +70,11 @@ async def resume_thread(
         if remember_config:
             recovery_config(config)
         recovery = public_recovery(recovery_state, app.endpoint, thread_id, record)
-        recovery["outcome"] = "submitted" if saved else "notFound"
         recovery["submittedKeys"] = sorted(
             key for key in saved if key not in (config_overrides or {})
         )
+        if recovery["submittedKeys"]:
+            recovery["outcome"] = "submitted"
         if save_requested:
             with database(recovery_state, write=True):
                 pass

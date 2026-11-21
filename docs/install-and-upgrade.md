@@ -5,6 +5,8 @@ app-server setup, and updates from an existing checkout.
 
 ## Install Commands
 
+Use Codex 0.169.0 or later for the Codex-specific commands.
+
 Clone the repository:
 
 ```sh
