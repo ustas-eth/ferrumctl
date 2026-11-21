@@ -30,7 +30,7 @@ class ParseTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 parser.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-wakectl 0.6.0\n")
+        self.assertEqual(output.getvalue(), "codex-wakectl 0.6.1\n")
 
     def test_parse_duration(self) -> None:
         self.assertEqual(parsing.parse_duration("10s"), 10)
@@ -567,7 +567,7 @@ class ConditionTests(unittest.TestCase):
 
             async def request(self, method, params):
                 return {
-                    "data": [{"id": "turn-1", "status": self.status}],
+                    "data": [{"id": "turn-1", "status": self.status, "completedAt": 100}],
                     "nextCursor": None,
                 }
 
@@ -585,6 +585,38 @@ class ConditionTests(unittest.TestCase):
         self.assertTrue(ready)
         self.assertEqual(reason, "turn turn-1 interrupted")
 
+    def test_stop_watch_reconciles_interrupted_history_with_live_state(self) -> None:
+        class App:
+            def __init__(self, live_status, turn_status="interrupted", completed_at=None):
+                self.live_status = live_status
+                self.turn = {"id": "turn-1", "status": turn_status, "completedAt": completed_at}
+
+            async def request(self, method, params):
+                if method == "thread/turns/list":
+                    return {"data": [self.turn]}
+                if method == "thread/read":
+                    return {"thread": {"status": {"type": self.live_status}}}
+                raise AssertionError(method)
+
+        base = {"type": "stop", "threadId": "t"}
+        exact = {**base, "turnId": "turn-1"}
+        running = App("active")
+        seeded = asyncio.run(conditions.seed_stop_condition(running, base))
+        self.assertEqual(seeded["cursorTurnStatus"], "inProgress")
+        for condition in (exact, seeded):
+            with self.subTest(condition=condition):
+                ready, _, _ = asyncio.run(conditions.stop_condition_ready(running, condition))
+                self.assertFalse(ready)
+                # A crashed or unloaded thread may have no recorded stop time.
+                ready, _, _ = asyncio.run(
+                    conditions.stop_condition_ready(App("notLoaded"), condition)
+                )
+                self.assertTrue(ready)
+        ready, _, _ = asyncio.run(
+            conditions.stop_condition_ready(App("active", completed_at=100), exact)
+        )
+        self.assertTrue(ready)
+
     def test_exact_stop_seed_rejects_unknown_turn(self) -> None:
         class App:
             async def request(self, method, params):
@@ -600,6 +632,22 @@ class ConditionTests(unittest.TestCase):
                     {"type": "stop", "threadId": "t", "turnId": "missing"},
                 )
             )
+
+    def test_exact_stop_fails_for_missing_turn_after_thread_stops(self) -> None:
+        class App:
+            async def request(self, method, params):
+                if method == "thread/turns/list":
+                    return {"data": []}
+                if method == "thread/read":
+                    return {"thread": {"status": {"type": "idle"}}}
+                raise AssertionError(method)
+
+        ready, updates, reason = asyncio.run(conditions.stop_condition_ready(
+            App(), {"type": "stop", "threadId": "worker", "turnId": "missing"},
+        ))
+        self.assertFalse(ready)
+        self.assertEqual(updates, {"status": "failed"})
+        self.assertIn("missing", reason)
 
     def test_stop_condition_detects_turn_completed_between_polls(self) -> None:
         class App:

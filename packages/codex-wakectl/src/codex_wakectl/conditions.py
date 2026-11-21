@@ -1,16 +1,25 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import os
 import subprocess
 import uuid
 from typing import Any
 
-from codex_threadctl.appserver import get_goal, list_turn_page, list_thread_turns
+from codex_threadctl.appserver import (
+    get_goal,
+    get_thread_status,
+    list_turn_page,
+    list_thread_turns,
+)
 
 from .constants import DEFAULT_TIMEOUT, TERMINAL_TURN_STATUSES
 from .errors import WakectlError
 from .parsing import format_time, now_seconds
+
+
+STOP_RECHECK_SECONDS = 0.2
 
 
 def time_condition_ready(condition: dict[str, Any]) -> tuple[bool, dict[str, Any], str]:
@@ -149,13 +158,50 @@ def with_turn_cursor(
     return updated
 
 
+def projected_interruption(turn: dict[str, Any]) -> bool:
+    return turn.get("status") == "interrupted" and turn.get("completedAt") is None
+
+
+async def reconcile_latest_turn(
+    app: Any, thread_id: str, turn: dict[str, Any],
+) -> dict[str, Any]:
+    if not projected_interruption(turn):
+        return turn
+    live = (await get_thread_status(app, thread_id)).get("type")
+    if live in {"idle", "systemError"}:
+        # Both history and live status can lag turn admission.
+        await asyncio.sleep(STOP_RECHECK_SECONDS)
+        turns = await list_thread_turns(app, thread_id, limit=1, items_view="notLoaded")
+        if turns and turns[0].get("id") == turn.get("id"):
+            turn = turns[0]
+            if not projected_interruption(turn):
+                return turn
+        live = (await get_thread_status(app, thread_id)).get("type")
+    if live == "active":
+        return {**turn, "status": "inProgress"}
+    return turn
+
+
+async def read_stop_boundary(app: Any, thread_id: str) -> dict[str, Any] | None:
+    turns = await list_thread_turns(app, thread_id, limit=1, items_view="notLoaded")
+    return await reconcile_latest_turn(app, thread_id, turns[0]) if turns else None
+
+
+async def read_exact_stop_turn(
+    app: Any, thread_id: str, turn_id: str,
+) -> dict[str, Any] | None:
+    turns, found = await turns_through_cursor(app, thread_id, turn_id)
+    return next(turn for turn in turns if turn.get("id") == turn_id) if found else None
+
+
 async def seed_stop_condition(app: Any, condition: dict[str, Any]) -> dict[str, Any]:
     exact_turn_id = condition.get("turnId")
     if exact_turn_id is not None:
+        thread_id = condition["threadId"]
         if exact_turn_id == "latest":
             turns = await list_thread_turns(
                 app,
-                condition["threadId"],
+                thread_id,
                 limit=1,
                 items_view="notLoaded",
             )
@@ -171,22 +217,14 @@ async def seed_stop_condition(app: Any, condition: dict[str, Any]) -> dict[str, 
             resolved["turnId"] = latest_turn_id
             return resolved
 
-        turns, found = await turns_through_cursor(
-            app,
-            condition["threadId"],
-            exact_turn_id,
-        )
-        if not found:
-            raise WakectlError(f"turn not found: {exact_turn_id}")
+        if await read_exact_stop_turn(app, thread_id, exact_turn_id) is None:
+            # turn/start can return its id before materialized history sees it.
+            await asyncio.sleep(STOP_RECHECK_SECONDS)
+            if await read_exact_stop_turn(app, thread_id, exact_turn_id) is None:
+                raise WakectlError(f"turn not found: {exact_turn_id}")
         return condition
 
-    turns = await list_thread_turns(
-        app,
-        condition["threadId"],
-        limit=1,
-        items_view="notLoaded",
-    )
-    return with_turn_cursor(condition, turns[0] if turns else None)
+    return with_turn_cursor(condition, await read_stop_boundary(app, condition["threadId"]))
 
 
 async def turns_through_cursor(
@@ -206,6 +244,8 @@ async def turns_through_cursor(
             items_view="notLoaded",
         )
         batch = [turn for turn in page["data"] if isinstance(turn, dict)]
+        if not turns and batch:
+            batch[0] = await reconcile_latest_turn(app, thread_id, batch[0])
         turns.extend(batch)
         if cursor_id is None or any(turn.get("id") == cursor_id for turn in batch):
             return turns, True
@@ -262,27 +302,23 @@ async def stop_condition_ready(
 ) -> tuple[bool, dict[str, Any], str]:
     exact_turn_id = condition.get("turnId")
     if exact_turn_id is not None:
-        turns, found = await turns_through_cursor(
-            app,
-            condition["threadId"],
-            exact_turn_id,
-        )
-        if not found:
-            return False, {"status": "failed"}, f"turn no longer exists: {exact_turn_id}"
-        turn = next(turn for turn in turns if turn.get("id") == exact_turn_id)
+        thread_id = condition["threadId"]
+        turn = await read_exact_stop_turn(app, thread_id, exact_turn_id)
+        if turn is None:
+            if (await get_thread_status(app, thread_id)).get("type") != "active":
+                await asyncio.sleep(STOP_RECHECK_SECONDS)
+                turn = await read_exact_stop_turn(app, thread_id, exact_turn_id)
+                if turn is None and (await get_thread_status(app, thread_id)).get("type") != "active":
+                    return False, {"status": "failed"}, f"turn no longer exists: {exact_turn_id}"
+            if turn is None:
+                return False, {}, f"waiting for turn {exact_turn_id} to appear in history"
         status = turn.get("status", "unknown")
         if status in TERMINAL_TURN_STATUSES:
             return True, {}, f"turn {exact_turn_id} {status}"
         return False, {}, f"turn {exact_turn_id} is {status}"
 
     if "cursorTurnId" not in condition:
-        turns = await list_thread_turns(
-            app,
-            condition["threadId"],
-            limit=1,
-            items_view="notLoaded",
-        )
-        latest = turns[0] if turns else None
+        latest = await read_stop_boundary(app, condition["threadId"])
         legacy_observed_active = bool(condition.get("observedActive"))
         updated = with_turn_cursor(condition, latest)
         if (
