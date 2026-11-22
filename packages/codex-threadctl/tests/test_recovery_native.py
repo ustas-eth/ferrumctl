@@ -1,6 +1,8 @@
 """Real restart recovery with a local model; no credentials or live server."""
 import asyncio
+import json
 import os
+import sqlite3
 import tempfile
 import threading
 import unittest
@@ -94,6 +96,14 @@ class NativeRecoveryTests(unittest.IsolatedAsyncioTestCase):
                     target = created["threadId"]
                     self.assertEqual(created["recovery"]["keys"],
                                      ["model_context_window", "permissions", "skills"])
+                    with sqlite3.connect(state) as connection:
+                        config = read_recovery(state, server.endpoint, target)["config"]
+                        config.update(service_tier="default", model_reasoning_summary="auto",
+                                      personality="friendly")
+                        connection.execute(
+                            "UPDATE recovery_settings SET config_json = ? WHERE thread_id = ?",
+                            (json.dumps(config), target),
+                        )
                 config_file.unlink()
 
                 async with NativeServer(home) as server:
@@ -106,6 +116,10 @@ class NativeRecoveryTests(unittest.IsolatedAsyncioTestCase):
                     # Simulate another native client changing selections, without a new turn.
                     await configure_thread(server, target, model="gpt-6-sol", effort="low",
                                            permission_profile=":workspace", approval_policy="never")
+                    await server.request("thread/settings/update", {
+                        "threadId": target, "serviceTier": "flex",
+                        "summary": "detailed", "personality": "pragmatic",
+                    })
 
                 async with NativeServer(home) as server:
                     resumed = await resume_thread(server, target, continue_goal=True, recovery_state=state)
@@ -119,6 +133,8 @@ class NativeRecoveryTests(unittest.IsolatedAsyncioTestCase):
                     await server.turn(target)
                     self.assertEqual(backend.requests[-1]["model"], "gpt-6-sol")
                     self.assertEqual(backend.requests[-1]["reasoning"]["effort"], "low")
+                    self.assertEqual(backend.requests[-1]["reasoning"]["summary"], "detailed")
+                    self.assertEqual(backend.requests[-1]["service_tier"], "flex")
                     catalogs = [str(item) for item in backend.requests[-1]["input"]
                                 if item.get("role") == "developer" and "<skills_instructions>" in str(item)]
                     self.assertNotIn("alpha-smoke", catalogs[-1])

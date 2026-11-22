@@ -12,6 +12,12 @@ run() {
   "$@"
 }
 
+run_rollout_tests() {
+  run env PYTHONPATH="$1" "$UV" run --no-project --python "$PYTHON" \
+    --with "backports.zstd>=1,<2; python_version < '3.14'" \
+    --with 'websockets>=15,<16' python -m unittest discover -s tests -v
+}
+
 run "$PYTHON" scripts/sync-skill-references.py --check
 run "$UV" run scripts/check_skills.py
 run "$PYTHON" scripts/check_release_versions.py
@@ -40,12 +46,12 @@ run git diff --check
 
 (
   cd packages/codex-limitctl
-  run env PYTHONPATH=src "$PYTHON" -m unittest discover -s tests -v
+  run_rollout_tests src
 )
 
 (
   cd packages/codex-memoryctl
-  run env PYTHONPATH=src:../codex-threadctl/src "$PYTHON" -m unittest discover -s tests -v
+  run_rollout_tests src:../codex-threadctl/src
 )
 
 (
@@ -55,7 +61,7 @@ run git diff --check
 
 (
   cd packages/codex-threadctl
-  run env PYTHONPATH=src "$PYTHON" -m unittest discover -s tests -v
+  run_rollout_tests src
 )
 
 (
@@ -89,11 +95,11 @@ run git diff --check
   run "$UV" pip check --python "$tool_dir/codex-memoryctl/bin/python"
   run "$UV" pip check --python "$tool_dir/codex-wakectl/bin/python"
   test "$("$bin_dir/codex-goalctl" --version)" = "codex-goalctl 0.2.3"
-  test "$("$bin_dir/codex-limitctl" --version)" = "codex-limitctl 0.2.12"
-  test "$("$bin_dir/codex-memoryctl" --version)" = "codex-memoryctl 0.5.10"
+  test "$("$bin_dir/codex-limitctl" --version)" = "codex-limitctl 0.2.13"
+  test "$("$bin_dir/codex-memoryctl" --version)" = "codex-memoryctl 0.5.11"
   test "$("$bin_dir/streamctl" --version)" = "streamctl 0.2.6"
-  test "$("$bin_dir/codex-threadctl" --version)" = "codex-threadctl 0.9.0"
-  test "$("$bin_dir/codex-wakectl" --version)" = "codex-wakectl 0.6.0"
+  test "$("$bin_dir/codex-threadctl" --version)" = "codex-threadctl 0.9.1"
+  test "$("$bin_dir/codex-wakectl" --version)" = "codex-wakectl 0.6.1"
 )
 
 printf '\nchecks passed\n'

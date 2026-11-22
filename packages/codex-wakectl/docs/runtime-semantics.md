@@ -72,14 +72,21 @@ condition.
 If no turn existed when the watch was created, the first later terminal turn
 is treated as the observed completion.
 
+When history reports the newest turn as interrupted without a stop time,
+wakectl checks live state and briefly rechecks a loaded thread that appears
+stopped. Both observations can lag the start of a turn.
+
 `--turn TURN_ID` binds a one-shot condition to that exact turn. It becomes ready
 if the turn is already terminal and otherwise waits for that turn to stop.
+`turn/start` can return an id before it appears in history. Creation rechecks
+once before rejecting an unseen id. A saved exact watch waits if the turn is
+temporarily absent while the thread is active.
 `--turn latest` resolves to the newest existing turn during creation; it fails
 when the thread has no turns. Exact-turn conditions cannot repeat.
 
-The runner pages history until it finds the stored boundary or exact turn. If
-rollback, compaction, or another history change removes that identity, the job
-becomes `failed`; older terminal turns are not treated as new evidence.
+The runner pages history until it finds the stored boundary or exact turn. A
+missing boundary or an exact turn still absent after the thread stops is
+reported as `failed`.
 
 Command conditions retain argv and creation cwd, but execute in the runner's
 environment. The wakectl timeout also bounds the command. Predicates may run

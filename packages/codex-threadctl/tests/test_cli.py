@@ -24,7 +24,7 @@ class ParserTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 parser.build_parser().parse_args(["--version"])
-        self.assertEqual(output.getvalue(), "codex-threadctl 0.9.0\n")
+        self.assertEqual(output.getvalue(), "codex-threadctl 0.9.1\n")
 
     def test_default_timeout_allows_for_history_reconstruction(self):
         self.assertEqual(parser.build_parser().parse_args(["loaded"]).timeout, 30.0)
@@ -607,8 +607,8 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
             ),
             mock.patch.object(
                 commands,
-                "read_context_state",
-                return_value=(None, None),
+                "read_rollout_observations",
+                return_value=(None, None, None, None, None),
             ),
             redirect_stdout(io.StringIO()) as output,
         ):
@@ -663,8 +663,8 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
             ),
             mock.patch.object(
                 commands,
-                "read_context_state",
-                return_value=(None, None),
+                "read_rollout_observations",
+                return_value=(None, None, None, None, None),
             ),
             redirect_stdout(io.StringIO()) as output,
         ):

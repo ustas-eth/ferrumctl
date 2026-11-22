@@ -225,6 +225,55 @@ class RunnerTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(fired["lastClientMessageId"], "client")
             self.assertEqual(sent, [("main", "worker stopped")])
 
+    async def test_exact_stop_job_survives_inconsistent_startup_history(self) -> None:
+        pages = iter([
+            {"data": []},
+            {"data": [{"id": "turn-1", "status": "inProgress"}]},
+            {"data": []},
+            {"data": []},
+            {"data": [{"id": "turn-1", "status": "interrupted", "completedAt": None}]},
+            {"data": [{"id": "turn-1", "status": "inProgress"}]},
+            {"data": [
+                {"id": "turn-2", "status": "inProgress"},
+                {"id": "turn-1", "status": "completed", "completedAt": 100},
+            ]},
+        ])
+        statuses = iter(["idle", "active", "idle"])
+
+        class StartupApp(FakeAppServer):
+            async def request(self, method, params):
+                if method == "thread/turns/list":
+                    return next(pages)
+                if method == "thread/read":
+                    return {"thread": {"status": {"type": next(statuses)}}}
+                raise AssertionError(method)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp) / "jobs.sqlite3"
+            args = parser.build_parser().parse_args([
+                "add", "stop", "worker", "--turn", "turn-1", "--to", "main",
+                "--state", str(state),
+            ])
+            with (
+                mock.patch.object(commands, "AppServer", StartupApp),
+                mock.patch.object(commands, "deliver_action", return_value={
+                    "itemId": "event", "turnId": "wake-turn", "delivery": "eventStarted",
+                }) as deliver,
+                contextlib.redirect_stdout(io.StringIO()) as output,
+            ):
+                self.assertEqual(await commands.cmd_add(args), 0)
+                for _ in range(2):
+                    self.assertEqual(await commands.cmd_run(runner_args(state)), 0, output.getvalue())
+                    self.assertEqual(list_jobs(state, include_all=True)[0]["status"], "pending")
+                deliver.assert_not_awaited()
+                self.assertEqual(await commands.cmd_run(runner_args(state)), 0, output.getvalue())
+                self.assertEqual(await commands.cmd_run(runner_args(state)), 0)
+                deliver.assert_awaited_once()
+
+            job = list_jobs(state, include_all=True)[0]
+            self.assertEqual(job["status"], "fired")
+            self.assertEqual(job["fireCount"], 1)
+
     async def test_exact_stop_job_fires_for_already_completed_turn(self) -> None:
         async def list_turn_page(
             app: object,

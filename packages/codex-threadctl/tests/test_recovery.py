@@ -42,6 +42,7 @@ class RecoveryStoreTests(unittest.TestCase):
             "model": "old", "model_provider": "old", "model_reasoning_effort": "low",
             "approval_policy": "never", "default_permissions": "worker",
             "sandbox_mode": "danger-full-access", "cwd": "/old",
+            "service_tier": "default", "model_reasoning_summary": "auto", "personality": "friendly",
             "permissions": {"worker": {"extends": ":read-only"}},
         })
         self.assertEqual(result["keys"], ["permissions"])
@@ -167,7 +168,8 @@ class RecoveryOperationTests(unittest.IsolatedAsyncioTestCase):
         self.save({"skills": {"include_instructions": False}, "model_context_window": 120000})
         await configuration.resume_thread(self.app, "thread", continue_goal=True,
                                           recovery_state=self.state,
-                                          config_overrides={"skills": {"config": []}})
+                                          config_overrides={"skills": {"config": []}, "service_tier": "default"})
+        self.assertEqual(self.app.calls[-1][1]["config"]["service_tier"], "default")
         self.assertEqual(recovery.read_recovery(self.state, self.app.endpoint, "thread")["config"],
                          {"skills": {"config": []}, "model_context_window": 120000})
 

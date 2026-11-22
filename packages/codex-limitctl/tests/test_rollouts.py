@@ -2,17 +2,24 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
+from codex_limitctl.errors import LimitctlError
 from codex_limitctl.rollouts import (
     find_rollouts,
     read_rollout,
     reduce_history,
     scan_rollouts,
 )
+
+if sys.version_info >= (3, 14):
+    from compression import zstd
+else:
+    from backports import zstd
 
 
 THREAD_ID = "019f7cfc-0430-7ba2-b588-b2ea3f907f15"
@@ -67,6 +74,30 @@ def write_rollout(path: Path, records: list[dict], *, partial: bool = False) -> 
 class RolloutUsageTests(unittest.TestCase):
     def make_path(self, directory: str) -> Path:
         return Path(directory) / f"rollout-2026-07-20T00-00-00-{THREAD_ID}.jsonl"
+
+    def test_compressed_activity_and_history_preserve_plain_results(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            since = datetime(2026, 7, 20, tzinfo=timezone.utc)
+            plain = self.make_path(str(home / "sessions"))
+            compressed = plain.with_suffix(".jsonl.zst")
+            value = counter(10, 0, 1, 0)
+            write_rollout(plain, [token_event("2026-07-20T00:01:00Z", value, value)])
+            expected = scan_rollouts(home, since)
+            self.assertEqual(expected[0][0]["threadId"], THREAD_ID)
+            self.assertTrue(expected[1])
+            data = zstd.compress(plain.read_bytes())
+
+            compressed.write_bytes(data[:-2])
+            self.assertEqual(find_rollouts(home, since), [plain])
+            self.assertEqual(scan_rollouts(home, since), expected)
+
+            plain.unlink()
+            self.assertEqual(find_rollouts(home, since), [compressed])
+            with self.assertRaisesRegex(LimitctlError, "invalid Zstandard stream"):
+                scan_rollouts(home, since)
+            compressed.write_bytes(data)
+            self.assertEqual(scan_rollouts(home, since), expected)
 
     def test_counts_fresh_usage_and_cumulative_deltas(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

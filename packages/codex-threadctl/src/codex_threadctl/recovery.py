@@ -17,6 +17,7 @@ from .errors import OperationError, ThreadctlError
 NATIVE_KEYS = frozenset({
     "model", "model_provider", "model_reasoning_effort", "approval_policy",
     "approvals_reviewer", "sandbox_mode", "default_permissions", "cwd",
+    "service_tier", "model_reasoning_summary", "personality",
 })
 SECRET_KEYS = frozenset({
     "api_key", "apikey", "bearer_token", "experimental_bearer_token",
@@ -112,7 +113,7 @@ def read_recovery(path: Path, endpoint: str, thread_id: str) -> dict[str, Any] |
         return None
     try:
         config = json.loads(row["config_json"])
-        if not isinstance(config, dict) or any(key in NATIVE_KEYS for key in config):
+        if not isinstance(config, dict):
             raise ValueError("invalid supplementary settings")
         config = recovery_config(config)
     except (TypeError, ValueError) as exc:

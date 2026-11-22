@@ -4,7 +4,9 @@ import json
 import math
 import os
 import re
+import sys
 from collections import defaultdict
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -22,7 +24,7 @@ TOKEN_FIELDS = (
     "total_tokens",
 )
 THREAD_ID_RE = re.compile(
-    r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$"
+    r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl(?:\.zst)?$"
 )
 INTERESTING_MARKERS = (
     '"session_meta"',
@@ -52,8 +54,13 @@ def find_rollouts(codex_home: Path, since: datetime) -> list[Path]:
         if not directory.is_dir():
             continue
         try:
-            candidates = directory.rglob("rollout-*.jsonl")
+            candidates = directory.rglob("rollout-*.jsonl*")
             for path in candidates:
+                if not path.name.endswith((".jsonl", ".jsonl.zst")):
+                    continue
+                # A compressed sibling may have a newer mtime but older data.
+                if path.name.endswith(".zst") and path.with_suffix("").is_file():
+                    continue
                 try:
                     stat = path.stat()
                 except FileNotFoundError:
@@ -70,6 +77,27 @@ def find_rollouts(codex_home: Path, since: datetime) -> list[Path]:
                 f"failed to scan rollout directory {directory}: {exc}"
             ) from exc
     return sorted(path for path, _ in by_thread.values())
+
+
+@contextmanager
+def open_rollout(path: Path):
+    options = {"encoding": "utf-8", "errors": "replace"}
+    if not path.name.endswith(".zst"):
+        with path.open("rt", **options) as stream:
+            yield stream
+        return
+    try:
+        if sys.version_info >= (3, 14):
+            from compression import zstd
+        else:
+            from backports import zstd
+    except ImportError as exc:
+        raise OSError("Zstandard support is unavailable in this Python installation") from exc
+    try:
+        with zstd.open(path, "rt", **options) as stream:
+            yield stream
+    except (EOFError, zstd.ZstdError) as exc:
+        raise OSError(f"invalid Zstandard stream: {exc}") from exc
 
 
 def parse_timestamp(value: Any) -> datetime | None:
@@ -191,7 +219,7 @@ def read_rollout(
     )
 
     try:
-        with path.open("r", encoding="utf-8", errors="replace") as rollout:
+        with open_rollout(path) as rollout:
             for line in rollout:
                 if not any(marker in line for marker in INTERESTING_MARKERS):
                     continue
